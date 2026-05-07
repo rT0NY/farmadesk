@@ -1,5 +1,7 @@
 {
   "name": "farmadesk",
+  "description": "Sistema de gestión para farmacias",
+  "author": "rT0NY",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -17,7 +19,7 @@
     "appId": "com.farmadesk.app",
     "productName": "Farmadesk",
     "directories": {
-      "output": "release"
+      "output": "../farmadesk-releases"
     },
     "publish": [
       {
@@ -26,14 +28,14 @@
         "repo": "farmadesk"
       }
     ],
+    "icon": "public/logo.png",
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "public/logo.png",
-      "public/logo.ico"
+      "public/logo.png"
     ],
     "win": {
-      "icon": "public/logo.ico",
+      "icon": "public/logo.png",
       "target": [
         {
           "target": "nsis",
@@ -46,9 +48,6 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/logo.ico",
-      "uninstallerIcon": "public/logo.ico",
-      "installerHeaderIcon": "public/logo.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Farmadesk"
