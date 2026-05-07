@@ -1,0 +1,1912 @@
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { toast } from 'sonner'
+import {
+  Search, ShoppingCart, X, Plus, Minus, Trash2, Check,
+  DollarSign, CreditCard, Store, Clock, Receipt, BarChart3,
+  Eye, Printer, Ban, User, Package, Wallet, LogOut,
+  ChevronDown, AlertTriangle, ScanBarcode,
+} from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { log as logBitacora } from '@/lib/bitacora'
+import { useApp } from '@/context/AppCtx'
+import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, generarFolio } from '@/lib/formatos'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { cn } from '@/lib/clases'
+
+// ─── Modal Ver Ticket ───────────────────────────────────────
+function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }) {
+  if (!venta) return null
+  const items  = detalles.filter(d => d.venta_id === venta.id)
+  const folio  = generarFolio(venta.id, sucursalNombre)
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900 font-mono">{folio}</h3>
+            <p className="text-xs text-slate-500">{formatoFechaHora(venta.creado_en)}</p>
+          </div>
+          <button onClick={onCerrar} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="space-y-2">
+            {items.map(d => {
+              const prod = productos.find(p => p.id === d.producto_id)
+              return (
+                <div key={d.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">{prod?.nombre || '—'}</p>
+                    <p className="text-xs text-slate-500">{d.cantidad} x {formatoMoneda(d.precio_unitario)}</p>
+                  </div>
+                  <p className="text-sm font-bold text-slate-900 tabular-nums">{formatoMoneda(d.cantidad * d.precio_unitario)}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+          <span className="text-sm font-semibold text-slate-600">Total</span>
+          <span className="text-xl font-bold text-primary-700">{formatoMoneda(venta.total)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal Cancelar Venta ───────────────────────────────────
+function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
+  const [motivo, setMotivo] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function solicitar() {
+    if (!motivo.trim()) { toast.error('Escribe un motivo'); return }
+    setEnviando(true)
+    try {
+      const { error } = await supabase.from('cancelaciones').insert([{
+        empresa_id: (await supabase.from('ventas').select('empresa_id').eq('id', venta.id).single()).data.empresa_id,
+        venta_id: venta.id,
+        solicitado_por: (await supabase.auth.getUser()).data.user.id,
+        motivo: motivo.trim(),
+        estado: 'pendiente',
+      }])
+      if (error) throw error
+      toast.success('Cancelación solicitada')
+      onExito?.()
+      onCerrar()
+    } catch (err) {
+      toast.error(err.message || 'Error')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  if (!venta) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="text-base font-semibold text-red-700">Solicitar cancelación</h3>
+          <button onClick={onCerrar} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-5 py-5 space-y-4">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-3">
+            <p className="text-sm text-red-800 font-mono font-bold">{generarFolio(venta.id, sucursalNombre)}</p>
+            <p className="text-sm text-red-700 mt-0.5">{formatoMoneda(venta.total)}</p>
+          </div>
+          <Input label="Motivo *" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="¿Por qué se cancela?" autoFocus />
+        </div>
+        <div className="px-5 py-4 border-t border-slate-100 flex gap-2 justify-end">
+          <Button variante="secundario" onClick={onCerrar}>Cancelar</Button>
+          <Button variante="peligro" onClick={solicitar} cargando={enviando}>Solicitar</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Helper: abrir ventana de impresión con manejo de errores ────────────────
+function abrirImpresion(html) {
+  try {
+    const win = window.open('', '_blank', 'width=320,height=600')
+    if (!win || win.closed) {
+      toast.error('Impresión bloqueada', {
+        description: 'El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e intenta de nuevo.',
+        duration: 8000,
+      })
+      return false
+    }
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 500)
+    return true
+  } catch {
+    toast.error('Error al imprimir', {
+      description: 'No se pudo conectar con la impresora. Verifica que esté encendida y con papel, luego reimprime desde Historial.',
+      duration: 8000,
+    })
+    return false
+  }
+}
+
+// ─── Helper: construir HTML del ticket ───────────────────────────────────────
+function buildTicketHtml({ folio, items, total, montoRecibido, cambio, metodoPago, cajeroNombre, sucursalNombre, sucursal, empresaNombre, fecha }) {
+  const suc    = sucursal || {}
+  const partes = [suc.calle, suc.colonia, suc.ciudad, suc.estado].filter(Boolean)
+  const dir    = partes.length
+    ? partes.join(', ') + (suc.codigo_postal ? ` C.P. ${suc.codigo_postal}` : '')
+    : ''
+  const f      = fecha instanceof Date ? fecha : new Date()
+  const fStr   = f.toLocaleDateString('es-MX',  { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const hStr   = f.toLocaleTimeString('es-MX',  { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const rows   = items.map(i =>
+    `<tr><td>${i.nombre}</td><td style="text-align:center">${i.cantidad}</td><td style="text-align:right">$${(i.precio * i.cantidad).toFixed(2)}</td></tr>`
+  ).join('')
+  const pagoHtml = montoRecibido > 0
+    ? `<div class="fila"><span>Recibido</span><span>$${Number(montoRecibido).toFixed(2)}</span></div><div class="fila cambio"><span>Cambio</span><span>$${Number(cambio).toFixed(2)}</span></div>`
+    : ''
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${empresaNombre || 'FARMACIA'}</h2><div class="sub">${sucursalNombre || ''}</div>${dir ? `<div class="dir">${dir}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${folio}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}${cajeroNombre ? `<div class="fila"><span>Cajero</span><span>${cajeroNombre}</span></div>` : ''}<div class="footer">Gracias por su compra</div></body></html>`
+}
+
+// ─── Página principal de Ventas ─────────────────────────────
+export default function VentasPage() {
+  const { perfil, empresa, sucursales, sucursalActiva, cambiarSucursal, recargarTurno, tz } = useApp()
+  const esAdmin   = perfil?.rol === 'admin'
+  const esCajero  = perfil?.rol === 'cajero'
+
+  // Sucursal seleccionada — rotativos empiezan sin sucursal hasta que eligen en el selector
+  const [sucursalId, setSucursalId] = useState(
+    sucursalActiva?.id || (esAdmin ? sucursales[0]?.id : '') || ''
+  )
+  const sucursalActual = sucursales.find(s => s.id === sucursalId)
+
+  // Datos
+  const [productos, setProductos] = useState([])
+  const [lotes, setLotes] = useState([])
+  const [inventario, setInventario] = useState([])
+  const [codigosCat, setCodigosCat] = useState([])
+  const [ventasHoy, setVentasHoy] = useState([])
+  const [detallesHoy, setDetallesHoy] = useState([])
+  const [cuentasHoy, setCuentasHoy] = useState([])
+  const [turnoActual, setTurnoActual] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  // Carrito
+  const [carrito, setCarrito] = useState([])
+  const [busqueda, setBusqueda] = useState('')
+  const [resultados, setResultados] = useState([])
+  const [resultadosOtras, setResultadosOtras] = useState([])
+  const [deshabilitados, setDeshabilitados] = useState(new Set())
+  const [precios, setPrecios] = useState({})
+  const [modosMayoreo, setModosMayoreo] = useState({})
+  const [cantidadesInput, setCantidadesInput] = useState({}) // string temporal mientras el user escribe
+  const [warnings, setWarnings] = useState({})
+  const [procesando, setProcesando] = useState(false)
+  const [ofertasVigentes, setOfertasVigentes] = useState([])
+
+  // Cobro
+  const [montoRecibido, setMontoRecibido] = useState('')
+  const [metodoPago, setMetodoPago] = useState('efectivo')
+  const [esCuentaPendiente, setEsCuentaPendiente] = useState(false)
+  const [clienteNombre, setClienteNombre] = useState('')
+
+  // Escáner
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const barcodeRef = useRef(null)
+  const searchRef = useRef(false)
+
+  // Modales
+  const [modalTicket,  setModalTicket]  = useState(null)
+  const [modalCancelar, setModalCancelar] = useState(null)
+
+
+  // Tab
+  const [tab, setTab] = useState('caja')
+
+  // Abrir turno
+  const [montoApertura, setMontoApertura] = useState('')
+  const [abriendoTurno, setAbriendoTurno] = useState(false)
+  // Rotativo: empleado sin sucursal fija en su perfil
+  const esRotativo = !esAdmin && !perfil?.sucursal_id && sucursales.length > 1
+  // Confirmada si: tiene sucursal fija, es admin, o ya vino con sucursalActiva restaurada (turno previo)
+  const [sucursalConfirmada, setSucursalConfirmada] = useState(!!perfil?.sucursal_id || esAdmin || !!sucursalActiva?.id)
+  const [sucursalSugerida,  setSucursalSugerida]  = useState(null)
+  // sucursalTemp: selección explícita en el picker (null = sin seleccionar aún)
+  const [sucursalTemp, setSucursalTemp]  = useState(null)
+  // pasoSelector: 1=elegir sucursal, 2=ingresar monto de apertura
+  const [pasoSelector, setPasoSelector] = useState(1)
+
+  // Cerrar turno
+  const [montoCierre,    setMontoCierre]    = useState('')
+  const [cerrandoTurno,  setCerrandoTurno]  = useState(false)
+  const [resultadoCierre,setResultadoCierre]= useState(null)
+  const [confirmarCierre,setConfirmarCierre]= useState(false)
+  const [resumenTurno,   setResumenTurno]   = useState(null)
+  const [cargandoResumen, setCargandoResumen] = useState(false)
+  // Todas las ventas del turno activo (puede abarcar varios días)
+  const [ventasTurno,       setVentasTurno]       = useState([])
+  const [movimientosTurno,  setMovimientosTurno]  = useState([])
+
+  // ── Cargar datos ──────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    if (!sucursalId) { setLoading(false); return }
+    setLoading(true)
+    try {
+      const hoy = fechaEnZona(tz)
+      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: turno }, { data: ofVig }, { data: cuentas }, { data: prodSuc }, { data: progHoy }] = await Promise.all([
+        supabase.from('productos').select('*').eq('activo', true).order('nombre'),
+        supabase.from('lotes').select('*').eq('activo', true),
+        supabase.from('inventario').select('*'),
+        supabase.from('codigos_barras').select('*'),
+        supabase.from('ventas').select('*').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
+        supabase.from('detalle_ventas').select('*'),
+        supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfil?.id).eq('estado', 'abierto').maybeSingle(),
+        supabase.rpc('ofertas_vigentes'),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
+        esCajero
+          ? Promise.resolve({ data: [] })
+          : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
+        // Para empleados rotativos: ver dónde están programados hoy
+        perfil?.id && !perfil?.sucursal_id
+          ? supabase.from('programacion').select('sucursal_id').eq('usuario_id', perfil.id).eq('fecha', hoy).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      // Auto-confirmar sucursal desde programacion (Caso A: empleado con horario hoy)
+      if (progHoy?.sucursal_id && !sucursalConfirmada) {
+        setSucursalSugerida(progHoy.sucursal_id)
+        setSucursalId(progHoy.sucursal_id)
+        setSucursalConfirmada(true)
+        const suc = sucursales.find(s => s.id === progHoy.sucursal_id)
+        if (suc) cambiarSucursal(suc)
+      }
+      const disabledSet = new Set((prodSuc || []).map(ps => ps.producto_id))
+      setDeshabilitados(disabledSet)
+      setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
+      setCodigosCat(cod || []); setVentasHoy(vts || []); setDetallesHoy(det || [])
+      setCuentasHoy(cuentas || [])
+      setTurnoActual(turno)
+      setOfertasVigentes(ofVig || [])
+
+      if (turno?.id) {
+        const { data: vtsTurno } = await supabase
+          .from('ventas')
+          .select('id, total, metodo_pago, creado_en, monto_recibido, cambio')
+          .eq('turno_id', turno.id)
+          .neq('estado', 'cancelada')
+          .order('creado_en', { ascending: false })
+        setVentasTurno(vtsTurno || [])
+      } else {
+        setVentasTurno([])
+      }
+    } catch (err) { console.error(err) }
+    finally { setLoading(false) }
+  }, [sucursalId, tz])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  useEffect(() => {
+    if (tab !== 'corte' || !turnoActual?.id) return
+    supabase
+      .from('movimientos_caja')
+      .select('tipo, descripcion, monto, creado_en')
+      .eq('turno_id', turnoActual.id)
+      .order('creado_en', { ascending: true })
+      .then(({ data }) => setMovimientosTurno(data || []))
+  }, [tab, turnoActual?.id])
+
+  // Escáner auto-focus — solo roba foco si ningún otro input está activo
+  // y el usuario lleva al menos 600ms sin escribir en otro campo
+  useEffect(() => {
+    if (!turnoActual || tab !== 'caja') return
+    let ultimaInteraccion = 0
+    const marcarInteraccion = () => { ultimaInteraccion = Date.now() }
+    document.addEventListener('keydown', marcarInteraccion)
+
+    const iv = setInterval(() => {
+      if (!barcodeRef.current) return
+      const active = document.activeElement
+      const otroInputActivo = active &&
+        active !== barcodeRef.current && (
+          active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.tagName === 'SELECT' ||
+          active.isContentEditable
+        )
+      const graciaPasada = Date.now() - ultimaInteraccion > 600
+      if (!otroInputActivo && graciaPasada) barcodeRef.current.focus()
+    }, 300)
+
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('keydown', marcarInteraccion)
+    }
+  }, [turnoActual, tab])
+
+  // ── Helpers de stock ──────────────────────────────────────
+  function stockEnSucursal(productoId) {
+    const loteIds = new Set(lotes.filter(l => l.producto_id === productoId).map(l => l.id))
+    return inventario.filter(i => loteIds.has(i.lote_id) && i.sucursal_id === sucursalId)
+      .reduce((a, i) => a + (i.cantidad || 0), 0)
+  }
+
+  function stockEnSucursalEspecifica(productoId, sid) {
+    const loteIds = new Set(lotes.filter(l => l.producto_id === productoId).map(l => l.id))
+    return inventario.filter(i => loteIds.has(i.lote_id) && i.sucursal_id === sid)
+      .reduce((a, i) => a + (i.cantidad || 0), 0)
+  }
+
+  function loteFEFO(productoId) {
+    return lotes
+      .filter(l => l.producto_id === productoId && l.activo !== false)
+      .filter(l => {
+        const inv = inventario.find(i => i.lote_id === l.id && i.sucursal_id === sucursalId)
+        return (inv?.cantidad || 0) > 0
+      })
+      .sort((a, b) => new Date(a.fecha_caducidad) - new Date(b.fecha_caducidad))[0] || null
+  }
+  // Obtener oferta vigente para un producto (carritoActual permite pasar estado futuro del carrito)
+  function ofertaDeProducto(productoId, categoria, carritoActual = carrito) {
+    // Ofertas directas (no cruzadas)
+    const porProducto = ofertasVigentes.find(o => o.producto_id === productoId && !o.producto_trigger_id)
+    if (porProducto) return porProducto
+    if (categoria) {
+      const porCategoria = ofertasVigentes.find(o => o.categoria === categoria && !o.producto_trigger_id)
+      if (porCategoria) return porCategoria
+    }
+    // Oferta cruzada: este producto es el beneficio y el trigger está en el carrito
+    const cruzada = ofertasVigentes.find(o =>
+      o.producto_id === productoId &&
+      o.producto_trigger_id &&
+      carritoActual.some(item =>
+        item.producto.id === o.producto_trigger_id &&
+        item.cantidad >= (o.cantidad_minima || 1)
+      )
+    )
+    return cruzada || null
+  }
+
+  function precioConOferta(precioVenta, oferta, cantidad = 1) {
+    if (!oferta) return { precioFinal: precioVenta, tieneOferta: false, desc: '' }
+    if (oferta.tipo === 'descuento_porcentaje') return { precioFinal: precioVenta * (1 - oferta.valor / 100), tieneOferta: true, desc: `${oferta.valor}% OFF` }
+    if (oferta.tipo === 'descuento_monto') return { precioFinal: Math.max(0, precioVenta - oferta.valor), tieneOferta: true, desc: `-${formatoMoneda(oferta.valor)}` }
+    if (oferta.tipo === 'precio_fijo') return { precioFinal: oferta.valor, tieneOferta: true, desc: 'Precio especial' }
+    if (oferta.tipo === 'nxm' && cantidad >= oferta.n_compra) {
+      const grupos = Math.floor(cantidad / oferta.n_compra)
+      const sueltos = cantidad % oferta.n_compra
+      const totalConOferta = (grupos * oferta.m_paga * precioVenta) + (sueltos * precioVenta)
+      return { precioFinal: totalConOferta / cantidad, tieneOferta: true, desc: `${oferta.n_compra}x${oferta.m_paga}`, esNxM: true, totalNxM: totalConOferta }
+    }
+    if (oferta.tipo === 'nxm') return { precioFinal: precioVenta, tieneOferta: true, desc: `${oferta.n_compra}x${oferta.m_paga} (faltan ${oferta.n_compra - cantidad})`, pendiente: true }
+    return { precioFinal: precioVenta, tieneOferta: false, desc: '' }
+  }
+
+  // ── Carrito ───────────────────────────────────────────────
+  function agregarAlCarrito(producto, cantidadAgregar = 1) {
+    if (deshabilitados.has(producto.id)) { toast.error('Producto no disponible en esta sucursal'); return }
+    const stock = stockEnSucursal(producto.id)
+    if (stock === 0) { toast.error('Sin stock en esta sucursal'); return }
+    const lote = loteFEFO(producto.id)
+    if (!lote) return
+
+    // Computar el nuevo carrito antes de setear estado (para detectar ofertas cruzadas)
+    const existe = carrito.find(i => i.producto.id === producto.id)
+    if (existe && existe.cantidad >= stock) return
+
+    // Limitar la cantidad a no superar el stock disponible
+    const cantReal = Math.min(cantidadAgregar, stock - (existe?.cantidad ?? 0))
+    if (cantReal <= 0) return
+
+    let nuevoCarrito
+    if (existe) {
+      nuevoCarrito = carrito.map(i =>
+        i.producto.id === producto.id ? { ...i, cantidad: i.cantidad + cantReal, stockMax: stock } : i
+      )
+    } else {
+      nuevoCarrito = [...carrito, { producto, lote, cantidad: cantReal, precio: producto.precio_venta, stockMax: stock, oferta: null }]
+    }
+
+    // Recalcular oferta para el producto recién agregado con el nuevo carrito
+    const oferta = ofertaDeProducto(producto.id, producto.categoria, nuevoCarrito)
+    nuevoCarrito = nuevoCarrito.map(i =>
+      i.producto.id === producto.id ? { ...i, oferta } : i
+    )
+
+    const nuevosPrecios = { ...precios }
+    const nuevaCant = existe ? existe.cantidad + cantReal : cantReal
+
+    // Auto-mayoreo: si la cantidad alcanza el mínimo configurado, aplicar precio mayoreo
+    const pm = Number(producto.precio_mayoreo) || 0
+    const cm = Number(producto.cantidad_mayoreo) || 0
+    if (pm > 0 && cm > 0 && nuevaCant >= cm) {
+      nuevosPrecios[producto.id] = String(pm)
+      setModosMayoreo(m => ({ ...m, [producto.id]: true }))
+    } else if (oferta && oferta.tipo !== 'nxm') {
+      const { precioFinal } = precioConOferta(producto.precio_venta, oferta, nuevaCant)
+      nuevosPrecios[producto.id] = precioFinal.toFixed(2)
+    } else if (oferta?.tipo === 'nxm') {
+      const { precioFinal, esNxM } = precioConOferta(producto.precio_venta, oferta, nuevaCant)
+      if (esNxM) nuevosPrecios[producto.id] = precioFinal.toFixed(2)
+    } else {
+      nuevosPrecios[producto.id] = String(producto.precio_venta)
+      // Si baja de la cantidad mínima, quitar mayoreo
+      if (pm > 0 && cm > 0) setModosMayoreo(m => ({ ...m, [producto.id]: false }))
+    }
+
+    // Verificar si este producto activa ofertas cruzadas para items ya en el carrito
+    const ofertasCruzadasQueActiva = ofertasVigentes.filter(o =>
+      o.producto_trigger_id === producto.id
+    )
+    ofertasCruzadasQueActiva.forEach(o => {
+      const benefitIdx = nuevoCarrito.findIndex(i => i.producto.id === o.producto_id)
+      if (benefitIdx < 0) return
+      const cantTrigger = nuevoCarrito.find(i => i.producto.id === producto.id)?.cantidad || 1
+      if (cantTrigger >= (o.cantidad_minima || 1)) {
+        const benefitProd = nuevoCarrito[benefitIdx].producto
+        const { precioFinal } = precioConOferta(benefitProd.precio_venta, o)
+        nuevosPrecios[benefitProd.id] = precioFinal.toFixed(2)
+        nuevoCarrito = nuevoCarrito.map((item, idx) =>
+          idx === benefitIdx ? { ...item, oferta: o } : item
+        )
+        toast.success(`¡Oferta activada! ${o.nombre}`)
+      }
+    })
+
+    setCarrito(nuevoCarrito)
+    setPrecios(nuevosPrecios)
+    setResultados([]); setBusqueda('')
+  }
+
+  function setCantidadItem(prodId, val) {
+    const num = Math.max(1, parseInt(val) || 1)
+    setCarrito(prev => prev.map(i => {
+      if (i.producto.id !== prodId) return i
+      const nuevaCant = Math.min(num, i.stockMax)
+
+      // Auto-mayoreo por cantidad mínima configurada
+      const pm = Number(i.producto.precio_mayoreo) || 0
+      const cm = Number(i.producto.cantidad_mayoreo) || 0
+      if (pm > 0 && cm > 0) {
+        const activar = nuevaCant >= cm
+        setModosMayoreo(m => ({ ...m, [prodId]: activar }))
+        setPrecios(p => ({ ...p, [prodId]: activar ? String(pm) : String(i.producto.precio_venta) }))
+      } else if (i.oferta?.tipo === 'nxm') {
+        const { precioFinal, esNxM } = precioConOferta(i.producto.precio_venta, i.oferta, nuevaCant)
+        if (esNxM) setPrecios(p => ({ ...p, [prodId]: precioFinal.toFixed(2) }))
+        else setPrecios(p => ({ ...p, [prodId]: String(i.producto.precio_venta) }))
+      }
+      return { ...i, cantidad: nuevaCant }
+    }))
+  }
+
+  function setPrecioItem(prodId, val) {
+    if (!/^(\d*\.?\d*)?$/.test(val)) return
+    setPrecios(p => ({ ...p, [prodId]: val }))
+    const np = parseFloat(val) || 0
+    const prod = carrito.find(i => i.producto.id === prodId)?.producto
+    setWarnings(w => ({ ...w, [prodId]: np > 0 && prod && np < prod.precio_compra }))
+  }
+
+  function quitarItem(prodId) {
+    // Revertir ofertas cruzadas donde este producto era el trigger
+    const revertir = ofertasVigentes.filter(o => o.producto_trigger_id === prodId)
+    const nuevosPrecios = { ...precios }
+    let nuevoCarrito = carrito.filter(i => i.producto.id !== prodId).map(item => {
+      const ofertaARevertir = revertir.find(o => o.producto_id === item.producto.id && item.oferta?.id === o.id)
+      if (ofertaARevertir) {
+        nuevosPrecios[item.producto.id] = String(item.producto.precio_venta)
+        return { ...item, oferta: null }
+      }
+      return item
+    })
+    setCarrito(nuevoCarrito)
+    setPrecios(nuevosPrecios)
+    setWarnings(w => { const n = { ...w }; delete n[prodId]; return n })
+  }
+
+  const total = carrito.reduce((a, i) => a + (parseFloat(precios[i.producto.id] ?? i.precio) || 0) * i.cantidad, 0)
+  const cambio = Number(montoRecibido) >= total ? Number(montoRecibido) - total : 0
+  const falta = Number(montoRecibido) > 0 && Number(montoRecibido) < total ? total - Number(montoRecibido) : 0
+
+  // ── Búsqueda ──────────────────────────────────────────────
+  function buscarProducto(q) {
+    if (!q.trim()) { setResultados([]); setResultadosOtras([]); return }
+    const q2 = q.toLowerCase()
+    const todos = productos.filter(p => {
+      const mn = p.nombre.toLowerCase().includes(q2)
+      const mc = codigosCat.some(bc => bc.producto_id === p.id && bc.codigo.toLowerCase().includes(q2))
+      return mn || mc
+    })
+
+    // Resultados para esta sucursal (no deshabilitados)
+    const disponibles = todos.filter(p => !deshabilitados.has(p.id)).slice(0, 8)
+    setResultados(disponibles)
+
+    // Resultados de otras sucursales: deshabilitado aquí o sin stock aquí, pero con stock en otra
+    if (sucursales.length > 1) {
+      const idsYaMostrados = new Set(disponibles.map(p => p.id))
+      const otras = todos
+        .filter(p => deshabilitados.has(p.id) || stockEnSucursal(p.id) === 0)
+        .filter(p => !idsYaMostrados.has(p.id))
+        .map(p => ({
+          ...p,
+          sucursalesConStock: sucursales
+            .filter(s => s.id !== sucursalId)
+            .map(s => ({ nombre: s.nombre, stock: stockEnSucursalEspecifica(p.id, s.id) }))
+            .filter(s => s.stock > 0),
+        }))
+        .filter(p => p.sucursalesConStock.length > 0)
+        .slice(0, 3)
+      setResultadosOtras(otras)
+    }
+  }
+
+  function procesarBarcode(val) {
+    val = val.trim()
+    if (!val) return
+    const bc = codigosCat.find(b => b.codigo === val)
+    if (bc) {
+      const prod = productos.find(p => p.id === bc.producto_id && !deshabilitados.has(p.id))
+      if (prod) { agregarAlCarrito(prod, bc.unidades_por_empaque || 1); setBarcodeInput(''); return }
+    }
+    setBusqueda(val); buscarProducto(val); setBarcodeInput('')
+  }
+
+  // Enter inmediato (escáneres que lo mandan)
+  function handleBarcode(e) {
+    if (e.key !== 'Enter') return
+    procesarBarcode(barcodeInput)
+  }
+
+  // Auto-procesar 150ms después del último carácter (escáneres sin Enter)
+  useEffect(() => {
+    const val = barcodeInput.trim()
+    if (!val || val.length < 3) return
+    const t = setTimeout(() => procesarBarcode(val), 150)
+    return () => clearTimeout(t)
+  }, [barcodeInput]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  
+  // ── Confirmar venta ───────────────────────────────────────
+  async function confirmarVenta() {
+    if (carrito.length === 0) return
+    if (!esCuentaPendiente && Number(montoRecibido) > 0 && Number(montoRecibido) < total) {
+      toast.error('El monto recibido es menor al total'); return
+    }
+    setProcesando(true)
+    try {
+      const items = carrito.map(i => ({
+        producto_id: i.producto.id,
+        lote_id: i.lote.id,
+        cantidad: i.cantidad,
+        precio_unitario: parseFloat(precios[i.producto.id] ?? i.precio) || 0,
+      }))
+
+      const { data, error } = await supabase.rpc('registrar_venta', {
+        p_sucursal_id:         sucursalId,
+        p_turno_id:            turnoActual?.id || null,
+        p_items:               items,
+        p_total:               total,
+        p_metodo_pago:         metodoPago,
+        p_monto_recibido:      Number(montoRecibido) || null,
+        p_cambio:              cambio,
+        p_es_cuenta_pendiente: esCuentaPendiente,
+        p_cliente_nombre:      esCuentaPendiente ? clienteNombre.trim() : null,
+      })
+      if (error) throw error
+
+      // Descontar stock (FEFO)
+      for (const item of carrito) {
+        await supabase.rpc('descontar_stock_venta', {
+          p_producto_id: item.producto.id,
+          p_sucursal_id: sucursalId,
+          p_cantidad: item.cantidad,
+          p_venta_id: data?.venta_id || null,
+        })
+      }
+
+      const folio = generarFolio(data?.venta_id, sucursalActual?.nombre)
+      await logBitacora({
+        empresa_id:    empresa.id,
+        tipo:          esCuentaPendiente ? 'venta_cuenta_pendiente' : 'venta_completada',
+        descripcion:   esCuentaPendiente
+          ? `Cuenta pendiente ${folio}: ${clienteNombre} · ${formatoMoneda(total)}`
+          : `${folio} · ${formatoMoneda(total)} · ${carrito.length} producto${carrito.length !== 1 ? 's' : ''}`,
+        usuario_id:    perfil?.id ?? null,
+        sucursal_id:   sucursalId,
+        referencia_id: String(data?.venta_id ?? ''),
+      })
+      // Imprimir ticket automáticamente (antes de limpiar carrito)
+      if (!esCuentaPendiente) {
+        abrirImpresion(buildTicketHtml({
+          folio,
+          items: carrito.map(i => ({
+            nombre:   i.producto.nombre,
+            cantidad: i.cantidad,
+            precio:   parseFloat(precios[i.producto.id] ?? i.precio) || 0,
+          })),
+          total, cambio: Number(cambio),
+          montoRecibido:  Number(montoRecibido) || 0,
+          metodoPago,
+          cajeroNombre:   perfil?.nombre ?? '',
+          sucursalNombre: sucursalActual?.nombre ?? '',
+          sucursal:       sucursalActual,
+          empresaNombre:  empresa?.nombre ?? '',
+          fecha:          new Date(),
+        }))
+      }
+
+      // Toast de confirmación — desaparece solo en 1.5 s, sin click
+      toast.success(
+        esCuentaPendiente ? `Cuenta pendiente: ${clienteNombre}` : `${folio} · ${formatoMoneda(total)}`,
+        { duration: 1500 }
+      )
+
+      setCarrito([]); setPrecios({}); setWarnings({}); setModosMayoreo({})
+      setMontoRecibido(''); setMetodoPago('efectivo'); setEsCuentaPendiente(false); setClienteNombre('')
+      fetchData()
+    } catch (err) {
+      toast.error(err.message || 'Error al registrar venta')
+    } finally {
+      setProcesando(false)
+    }
+  }
+
+  // ── Abrir turno ───────────────────────────────────────────
+  // sid: sólo para rotativos en el paso 2 del selector; si no se pasa usa sucursalId del estado
+  async function abrirTurno(sid) {
+    // sid debe ser un string UUID; si llega un evento del DOM lo ignoramos
+    const sucId = (typeof sid === 'string' && sid) ? sid : sucursalId
+    setAbriendoTurno(true)
+
+    // Anti-duplicado: verificar si ya existe turno abierto en esta sucursal
+    const { data: turnoExistente } = await supabase
+      .from('turnos_caja')
+      .select('id, fecha_apertura, monto_apertura')
+      .eq('sucursal_id', sucId)
+      .eq('estado', 'abierto')
+      .maybeSingle()
+
+    if (!turnoExistente) {
+      // No existe → crear via RPC
+      try {
+        await supabase.rpc('abrir_turno_caja', {
+          p_sucursal_id: sucId,
+          p_monto_apertura: Number(montoApertura) || 0,
+        })
+      } catch { /* el RPC puede rechazar si ya existe por condición de carrera */ }
+    }
+
+    // Leer el turno resultante (nuevo o el ya existente)
+    const { data: turno } = await supabase
+      .from('turnos_caja')
+      .select('*, perfiles(nombre)')
+      .eq('sucursal_id', sucId)
+      .eq('estado', 'abierto')
+      .maybeSingle()
+
+    if (turno) {
+      // Si el rotativo acaba de elegir sucursal en el paso 2, confirmarla ahora
+      if (sid) {
+        cambiarSuc(sid)
+        setSucursalConfirmada(true)
+      }
+      setTurnoActual(turno)
+      setMontoApertura('')
+      toast.success(turnoExistente ? 'Turno ya estaba abierto' : 'Turno activo')
+
+      // Bitácora solo si es un turno recién abierto (no uno ya existente)
+      if (!turnoExistente) {
+        try {
+          const sucNombre = sucursales.find(s => s.id === sucId)?.nombre ?? sucId
+          await logBitacora({
+            empresa_id:    empresa.id,
+            tipo:          'caja_apertura',
+            descripcion:   `Apertura de caja en ${sucNombre} · $${(Number(montoApertura) || 0).toFixed(2)}`,
+            usuario_id:    perfil?.id ?? null,
+            sucursal_id:   sucId,
+            referencia_id: String(turno.id),
+          })
+        } catch { /* silencioso */ }
+      }
+
+      // ── Auto-registrar asistencia en programacion ─────────
+      if (perfil?.id) {
+        try {
+          const hoyAuto = fechaEnZona(tz)
+          const { data: yaProg } = await supabase
+            .from('programacion').select('id')
+            .eq('empresa_id', empresa.id).eq('usuario_id', perfil.id).eq('fecha', hoyAuto)
+            .maybeSingle()
+
+          if (!yaProg) {
+            const { data: turnosEmp } = await supabase
+              .from('turnos_empresa').select('id, hora_inicio, hora_fin')
+              .eq('empresa_id', empresa.id).order('hora_inicio')
+
+            if (turnosEmp?.length > 0) {
+              const horaActual = new Intl.DateTimeFormat('en-GB', {
+                timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+              }).format(new Date())
+              const turnoEmpresa = turnosEmp.find(
+                t => t.hora_inicio <= horaActual && horaActual < t.hora_fin
+              ) ?? turnosEmp[0]
+              await supabase.from('programacion').insert({
+                empresa_id: empresa.id,
+                usuario_id: perfil.id,
+                sucursal_id: sucId,
+                turno_id: turnoEmpresa.id,
+                fecha: hoyAuto,
+              })
+            }
+          }
+        } catch { /* silencioso */ }
+      }
+      // Recargar datos de la sucursal
+      const hoy = fechaEnZona(tz)
+      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: ofVig }, { data: ps2 }] = await Promise.all([
+        supabase.from('productos').select('*').eq('activo', true).order('nombre'),
+        supabase.from('lotes').select('*').eq('activo', true),
+        supabase.from('inventario').select('*'),
+        supabase.from('codigos_barras').select('*'),
+        supabase.from('ventas').select('*').eq('sucursal_id', sucId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
+        supabase.from('detalle_ventas').select('*'),
+        supabase.rpc('ofertas_vigentes'),
+        esCajero
+          ? Promise.resolve({ data: [] })
+          : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucId).eq('habilitado', false),
+      ])
+      setDeshabilitados(new Set((ps2 || []).map(p => p.producto_id)))
+      setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
+      setCodigosCat(cod || []); setVentasHoy(vts || []); setDetallesHoy(det || [])
+      setOfertasVigentes(ofVig || [])
+      recargarTurno()
+    } else {
+      toast.error('No se pudo abrir el turno')
+    }
+    setAbriendoTurno(false)
+  }
+
+  // ── Cerrar turno ──────────────────────────────────────────
+  async function cerrarTurno() {
+    const contado = Number(montoCierre)
+    if (isNaN(contado) || contado < 0) { toast.error('Ingresa el monto contado'); return }
+    setCerrandoTurno(true)
+    try {
+      const { data, error } = await supabase.rpc('cerrar_turno_caja', {
+        p_turno_id: turnoActual.id,
+        p_monto_contado: contado,
+      })
+      if (error) throw error
+      setResultadoCierre(data)
+      // recargarTurno se llama al presionar "Entendido" para no ocultar el resultado
+    } catch (err) {
+      toast.error(err.message || 'Error al cerrar turno')
+    } finally {
+      setCerrandoTurno(false)
+    }
+  }
+
+  // ── Preparar cierre: cargar resumen antes de mostrar form ─
+  async function prepararCierre() {
+    if (!turnoActual) return
+    setCargandoResumen(true)
+    try {
+      // Ventas ya cargadas en ventasTurno — solo falta cargar movimientos
+      const { data: movs } = await supabase
+        .from('movimientos_caja')
+        .select('tipo, descripcion, monto')
+        .eq('turno_id', turnoActual.id)
+
+      const ventasEf  = ventasTurno.filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo').reduce((s, v) => s + Number(v.total || 0), 0)
+      const ventasTar = ventasTurno.filter(v => v.metodo_pago === 'tarjeta').reduce((s, v) => s + Number(v.total || 0), 0)
+      const entradas  = (movs || []).filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.monto || 0), 0)
+      const salidas   = (movs || []).filter(m => m.tipo === 'salida').reduce((s, m) => s + Number(m.monto || 0), 0)
+      const esperado  = Number(turnoActual.monto_apertura || 0) + ventasEf + entradas - salidas
+      setResumenTurno({ ventasEf, ventasTar, entradas, salidas, esperado })
+    } catch { /* silencioso */ }
+    setCargandoResumen(false)
+    setConfirmarCierre(true)
+  }
+
+  // ── Reimprimir ticket desde historial ────────────────────────
+  function imprimirTicket(venta) {
+    const items = detallesHoy.filter(d => d.venta_id === venta.id)
+    abrirImpresion(buildTicketHtml({
+      folio:          generarFolio(venta.id, sucursalActual?.nombre),
+      items:          items.map(i => ({
+        nombre:   productos.find(p => p.id === i.producto_id)?.nombre || '—',
+        cantidad: i.cantidad,
+        precio:   i.precio_unitario,
+      })),
+      total:          Number(venta.total),
+      montoRecibido:  Number(venta.monto_recibido) || 0,
+      cambio:         Number(venta.cambio) || 0,
+      metodoPago:     venta.metodo_pago,
+      cajeroNombre:   '',
+      sucursalNombre: sucursalActual?.nombre ?? '',
+      sucursal:       sucursalActual,
+      empresaNombre:  empresa?.nombre ?? '',
+      fecha:          new Date(venta.creado_en),
+    }))
+  }
+
+  // ── Imprimir corte de turno ───────────────────────────────
+  function imprimirCorte() {
+    const ef       = ventasTurno.filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo')
+    const tar      = ventasTurno.filter(v => v.metodo_pago === 'tarjeta')
+    const totalEf  = ef.reduce((s, v) => s + Number(v.total || 0), 0)
+    const totalTar = tar.reduce((s, v) => s + Number(v.total || 0), 0)
+    const entradas = movimientosTurno.filter(m => m.tipo === 'entrada')
+    const salidas  = movimientosTurno.filter(m => m.tipo === 'salida')
+    const totalEnt = entradas.reduce((s, m) => s + Number(m.monto || 0), 0)
+    const totalSal = salidas.reduce((s, m) => s + Number(m.monto || 0), 0)
+    const apertura = Number(turnoActual?.monto_apertura || 0)
+    const esperado = apertura + totalEf + totalEnt - totalSal
+    const fm = n => '$' + Number(n || 0).toFixed(2)
+    const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const vtHtml = ventasTurno.map(v =>
+      `<tr><td class="mono">${generarFolio(v.id, sucursalActual?.nombre)}</td><td>${fh(v.creado_en)}</td><td>${v.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo'}</td><td class="r">${fm(v.total)}</td></tr>`
+    ).join('')
+    const entHtml = entradas.map(m =>
+      `<tr><td>${m.descripcion || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
+    ).join('')
+    const salHtml = salidas.map(m =>
+      `<tr><td>${m.descripcion || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
+    ).join('')
+    const aperturaDt = turnoActual?.fecha_apertura ? new Date(turnoActual.fecha_apertura) : new Date()
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Courier New',monospace;font-size:11px;width:80mm;padding:8px}
+      h2{text-align:center;font-size:13px;margin-bottom:2px}
+      .sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}
+      .fecha{text-align:center;font-size:10px;color:#555;margin-bottom:6px}
+      hr{border:none;border-top:1px dashed #000;margin:5px 0}
+      table{width:100%;border-collapse:collapse}
+      th{font-size:10px;padding:2px 0;border-bottom:1px solid #000;text-align:left}
+      td{padding:2px 0;font-size:10px}
+      .r{text-align:right}.mono{font-family:'Courier New',monospace}
+      .fila{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+      .bold{font-weight:bold}.total-box{margin-top:6px;padding:5px;border:1px solid #000;display:flex;justify-content:space-between}
+      .sec{font-size:10px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
+      .neg{color:#cc0000}
+    </style></head><body>
+      <h2>${empresa?.nombre || 'FARMACIA'}</h2>
+      <div class="sub">${sucursalActual?.nombre || ''}</div>
+      <div class="fecha">Apertura: ${fd(aperturaDt)} ${fh(aperturaDt)}<br>Corte: ${fd(new Date())} ${fh(new Date())}</div>
+      ${turnoActual?.perfiles?.nombre ? `<div class="sub">Cajero: ${turnoActual.perfiles.nombre}</div>` : ''}
+      <hr>
+      <p class="sec">Resumen de caja</p>
+      <div class="fila"><span>Monto inicial</span><span>${fm(apertura)}</span></div>
+      <div class="fila"><span>Ventas efectivo (${ef.length})</span><span>+${fm(totalEf)}</span></div>
+      <div class="fila"><span>Ventas tarjeta (${tar.length})</span><span>+${fm(totalTar)}</span></div>
+      ${totalEnt > 0 ? `<div class="fila"><span>Entradas manuales</span><span>+${fm(totalEnt)}</span></div>` : ''}
+      ${totalSal > 0 ? `<div class="fila neg"><span>Salidas manuales</span><span>-${fm(totalSal)}</span></div>` : ''}
+      <div class="total-box bold"><span>Efectivo esperado</span><span>${fm(esperado)}</span></div>
+      <hr>
+      <p class="sec">Ventas del turno (${ventasTurno.length})</p>
+      ${ventasTurno.length === 0 ? '<p style="font-size:10px;color:#888">Sin ventas</p>' : `
+      <table><thead><tr><th>Folio</th><th>Hora</th><th>Método</th><th class="r">Total</th></tr></thead>
+      <tbody>${vtHtml}</tbody></table>`}
+      ${entradas.length > 0 ? `<hr><p class="sec">Entradas manuales</p>
+      <table><thead><tr><th>Concepto</th><th class="r">Monto</th></tr></thead>
+      <tbody>${entHtml}</tbody></table>` : ''}
+      ${salidas.length > 0 ? `<hr><p class="sec">Salidas manuales</p>
+      <table><thead><tr><th>Concepto</th><th class="r">Monto</th></tr></thead>
+      <tbody>${salHtml}</tbody></table>` : ''}
+      <hr><div style="text-align:center;font-size:10px;color:#555;margin-top:6px">Firma cajero: _________________</div>
+    </body></html>`
+    abrirImpresion(html)
+  }
+
+  // ── Datos del día ─────────────────────────────────────────
+  const totalHoy = ventasHoy.reduce((a, v) => a + (v.total || 0), 0)
+  const ticketsHoy = ventasHoy.length
+
+  // ── Cambiar sucursal (admin) ──────────────────────────────
+  function cambiarSuc(sId) {
+    setSucursalId(sId)
+    setCarrito([]); setPrecios({}); setWarnings({}); setModosMayoreo({})
+    setMontoRecibido(''); setTab('caja')
+    const suc = sucursales.find(s => s.id === sId)
+    if (suc) cambiarSucursal(suc)
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-[300px]">
+      <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+    </div>
+  )
+
+  // ══════════════════════════════════════════════════════════
+  // SI NO HAY TURNO ABIERTO → Pantalla de apertura
+  // ══════════════════════════════════════════════════════════
+  if (!turnoActual) {
+    // Caso B: rotativo sin horario programado → selector de 2 pasos
+    if (esRotativo && !sucursalConfirmada) {
+      // ── Paso 1: Elegir sucursal ────────────────────────────
+      if (pasoSelector === 1) {
+        return (
+          <div className="space-y-5 max-w-md mx-auto mt-8">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-slate-900">¿En qué farmacia trabajas hoy?</h1>
+              <p className="text-sm text-slate-500 mt-1">Toca la sucursal donde abrirás tu turno</p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {sucursales.map(s => {
+                const esSeleccionada = s.id === sucursalTemp
+                return (
+                  <button key={s.id}
+                    onClick={() => setSucursalTemp(s.id)}
+                    className={cn(
+                      'flex items-center gap-4 p-4 rounded-3xl border-2 transition-all text-left',
+                      esSeleccionada
+                        ? 'bg-primary-50 border-primary-500 shadow-sm'
+                        : 'bg-white border-slate-200 hover:border-primary-300'
+                    )}>
+                    <div className={cn('w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0',
+                      esSeleccionada ? 'bg-primary-100' : 'bg-slate-100')}>
+                      <Store className={cn('w-5 h-5', esSeleccionada ? 'text-primary-600' : 'text-slate-400')} />
+                    </div>
+                    <p className={cn('flex-1 text-base font-bold', esSeleccionada ? 'text-primary-800' : 'text-slate-800')}>
+                      {s.nombre}
+                    </p>
+                    {esSeleccionada && (
+                      <Check className="w-5 h-5 text-primary-600 flex-shrink-0" strokeWidth={3} />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <Button className="w-full" tamano="lg"
+              disabled={!sucursalTemp}
+              onClick={() => setPasoSelector(2)}>
+              {sucursalTemp
+                ? `Continuar con ${sucursales.find(s => s.id === sucursalTemp)?.nombre}`
+                : 'Selecciona una sucursal'}
+            </Button>
+          </div>
+        )
+      }
+
+      // ── Paso 2: Monto de apertura ──────────────────────────
+      const sucNombreTemp = sucursales.find(s => s.id === sucursalTemp)?.nombre ?? ''
+      return (
+        <div className="max-w-md mx-auto mt-8 space-y-5">
+          <button onClick={() => setPasoSelector(1)}
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 font-medium">
+            <Store className="w-4 h-4" /> {sucNombreTemp} · <span className="text-primary-600">Cambiar</span>
+          </button>
+
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-4">
+              <Wallet className="w-8 h-8 text-primary-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-1">Abrir turno</h2>
+            <p className="text-sm text-slate-500 mb-1">{sucNombreTemp}</p>
+            <p className="text-sm text-slate-400 mb-6">¿Con cuánto efectivo inicia la caja?</p>
+            <div className="flex items-center gap-2 mb-3">
+              <Input
+                type="number" step="0.01" min="0"
+                iconoIzq={<DollarSign className="w-5 h-5" />}
+                value={montoApertura}
+                onChange={e => setMontoApertura(e.target.value)}
+                placeholder="300.00"
+                onKeyDown={e => e.key === 'Enter' && abrirTurno(sucursalTemp)}
+              />
+            </div>
+            <Button onClick={() => abrirTurno(sucursalTemp)} cargando={abriendoTurno} className="w-full" iconoIzq={<Plus className="w-4 h-4" />}>
+              Abrir turno en {sucNombreTemp}
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Ventas</h1>
+            <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5">
+              <Store className="w-3.5 h-3.5" />
+              {sucursalActual?.nombre}
+              {esRotativo && (
+                <button onClick={() => { setSucursalConfirmada(false); setSucursalTemp(null) }}
+                  className="text-primary-600 hover:text-primary-700 font-semibold ml-1 text-xs">
+                  Cambiar
+                </button>
+              )}
+            </p>
+          </div>
+          {esAdmin && sucursales.length > 1 && (
+            <div className="flex gap-2">
+              {sucursales.map(s => (
+                <button key={s.id} onClick={() => cambiarSuc(s.id)} className={cn('px-3 py-2 rounded-2xl text-sm font-medium border transition-all', s.id === sucursalId ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-700 border-slate-200')}>
+                  {s.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="max-w-md mx-auto mt-8">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-4">
+              <Wallet className="w-8 h-8 text-primary-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Abre tu turno para vender</h2>
+            <p className="text-sm text-slate-500 mb-6">Ingresa el monto inicial de la caja (monedas de cambio)</p>
+            <div className="flex items-center gap-2 mb-3">
+              <Input
+                type="number" step="0.01" min="0"
+                iconoIzq={<DollarSign className="w-5 h-5" />}
+                value={montoApertura}
+                onChange={e => setMontoApertura(e.target.value)}
+                placeholder="300.00"
+                onKeyDown={e => e.key === 'Enter' && abrirTurno()}
+              />
+            </div>
+            <Button onClick={() => abrirTurno()} cargando={abriendoTurno} className="w-full" iconoIzq={<Plus className="w-4 h-4" />}>
+              Abrir turno
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // TURNO ABIERTO → POS completo
+  // ══════════════════════════════════════════════════════════
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Ventas</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {sucursalActual?.nombre} · {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'short' })}
+          </p>
+        </div>
+        {esAdmin && sucursales.length > 1 && (
+          <div className="flex gap-2">
+            {sucursales.map(s => (
+              <button key={s.id} onClick={() => cambiarSuc(s.id)} className={cn('px-3 py-2 rounded-2xl text-sm font-medium border transition-all', s.id === sucursalId ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-700 border-slate-200')}>
+                {s.nombre}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          { id: 'caja', label: 'Caja', icono: ShoppingCart },
+          { id: 'historial', label: 'Historial', icono: Receipt },
+          { id: 'corte', label: 'Corte de caja', icono: BarChart3 },
+        ].map(t => {
+          const Ic = t.icono
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} className={cn(
+              'flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold border transition-all',
+              tab === t.id ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+            )}>
+              <Ic className="w-4 h-4" />{t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ══ TAB CAJA ══ */}
+      {tab === 'caja' && (
+        <div className="grid lg:grid-cols-[1fr_360px] gap-4 items-start">
+          {/* Columna izquierda: búsqueda + carrito */}
+          <div className="space-y-4">
+            {/* Input oculto escáner */}
+            <input ref={barcodeRef} value={barcodeInput} onChange={e => setBarcodeInput(e.target.value)} onKeyDown={handleBarcode} className="absolute opacity-0 pointer-events-none w-px h-px" tabIndex={-1} />
+
+            {/* Búsqueda */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <ScanBarcode className="w-4 h-4" /> Buscar producto
+              </div>
+              <Input
+                placeholder="Nombre o código de barras (escáner automático)"
+                iconoIzq={<Search className="w-5 h-5" />}
+                value={busqueda}
+                onChange={e => { setBusqueda(e.target.value); buscarProducto(e.target.value) }}
+                onFocus={() => { searchRef.current = true }}
+                onBlur={() => { searchRef.current = false }}
+              />
+              {(resultados.length > 0 || resultadosOtras.length > 0) && (
+                <div className="space-y-1.5">
+                  {resultados.map(p => {
+                    const stock = stockEnSucursal(p.id)
+                    const sinStock = stock === 0
+                    const tieneMayoreo = Number(p.precio_mayoreo) > 0
+                    return (
+                      <button key={p.id} onClick={() => !sinStock && agregarAlCarrito(p)} disabled={sinStock}
+                        className={cn('w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between', sinStock ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50' : 'border-slate-200 hover:border-primary-300 bg-white')}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-slate-900 truncate">{p.nombre}</p>
+                            {tieneMayoreo && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700 flex-shrink-0">
+                                MAY {p.cantidad_mayoreo ? `×${p.cantidad_mayoreo}` : ''}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {p.categoria} · {(() => {
+                              const of = ofertaDeProducto(p.id, p.categoria)
+                              if (of) {
+                                const { precioFinal, desc } = precioConOferta(p.precio_venta, of)
+                                return <><span className="line-through text-slate-400">{formatoMoneda(p.precio_venta)}</span> <span className="text-emerald-700 font-bold">{formatoMoneda(precioFinal)}</span> <span className="text-purple-600 font-bold">({desc})</span></>
+                              }
+                              if (tieneMayoreo) return <>{formatoMoneda(p.precio_venta)} <span className="text-purple-600">· may {formatoMoneda(p.precio_mayoreo)}</span></>
+                              return formatoMoneda(p.precio_venta)
+                            })()}
+                          </p>
+                        </div>
+                        <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0', sinStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700')}>{stock} uds</span>
+                      </button>
+                    )
+                  })}
+
+                  {/* En otras sucursales */}
+                  {resultadosOtras.length > 0 && (
+                    <div className="pt-1 space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center gap-1.5">
+                        <Store className="w-3 h-3" /> En otras sucursales
+                      </p>
+                      {resultadosOtras.map(p => (
+                        <div key={p.id} className="p-3 rounded-2xl border border-amber-100 bg-amber-50/50 flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-slate-700 truncate">{p.nombre}</p>
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              {p.sucursalesConStock.map(s => (
+                                <span key={s.nombre} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                                  {s.nombre}: {s.stock} uds
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <Store className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Carrito */}
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-4 h-4 text-primary-600" />
+                  <span className="text-sm font-bold text-slate-900">Carrito</span>
+                  {carrito.length > 0 && <span className="text-xs bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full font-bold">{carrito.length}</span>}
+                </div>
+                {carrito.length > 0 && (
+                  <button onClick={() => { setCarrito([]); setPrecios({}); setWarnings({}); setModosMayoreo({}); setMontoRecibido('') }} className="text-xs text-red-600 font-semibold hover:text-red-700">Vaciar</button>
+                )}
+              </div>
+
+              {carrito.length === 0 ? (
+                <div className="p-8 text-center">
+                  <ShoppingCart className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-400">Escanea o busca un producto</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {carrito.map(item => {
+                    const precioActual = parseFloat(precios[item.producto.id] ?? item.precio) || 0
+                    const subtotal = precioActual * item.cantidad
+                    const bajoCosto = warnings[item.producto.id]
+                    const esMayoreo = modosMayoreo[item.producto.id]
+                    return (
+                      <div key={item.producto.id} className={cn('p-3', bajoCosto && 'bg-red-50/50')}>
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold text-slate-900 truncate">{item.producto.nombre}</p>
+                              {esMayoreo && (
+                                <span className="text-[9px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                  MAYOREO
+                                </span>
+                              )}
+                              {!esMayoreo && item.oferta && (
+                                <span className="text-[9px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                  {precioConOferta(item.producto.precio_venta, item.oferta, item.cantidad).desc}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Lote: <span className="font-mono">{item.lote.codigo_lote}</span> · Max: {item.stockMax}
+                              {item.oferta && <> · <span className="line-through">{formatoMoneda(item.producto.precio_venta)}</span></>}
+                            </p>
+                          </div>
+                          <button onClick={() => quitarItem(item.producto.id)} className="w-7 h-7 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 flex-shrink-0">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="mt-2 space-y-1.5">
+                          {/* Fila 1: cantidad + subtotal */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setCantidadItem(item.producto.id, item.cantidad - 1)} className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50"><Minus className="w-3.5 h-3.5" /></button>
+                              <input
+                                type="text" inputMode="numeric"
+                                value={cantidadesInput[item.producto.id] ?? String(item.cantidad)}
+                                onFocus={e => {
+                                  setCantidadesInput(p => ({ ...p, [item.producto.id]: String(item.cantidad) }))
+                                  e.target.select()
+                                }}
+                                onChange={e => {
+                                  const raw = e.target.value.replace(/[^0-9]/g, '')
+                                  setCantidadesInput(p => ({ ...p, [item.producto.id]: raw }))
+                                  const num = parseInt(raw)
+                                  if (num > 0) setCantidadItem(item.producto.id, num)
+                                }}
+                                onBlur={() => {
+                                  const num = parseInt(cantidadesInput[item.producto.id]) || 1
+                                  setCantidadItem(item.producto.id, num)
+                                  setCantidadesInput(p => { const n = {...p}; delete n[item.producto.id]; return n })
+                                }}
+                                className="w-12 h-8 text-center text-sm font-bold border border-slate-200 rounded-lg" />
+                              <button onClick={() => setCantidadItem(item.producto.id, item.cantidad + 1)} className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50"><Plus className="w-3.5 h-3.5" /></button>
+                            </div>
+                            <p className="text-sm font-bold text-slate-900 tabular-nums">{formatoMoneda(subtotal)}</p>
+                          </div>
+                          {/* Fila 2: precio editable + toggle mayoreo (oculto para cajero) */}
+                          {(esAdmin || (!esCajero && Number(item.producto.precio_mayoreo) > 0)) && (
+                            <div className="flex items-center justify-end gap-2">
+                              {!esCajero && Number(item.producto.precio_mayoreo) > 0 && (
+                                <button onClick={() => {
+                                  const activar = !esMayoreo
+                                  setModosMayoreo(m => ({ ...m, [item.producto.id]: activar }))
+                                  setPrecioItem(item.producto.id, activar
+                                    ? String(item.producto.precio_mayoreo)
+                                    : String(item.producto.precio_venta))
+                                }} className={cn('text-[10px] font-bold px-2 py-1 rounded-lg border transition-all',
+                                  esMayoreo
+                                    ? 'bg-purple-100 border-purple-300 text-purple-700'
+                                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600')}>
+                                  {esMayoreo ? `MAY ${formatoMoneda(item.producto.precio_mayoreo)}` : 'MEN'}
+                                </button>
+                              )}
+                              {esAdmin && (
+                                <input type="text" inputMode="decimal"
+                                  value={precios[item.producto.id] ?? String(item.precio)}
+                                  onChange={e => setPrecioItem(item.producto.id, e.target.value)}
+                                  className={cn('w-24 h-8 text-right text-sm font-bold border rounded-lg px-2',
+                                    bajoCosto ? 'border-red-300 bg-red-50' : esMayoreo ? 'border-purple-200 bg-purple-50' : 'border-slate-200')} />
+                              )}
+                              {!esAdmin && (
+                                <span className={cn('text-sm font-bold tabular-nums',
+                                  esMayoreo ? 'text-purple-700' : 'text-slate-600')}>
+                                  {formatoMoneda(parseFloat(precios[item.producto.id] ?? item.precio) || 0)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Hint de mayoreo */}
+                        {(() => {
+                          const pm = Number(item.producto.precio_mayoreo) || 0
+                          const cm = Number(item.producto.cantidad_mayoreo) || 0
+                          if (esMayoreo) return null
+                          if (pm > 0 && cm > 0 && item.cantidad < cm) {
+                            const faltan = cm - item.cantidad
+                            return (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-purple-600 font-medium">
+                                <span className="w-3 h-3 inline-flex items-center justify-center rounded-full bg-purple-100 font-bold text-[8px] text-purple-700 flex-shrink-0">M</span>
+                                {faltan === 1
+                                  ? `1 más para precio mayoreo (${formatoMoneda(pm)})`
+                                  : `Desde ${cm} uds → mayoreo ${formatoMoneda(pm)} · faltan ${faltan}`}
+                              </div>
+                            )
+                          }
+                          if (pm > 0 && cm === 0) {
+                            return (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-purple-600 font-medium">
+                                <span className="w-3 h-3 inline-flex items-center justify-center rounded-full bg-purple-100 font-bold text-[8px] text-purple-700 flex-shrink-0">M</span>
+                                Precio mayoreo disponible: {formatoMoneda(pm)}
+                              </div>
+                            )
+                          }
+                          if (pm === 0 && esAdmin) {
+                            return (
+                              <div className="mt-1 text-[10px] text-slate-400">
+                                Sin precio mayoreo · configúralo en Productos → Editar
+                              </div>
+                            )
+                          }
+                          return null
+                        })()}
+
+                        {bajoCosto && (
+                          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-red-700 font-semibold">
+                            <AlertTriangle className="w-3 h-3" /> Precio menor al costo ({formatoMoneda(item.producto.precio_compra)})
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Columna derecha: resumen + cobro */}
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4">
+
+              {/* Total destacado */}
+              <div className="bg-primary-600 rounded-2xl px-4 py-4 text-center">
+                <p className="text-xs font-semibold text-primary-200 uppercase tracking-wider mb-1">Total a cobrar</p>
+                <p className="text-4xl font-bold text-white tabular-nums">{formatoMoneda(total)}</p>
+                {carrito.length > 0 && (
+                  <p className="text-xs text-primary-200 mt-1">{carrito.length} producto{carrito.length !== 1 ? 's' : ''} · {sucursalActual?.nombre}</p>
+                )}
+              </div>
+
+              {/* Método de pago */}
+              {!esCuentaPendiente && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => { setMetodoPago('efectivo'); setMontoRecibido('') }}
+                    className={cn('flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all',
+                      metodoPago === 'efectivo' ? 'bg-emerald-50 border-emerald-400 text-emerald-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                    )}
+                  >
+                    <DollarSign className="w-4 h-4" /> Efectivo
+                  </button>
+                  <button
+                    onClick={() => { setMetodoPago('tarjeta'); setMontoRecibido('') }}
+                    className={cn('flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all',
+                      metodoPago === 'tarjeta' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                    )}
+                  >
+                    <CreditCard className="w-4 h-4" /> Tarjeta
+                  </button>
+                </div>
+              )}
+
+              {/* Monto recibido — solo efectivo */}
+              {!esCuentaPendiente && metodoPago === 'efectivo' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monto recibido</label>
+                  <input
+                    type="text" inputMode="decimal" value={montoRecibido}
+                    onChange={e => { if (/^(\d*\.?\d*)?$/.test(e.target.value)) setMontoRecibido(e.target.value) }}
+                    placeholder="0.00"
+                    className="w-full h-12 rounded-xl border border-slate-200 px-3 text-right text-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
+                  />
+                  {/* Botones rápidos */}
+                  <div className="grid grid-cols-5 gap-1.5">
+                    <button
+                      onClick={() => setMontoRecibido(String(total.toFixed(2)))}
+                      className="col-span-2 py-2 rounded-xl text-xs font-bold bg-primary-50 text-primary-700 border border-primary-200 hover:bg-primary-100 transition-colors"
+                    >
+                      Exacto
+                    </button>
+                    {[50, 100, 200, 500].map(m => (
+                      <button key={m} onClick={() => setMontoRecibido(String(m))}
+                        className="py-2 rounded-xl text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 transition-colors">
+                        ${m}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Cambio / Falta */}
+                  {Number(montoRecibido) > 0 && (
+                    <div className={cn('rounded-xl px-4 py-3 flex items-center justify-between border',
+                      Number(montoRecibido) >= total ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200')}>
+                      <span className={cn('text-sm font-bold', Number(montoRecibido) >= total ? 'text-emerald-800' : 'text-red-800')}>
+                        {Number(montoRecibido) >= total ? 'Cambio' : 'Falta'}
+                      </span>
+                      <span className={cn('text-2xl font-bold tabular-nums', Number(montoRecibido) >= total ? 'text-emerald-700' : 'text-red-700')}>
+                        {formatoMoneda(Number(montoRecibido) >= total ? cambio : falta)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Cuenta pendiente — solo admin/encargado */}
+              {!esCajero && <div className={cn('rounded-2xl border p-3', esCuentaPendiente ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200')}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Cuenta pendiente</p>
+                    <p className="text-xs text-slate-500">El cliente paga después</p>
+                  </div>
+                  <button onClick={() => { setEsCuentaPendiente(v => !v); setClienteNombre('') }}
+                    style={{
+                      position: 'relative', width: 44, height: 24,
+                      borderRadius: 9999, border: 'none', cursor: 'pointer',
+                      backgroundColor: esCuentaPendiente ? '#f59e0b' : '#cbd5e1',
+                      transition: 'background-color 0.2s', flexShrink: 0,
+                    }}>
+                    <span style={{
+                      position: 'absolute',
+                      top: 4, left: esCuentaPendiente ? 24 : 4,
+                      width: 16, height: 16,
+                      backgroundColor: 'white',
+                      borderRadius: '50%',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                      transition: 'left 0.2s',
+                    }} />
+                  </button>
+                </div>
+                {esCuentaPendiente && (
+                  <input value={clienteNombre} onChange={e => setClienteNombre(e.target.value)} placeholder="Nombre del cliente *"
+                    className="w-full h-10 mt-3 rounded-xl border border-amber-200 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30" />
+                )}
+              </div>}
+
+              {Object.values(warnings).some(Boolean) && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 text-xs text-red-800 font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Hay productos con precio menor al costo
+                </div>
+              )}
+
+              <Button onClick={confirmarVenta} className="w-full" tamano="lg"
+                disabled={carrito.length === 0 || procesando || (esCuentaPendiente && !clienteNombre.trim())}
+                cargando={procesando}
+                iconoIzq={<Check className="w-5 h-5" />}>
+                Confirmar venta
+              </Button>
+            </div>
+
+            {/* Mini resumen */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Resumen del día</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-xl font-bold text-primary-700 tabular-nums">{formatoMoneda(totalHoy)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Ventas</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-xl font-bold text-emerald-700 tabular-nums">{ticketsHoy}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Tickets</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ TAB HISTORIAL ══ */}
+      {tab === 'historial' && (
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-primary-600" />
+              <span className="text-sm font-bold text-slate-900">Ventas del turno</span>
+            </div>
+            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{ventasTurno.length} tickets</span>
+          </div>
+          {ventasTurno.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-400">Sin ventas en este turno</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {ventasTurno.map(v => {
+                const items = detallesHoy.filter(d => d.venta_id === v.id)
+                const numProds = items.reduce((a, i) => a + i.cantidad, 0)
+                const cuentaPendiente = cuentasHoy.find(c => c.venta_id === v.id)
+                return (
+                  <div key={v.id} className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="text-xs text-slate-400 w-12 flex-shrink-0 tabular-nums">{formatoHora(v.creado_en)}</div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-bold text-slate-900 font-mono">{generarFolio(v.id, sucursalActual?.nombre)}</p>
+                          {cuentaPendiente && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendiente</span>
+                          )}
+                          {v.metodo_pago === 'tarjeta' && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-0.5">
+                              <CreditCard className="w-2.5 h-2.5" /> Tarjeta
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400">{numProds} unidad{numProds !== 1 ? 'es' : ''}{cuentaPendiente ? ` · ${cuentaPendiente.nombre_cliente}` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-primary-700 tabular-nums">{formatoMoneda(v.total)}</span>
+                      <button onClick={() => setModalTicket(v)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100"><Eye className="w-4 h-4" /></button>
+                      <button onClick={() => imprimirTicket(v)} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100"><Printer className="w-4 h-4" /></button>
+                      <button onClick={() => setModalCancelar(v)} className="w-8 h-8 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50"><Ban className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ TAB CORTE ══ */}
+      {tab === 'corte' && (() => {
+        const ef       = ventasTurno.filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo')
+        const tar      = ventasTurno.filter(v => v.metodo_pago === 'tarjeta')
+        const totalEf  = ef.reduce((s, v) => s + Number(v.total || 0), 0)
+        const totalTar = tar.reduce((s, v) => s + Number(v.total || 0), 0)
+        const entradas = movimientosTurno.filter(m => m.tipo === 'entrada')
+        const salidas  = movimientosTurno.filter(m => m.tipo === 'salida')
+        const totalEnt = entradas.reduce((s, m) => s + Number(m.monto || 0), 0)
+        const totalSal = salidas.reduce((s, m) => s + Number(m.monto || 0), 0)
+        const apertura = Number(turnoActual?.monto_apertura || 0)
+        const esperado = apertura + totalEf + totalEnt - totalSal
+        const diasTurno = turnoActual?.fecha_apertura
+          ? Math.ceil((Date.now() - new Date(turnoActual.fecha_apertura).getTime()) / 86400000)
+          : 0
+        return (
+        <div className="space-y-4">
+
+          {/* Aviso turno multi-día */}
+          {diasTurno > 1 && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <p className="text-xs font-semibold text-amber-800">
+                Este turno lleva <strong>{diasTurno} días</strong> abierto. Se muestran todas las ventas del turno completo.
+              </p>
+            </div>
+          )}
+
+          {/* ── Resumen de caja ── */}
+          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+              <div>
+                <p className="text-sm font-bold text-slate-900">Corte de turno</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {sucursalActual?.nombre}
+                  {turnoActual?.perfiles?.nombre && ` · ${turnoActual.perfiles.nombre}`}
+                  {' · Apertura: '}{formatoHora(turnoActual?.fecha_apertura)}
+                </p>
+              </div>
+              <button onClick={imprimirCorte}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                <Printer className="w-3.5 h-3.5" /> Imprimir
+              </button>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {/* Apertura */}
+              <div className="flex items-center justify-between px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <Wallet className="w-4 h-4 text-slate-500" />
+                  </div>
+                  <span className="text-sm text-slate-600">Monto inicial (apertura)</span>
+                </div>
+                <span className="text-sm font-semibold text-slate-700 tabular-nums">{formatoMoneda(apertura)}</span>
+              </div>
+
+              {/* Ventas efectivo */}
+              <div className="flex items-center justify-between px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                    <DollarSign className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm text-slate-700">Ventas en efectivo</span>
+                    <span className="text-xs text-slate-400 ml-1.5">{ef.length} ticket{ef.length !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-emerald-700 tabular-nums">+{formatoMoneda(totalEf)}</span>
+              </div>
+
+              {/* Ventas tarjeta */}
+              <div className="flex items-center justify-between px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <CreditCard className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm text-slate-700">Ventas con tarjeta</span>
+                    <span className="text-xs text-slate-400 ml-1.5">{tar.length} ticket{tar.length !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-sky-700 tabular-nums">+{formatoMoneda(totalTar)}</span>
+              </div>
+
+              {/* Entradas manuales — solo si existen */}
+              {totalEnt > 0 && (
+                <div className="flex items-center justify-between px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
+                      <Receipt className="w-4 h-4 text-violet-600" />
+                    </div>
+                    <span className="text-sm text-slate-700">Entradas manuales</span>
+                  </div>
+                  <span className="text-sm font-semibold text-violet-700 tabular-nums">+{formatoMoneda(totalEnt)}</span>
+                </div>
+              )}
+
+              {/* Salidas manuales — solo si existen */}
+              {totalSal > 0 && (
+                <div className="flex items-center justify-between px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+                      <Receipt className="w-4 h-4 text-red-500" />
+                    </div>
+                    <span className="text-sm text-slate-700">Salidas manuales</span>
+                  </div>
+                  <span className="text-sm font-semibold text-red-600 tabular-nums">-{formatoMoneda(totalSal)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Efectivo esperado */}
+            <div className="bg-primary-600 px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-primary-200 uppercase tracking-wider">Efectivo esperado en caja</p>
+                <p className="text-2xl font-bold text-white tabular-nums mt-0.5">{formatoMoneda(esperado)}</p>
+              </div>
+              <DollarSign className="w-7 h-7 text-primary-300" />
+            </div>
+          </div>
+
+          {/* ── Lista de ventas del turno ── */}
+          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-primary-500" />
+                <p className="text-sm font-bold text-slate-900">Ventas del turno</p>
+              </div>
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                {ventasTurno.length} ticket{ventasTurno.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {ventasTurno.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-slate-400">Sin ventas en este turno</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {ventasTurno.map(v => (
+                  <div key={v.id} className="flex items-center gap-3 px-5 py-3">
+                    <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0',
+                      v.metodo_pago === 'tarjeta' ? 'bg-sky-50' : 'bg-emerald-50')}>
+                      {v.metodo_pago === 'tarjeta'
+                        ? <CreditCard className="w-4 h-4 text-sky-600" strokeWidth={2} />
+                        : <DollarSign  className="w-4 h-4 text-emerald-600" strokeWidth={2} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-mono font-semibold text-slate-800">
+                        {generarFolio(v.id, sucursalActual?.nombre)}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {formatoHora(v.creado_en)} · {v.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo'}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 tabular-nums">{formatoMoneda(v.total)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Entradas manuales — solo si existen ── */}
+          {entradas.length > 0 && (
+            <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-3.5 border-b border-slate-100">
+                <div className="w-7 h-7 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
+                  <Receipt className="w-3.5 h-3.5 text-violet-600" />
+                </div>
+                <p className="text-sm font-bold text-slate-900">Entradas manuales</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {entradas.map((m, i) => (
+                  <div key={i} className="flex items-center justify-between px-5 py-3 gap-3">
+                    <p className="text-sm text-slate-700 truncate flex-1">{m.descripcion || '—'}</p>
+                    <p className="text-sm font-semibold text-violet-700 tabular-nums flex-shrink-0">
+                      +{formatoMoneda(m.monto)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Salidas manuales — solo si existen ── */}
+          {salidas.length > 0 && (
+            <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-3.5 border-b border-slate-100">
+                <div className="w-7 h-7 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+                  <Receipt className="w-3.5 h-3.5 text-red-500" />
+                </div>
+                <p className="text-sm font-bold text-slate-900">Salidas manuales</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {salidas.map((m, i) => (
+                  <div key={i} className="flex items-center justify-between px-5 py-3 gap-3">
+                    <p className="text-sm text-slate-700 truncate flex-1">{m.descripcion || '—'}</p>
+                    <p className="text-sm font-semibold text-red-600 tabular-nums flex-shrink-0">
+                      -{formatoMoneda(m.monto)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Acciones del turno ── */}
+          {!resultadoCierre ? (
+            <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+
+              {!confirmarCierre ? (
+                /* ── Paso 1: imprimir + cerrar ── */
+                <div className="p-4 flex flex-col gap-3">
+                  {/* Imprimir corte — acción principal */}
+                  <button onClick={imprimirCorte}
+                    className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
+                    <Printer className="w-4 h-4 text-slate-500" />
+                    Imprimir corte de caja
+                  </button>
+
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-slate-100" />
+                    <span className="text-[11px] text-slate-400 font-medium">¿Listo para cerrar?</span>
+                    <div className="h-px flex-1 bg-slate-100" />
+                  </div>
+
+                  {/* Cerrar turno — acción de cierre */}
+                  <Button variante="peligro" onClick={prepararCierre} cargando={cargandoResumen} className="w-full">
+                    <LogOut className="w-4 h-4 mr-1.5" />
+                    Cerrar turno
+                  </Button>
+                </div>
+              ) : (
+                /* ── Paso 2: contar efectivo ── */
+                <>
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">Cuenta el efectivo en caja</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Ingresa el total físico para calcular el cuadre</p>
+                    </div>
+                    <div className="bg-primary-50 border border-primary-200 rounded-xl px-3 py-1.5 text-right">
+                      <p className="text-[10px] font-bold text-primary-600 uppercase tracking-wide">Esperado</p>
+                      <p className="text-base font-bold text-primary-700 tabular-nums leading-tight">{formatoMoneda(esperado)}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-3">
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                      <input
+                        type="number" step="0.01" min="0"
+                        value={montoCierre}
+                        onChange={e => setMontoCierre(e.target.value)}
+                        placeholder="0.00"
+                        autoFocus
+                        className="w-full pl-8 pr-4 py-3.5 text-xl font-bold bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500/30 text-center"
+                      />
+                    </div>
+
+                    {montoCierre !== '' && resumenTurno && (() => {
+                      const diff = Number(montoCierre) - resumenTurno.esperado
+                      return (
+                        <div className={cn(
+                          'rounded-2xl px-4 py-3 text-center font-bold border',
+                          diff === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                          diff  > 0  ? 'bg-sky-50 border-sky-200 text-sky-700' :
+                                       'bg-red-50 border-red-200 text-red-700'
+                        )}>
+                          <p className="text-xs uppercase tracking-wider opacity-70 mb-0.5">
+                            {diff === 0 ? 'Cuadre' : diff > 0 ? 'Sobrante' : 'Faltante'}
+                          </p>
+                          <p className="text-2xl tabular-nums">
+                            {diff === 0 ? '✓ Perfecto' :
+                             diff  > 0  ? `+${formatoMoneda(diff)}` :
+                                           formatoMoneda(diff)}
+                          </p>
+                        </div>
+                      )
+                    })()}
+
+                    <div className="flex gap-2 pt-1">
+                      <Button variante="secundario" onClick={() => { setConfirmarCierre(false); setResumenTurno(null); setMontoCierre('') }} className="flex-1">
+                        Volver
+                      </Button>
+                      <Button variante="peligro" onClick={cerrarTurno} cargando={cerrandoTurno} className="flex-1">
+                        <LogOut className="w-4 h-4 mr-1.5" />
+                        Confirmar cierre
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            /* ── Resultado post-cierre ── */
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 max-w-md mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-900">Corte de caja</h3>
+                <button onClick={imprimirCorte}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+                  <Printer className="w-3.5 h-3.5" /> Imprimir
+                </button>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { label: 'Monto inicial',  valor: resultadoCierre.apertura,  signo: ''  },
+                  { label: 'Ventas',         valor: resultadoCierre.ventas,    signo: '+' },
+                  ...(resultadoCierre.entradas > 0
+                    ? [{ label: 'Entradas', valor: resultadoCierre.entradas, signo: '+' }]
+                    : []),
+                  ...(resultadoCierre.salidas > 0
+                    ? [{ label: 'Salidas',  valor: resultadoCierre.salidas,  signo: '-' }]
+                    : []),
+                  ...(resultadoCierre.gastos > 0
+                    ? [{ label: 'Gastos',   valor: resultadoCierre.gastos,   signo: '-' }]
+                    : []),
+                ].map(r => (
+                  <div key={r.label} className="flex justify-between text-sm">
+                    <span className="text-slate-500">{r.label}</span>
+                    <span className={cn('font-semibold tabular-nums', r.signo === '-' && 'text-red-600')}>
+                      {r.signo}{formatoMoneda(r.valor)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-slate-200 pt-3 space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">Esperado en caja</span>
+                  <span className="font-bold tabular-nums">{formatoMoneda(resultadoCierre.esperado)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="font-semibold">Contado físicamente</span>
+                  <span className="font-bold text-primary-700 tabular-nums">{formatoMoneda(resultadoCierre.contado)}</span>
+                </div>
+              </div>
+              <div className={cn('rounded-2xl p-4 text-center border',
+                resultadoCierre.diferencia === 0 ? 'bg-emerald-50 border-emerald-200' :
+                resultadoCierre.diferencia  > 0  ? 'bg-sky-50 border-sky-200' :
+                                                   'bg-red-50 border-red-200')}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{
+                  color: resultadoCierre.diferencia === 0 ? '#065f46' : resultadoCierre.diferencia > 0 ? '#1e40af' : '#991b1b'
+                }}>
+                  {resultadoCierre.diferencia === 0 ? 'Cuadre perfecto' : resultadoCierre.diferencia > 0 ? 'Sobrante' : 'Faltante'}
+                </p>
+                <p className="text-3xl font-bold tabular-nums" style={{
+                  color: resultadoCierre.diferencia === 0 ? '#059669' : resultadoCierre.diferencia > 0 ? '#2563eb' : '#dc2626'
+                }}>
+                  {resultadoCierre.diferencia > 0 ? '+' : ''}{formatoMoneda(resultadoCierre.diferencia)}
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  setResultadoCierre(null)
+                  setConfirmarCierre(false)
+                  setMontoCierre('')
+                  setResumenTurno(null)
+                  recargarTurno()
+                  fetchData()
+                }}
+                className="w-full bg-primary-600 hover:bg-primary-700 text-white"
+              >
+                Entendido — Cerrar
+              </Button>
+            </div>
+          )}
+        </div>
+      )
+      })()}
+
+      {/* Modales */}
+      {modalTicket && <ModalVerTicket venta={modalTicket} detalles={detallesHoy} productos={productos} sucursalNombre={sucursalActual?.nombre} onCerrar={() => setModalTicket(null)} />}
+      {modalCancelar && <ModalCancelar venta={modalCancelar} sucursalNombre={sucursalActual?.nombre} onCerrar={() => setModalCancelar(null)} onExito={fetchData} />}
+    </div>
+  )
+}

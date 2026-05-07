@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(node --input-type=module)",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('src/features/proveedores/ProveedoresPage.jsx', 'utf-8'\\)\")",
+      "Read(//c/Users/vr114/.claude/projects/c--Users-vr114-OneDrive-Documentos-farmadesk/memory/**)",
+      "Bash(xargs grep *)",
+      "Read(//c/Users/vr114/**)",
+      "Bash(npx electron *)",
+      "Bash(npx cross-env *)",
+      "Bash(npm run *)",
+      "Bash(ls node_modules/.bin/electron*)",
+      "Bash(node_modules/.bin/electron --version)",
+      "Bash(npx supabase *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\" -Recurse -Name)",
+      "Bash(Select-String -Pattern \"\\(horarios|programacion\\)\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\" -Recurse -Directory)",
+      "Bash(Select-Object -First 30)",
+      "Bash(Format-Table FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\" -Recurse -Filter \"*.jsx\" -ErrorAction SilentlyContinue)",
+      "Bash(Format-List FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\" -Recurse -Force)",
+      "Bash(Select-Object -First 50)",
+      "PowerShell(head -30)",
+      "Bash(del fix_001_super_admin_rls.sql fix_002_asistencia.sql fix_003_security_hardening.sql fix_004_security_remaining.sql fix_005_anon_revoke_directo.sql fix_006_procesar_asistencia_permisos.sql fix_007_cascade_auth_users.sql edge_functions_fix.md edge_functions_asistencia.md)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\features\\\\inventario\" -File)",
+      "Bash(Select-Object Name)",
+      "PowerShell(Test-Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\features\\\\inventario\"; ls \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\features\\\\inventario\" | % Name)",
+      "PowerShell(Test-Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\components\\\\ui\"; ls \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\components\\\\ui\" | % Name)",
+      "PowerShell(ls \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\features\" | % Name)",
+      "Bash(not exist *)",
+      "Bash(grep -rn \"const.*=.*['\\\\\"].*[a-zA-Z0-9_]{20,}['\\\\\"]\" \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\" --include=\"*.js\" --include=\"*.jsx\")",
+      "Bash(grep -r \"//.*secret\\\\|//.*key\\\\|//.*password\\\\|//.*token\" \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\" --include=\"*.js\" --include=\"*.jsx\" --include=\"*.ts\" --include=\"*.tsx\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\vr114\\.claude\\projects\\c--Users-vr114-OneDrive-Documentos-farmadesk\\memory"
+    ]
+  }
+}

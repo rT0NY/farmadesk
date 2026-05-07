@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(node --input-type=module --eval \"import\\('./src/features/inventario/InventarioPage.jsx'\\)\")",
+      "Bash(npx vite *)"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <rect x="63" y="0"   width="74" height="200" rx="22" fill="#2563eb"/>
+  <rect x="0"   y="63" width="200" height="74"  rx="22" fill="#2563eb"/>
+  <text x="105" y="150"
+    font-family="Arial Black, Arial, sans-serif"
+    font-size="108"
+    font-weight="900"
+    font-style="italic"
+    fill="white"
+    text-anchor="middle">F</text>
+</svg>
