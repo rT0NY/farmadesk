@@ -509,7 +509,7 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
                 <Printer className="w-4 h-4 text-slate-500" />
                 Imprimir corte
               </button>
-              <Button onClick={finalizar} className="flex-1 bg-primary-600 hover:bg-primary-700 text-white">
+              <Button onClick={finalizar} className="w-full bg-primary-600 hover:bg-primary-700 text-white">
                 <Check className="w-4 h-4 mr-1.5" />
                 Entendido
               </Button>
