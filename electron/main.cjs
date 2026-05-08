@@ -1,5 +1,7 @@
-const { app, BrowserWindow, shell, Menu, dialog } = require('electron')
-const path = require('path')
+const { app, BrowserWindow, shell, Menu, dialog, ipcMain } = require('electron')
+const path   = require('path')
+const fs     = require('fs')
+const os     = require('os')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -14,6 +16,7 @@ function crearVentana() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
     show: false,
     backgroundColor: '#f8fafc',
@@ -25,7 +28,10 @@ function crearVentana() {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    // Solo abrir en navegador externo URLs reales — nunca URLs vacías o about:
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url)
+    }
     return { action: 'deny' }
   })
 
@@ -37,6 +43,58 @@ function crearVentana() {
 
   return win
 }
+
+// ── Impresión via IPC ─────────────────────────────────────────────────────────
+
+// Devuelve lista de impresoras instaladas en el sistema
+ipcMain.handle('obtener-impresoras', async () => {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return []
+  try {
+    return await win.webContents.getPrintersAsync()
+  } catch {
+    return []
+  }
+})
+
+// Imprime un ticket HTML usando el diálogo nativo de Windows
+ipcMain.handle('imprimir-ticket', async (event, html) => {
+  return new Promise((resolve) => {
+    // Escribe el HTML en un archivo temporal para cargarlo sin límites de URL
+    const tmpFile = path.join(os.tmpdir(), 'farmadesk-ticket.html')
+    try {
+      fs.writeFileSync(tmpFile, html, 'utf8')
+    } catch (e) {
+      resolve({ success: false, errorType: 'write_error' })
+      return
+    }
+
+    const printWin = new BrowserWindow({
+      show: false,
+      width: 400,
+      height: 700,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    })
+
+    printWin.loadFile(tmpFile)
+
+    printWin.webContents.once('did-finish-load', () => {
+      printWin.webContents.print(
+        { silent: false, printBackground: true, color: false },
+        (success, errorType) => {
+          printWin.destroy()
+          resolve({ success, errorType: errorType || null })
+        }
+      )
+    })
+
+    // Si el usuario cierra la ventana antes de imprimir
+    printWin.on('closed', () => resolve({ success: false, errorType: 'cancelled' }))
+  })
+})
 
 // ── Auto-actualizaciones (solo en producción) ─────────────────────────────────
 function configurarActualizaciones() {

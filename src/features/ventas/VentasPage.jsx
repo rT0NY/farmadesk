@@ -108,7 +108,33 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
 }
 
 // ─── Helper: abrir ventana de impresión con manejo de errores ────────────────
-function abrirImpresion(html) {
+async function abrirImpresion(html) {
+  // ── Electron: usar IPC para imprimir con diálogo nativo de Windows ──
+  if (window.electronAPI) {
+    try {
+      const impresoras = await window.electronAPI.obtenerImpresoras()
+      if (!impresoras || impresoras.length === 0) {
+        toast.error('Sin impresora', {
+          description: 'No hay impresoras instaladas. Instala el driver de tu impresora de tickets e intenta de nuevo.',
+          duration: 8000,
+        })
+        return false
+      }
+      const { success, errorType } = await window.electronAPI.imprimirTicket(html)
+      if (!success && errorType !== 'cancelled') {
+        toast.error('Error al imprimir', {
+          description: `No se pudo enviar a la impresora (${errorType ?? 'desconocido'}).`,
+          duration: 6000,
+        })
+      }
+      return success
+    } catch (e) {
+      toast.error('Error al imprimir', { description: e?.message ?? 'Error inesperado', duration: 6000 })
+      return false
+    }
+  }
+
+  // ── Web: usar window.open ──
   try {
     const win = window.open('', '_blank', 'width=320,height=600')
     if (!win || win.closed) {
@@ -148,7 +174,198 @@ function buildTicketHtml({ folio, items, total, montoRecibido, cambio, metodoPag
   const pagoHtml = montoRecibido > 0
     ? `<div class="fila"><span>Recibido</span><span>$${Number(montoRecibido).toFixed(2)}</span></div><div class="fila cambio"><span>Cambio</span><span>$${Number(cambio).toFixed(2)}</span></div>`
     : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${empresaNombre || 'FARMACIA'}</h2><div class="sub">${sucursalNombre || ''}</div>${dir ? `<div class="dir">${dir}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${folio}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}${cajeroNombre ? `<div class="fila"><span>Cajero</span><span>${cajeroNombre}</span></div>` : ''}<div class="footer">Gracias por su compra</div></body></html>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${empresaNombre || 'FARMACIA'}</h2><div class="sub">${sucursalNombre || ''}</div>${dir ? `<div class="dir">${dir}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${folio}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
+}
+
+// ─── Modal: cerrar turno ────────────────────────────────────
+function ModalCierreTurno({ turnoActual, resumenTurno, onImprimir, onClose, onCerrado }) {
+  const [monto,    setMonto]    = useState('')
+  const [cerrando, setCerrando] = useState(false)
+  const [resultado,setResultado]= useState(null)
+  const fm = n => '$' + Number(n || 0).toFixed(2)
+
+  const confirmar = async () => {
+    if (monto === '') { toast.error('Ingresa el efectivo contado'); return }
+    const contado = Number(monto)
+    if (isNaN(contado) || contado < 0) { toast.error('Monto no válido'); return }
+    setCerrando(true)
+    try {
+      const { data, error } = await supabase.rpc('cerrar_turno_caja', {
+        p_turno_id:      turnoActual.id,
+        p_monto_contado: contado,
+      })
+      if (error) throw error
+      setResultado(data)
+      onImprimir?.()   // imprime el corte automáticamente
+    } catch (err) {
+      toast.error(err.message || 'Error al cerrar turno')
+    } finally {
+      setCerrando(false)
+    }
+  }
+
+  const diff = monto !== '' && resumenTurno
+    ? Number(monto) - resumenTurno.esperado
+    : null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={!resultado ? onClose : undefined} />
+      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              {resultado ? 'Turno cerrado' : 'Cerrar turno'}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {resultado
+                ? 'El corte se imprimió automáticamente'
+                : 'Cuenta el efectivo físico en caja'}
+            </p>
+          </div>
+          {!resultado && (
+            <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+          {!resultado ? (
+            <>
+              {/* Mini resumen */}
+              {resumenTurno && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 flex flex-col gap-1.5">
+                  {[
+                    { label: 'Monto inicial',     val: turnoActual?.monto_apertura || 0, sign: ''  },
+                    { label: 'Ventas efectivo',    val: resumenTurno.ventasEf,            sign: '+' },
+                    { label: 'Ventas tarjeta',     val: resumenTurno.ventasTar,           sign: '+' },
+                    ...(resumenTurno.entradas > 0 ? [{ label: 'Entradas', val: resumenTurno.entradas, sign: '+' }] : []),
+                    ...(resumenTurno.salidas  > 0 ? [{ label: 'Salidas',  val: resumenTurno.salidas,  sign: '-' }] : []),
+                  ].map(r => (
+                    <div key={r.label} className="flex justify-between text-xs text-slate-500">
+                      <span>{r.label}</span>
+                      <span className="font-mono">{r.sign}{fm(r.val)}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-200 pt-1.5 mt-0.5 flex justify-between text-sm font-bold text-slate-900">
+                    <span>Esperado en caja</span>
+                    <span className="font-mono">{fm(resumenTurno.esperado)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Input efectivo */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-slate-700">Efectivo contado físicamente</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg pointer-events-none">$</span>
+                  <input
+                    type="number" step="0.01" min="0"
+                    value={monto}
+                    onChange={e => setMonto(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && confirmar()}
+                    placeholder="0.00"
+                    autoFocus
+                    className="w-full pl-10 pr-4 py-4 text-2xl font-bold text-center rounded-2xl border-2 border-slate-200 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Diferencia en tiempo real */}
+              {diff !== null && (
+                <div className={cn('rounded-2xl px-4 py-3 text-center border',
+                  diff === 0 ? 'bg-emerald-50 border-emerald-200' :
+                  diff  > 0  ? 'bg-sky-50 border-sky-200' : 'bg-red-50 border-red-200')}>
+                  <p className={cn('text-xs font-semibold uppercase tracking-wider mb-0.5',
+                    diff === 0 ? 'text-emerald-600' : diff > 0 ? 'text-sky-600' : 'text-red-600')}>
+                    {diff === 0 ? 'Cuadre perfecto' : diff > 0 ? 'Sobrante' : 'Faltante'}
+                  </p>
+                  <p className={cn('text-2xl font-bold tabular-nums',
+                    diff === 0 ? 'text-emerald-700' : diff > 0 ? 'text-sky-700' : 'text-red-700')}>
+                    {diff === 0 ? '✓' : diff > 0 ? `+${fm(diff)}` : fm(diff)}
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Resultado final */}
+              <div className="flex flex-col gap-1.5">
+                {[
+                  { label: 'Monto inicial', val: resultado.apertura, sign: ''  },
+                  { label: 'Ventas',        val: resultado.ventas,   sign: '+' },
+                  ...(resultado.entradas > 0 ? [{ label: 'Entradas', val: resultado.entradas, sign: '+' }] : []),
+                  ...(resultado.salidas  > 0 ? [{ label: 'Salidas',  val: resultado.salidas,  sign: '-' }] : []),
+                  ...(resultado.gastos   > 0 ? [{ label: 'Gastos',   val: resultado.gastos,   sign: '-' }] : []),
+                ].map(r => (
+                  <div key={r.label} className="flex justify-between text-sm text-slate-600">
+                    <span>{r.label}</span>
+                    <span className="font-mono font-semibold">{r.sign}{fm(r.val)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-slate-200 pt-2 mt-1 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-semibold text-slate-700">Esperado en caja</span>
+                    <span className="font-mono font-bold tabular-nums">{fm(resultado.esperado)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="font-semibold text-slate-700">Contado físicamente</span>
+                    <span className="font-mono font-bold text-primary-700 tabular-nums">{fm(resultado.contado)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={cn('rounded-2xl p-4 text-center border',
+                resultado.diferencia === 0 ? 'bg-emerald-50 border-emerald-200' :
+                resultado.diferencia  > 0  ? 'bg-sky-50 border-sky-200' : 'bg-red-50 border-red-200')}>
+                <p className={cn('text-xs font-semibold uppercase tracking-wider mb-1',
+                  resultado.diferencia === 0 ? 'text-emerald-600' : resultado.diferencia > 0 ? 'text-sky-600' : 'text-red-600')}>
+                  {resultado.diferencia === 0 ? 'Cuadre perfecto' : resultado.diferencia > 0 ? 'Sobrante' : 'Faltante'}
+                </p>
+                <p className={cn('text-3xl font-bold tabular-nums',
+                  resultado.diferencia === 0 ? 'text-emerald-700' : resultado.diferencia > 0 ? 'text-sky-700' : 'text-red-700')}>
+                  {resultado.diferencia === 0 ? '✓' :
+                   resultado.diferencia  > 0  ? `+${fm(resultado.diferencia)}` : fm(resultado.diferencia)}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
+          {!resultado ? (
+            <div className="flex gap-3">
+              <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose} disabled={cerrando}>
+                Cancelar
+              </Button>
+              <Button variante="peligro" tamano="md" className="flex-1"
+                cargando={cerrando} disabled={monto === ''} onClick={confirmar}>
+                <LogOut className="w-4 h-4 mr-1.5" />
+                Cerrar y imprimir
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={onImprimir}
+                className="w-full flex items-center justify-center gap-2 h-11 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <Printer className="w-4 h-4 text-slate-500" />
+                Reimprimir corte
+              </button>
+              <Button tamano="md" className="w-full bg-primary-600 hover:bg-primary-700 text-white" onClick={onCerrado}>
+                Entendido — Cerrar
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Página principal de Ventas ─────────────────────────────
@@ -220,12 +437,9 @@ export default function VentasPage() {
   const [pasoSelector, setPasoSelector] = useState(1)
 
   // Cerrar turno
-  const [montoCierre,    setMontoCierre]    = useState('')
-  const [cerrandoTurno,  setCerrandoTurno]  = useState(false)
-  const [resultadoCierre,setResultadoCierre]= useState(null)
-  const [confirmarCierre,setConfirmarCierre]= useState(false)
+  const [modalCierre,    setModalCierre]    = useState(false)
   const [resumenTurno,   setResumenTurno]   = useState(null)
-  const [cargandoResumen, setCargandoResumen] = useState(false)
+  const [cargandoResumen,setCargandoResumen]= useState(false)
   // Todas las ventas del turno activo (puede abarcar varios días)
   const [ventasTurno,       setVentasTurno]       = useState([])
   const [movimientosTurno,  setMovimientosTurno]  = useState([])
@@ -808,7 +1022,7 @@ export default function VentasPage() {
       setResumenTurno({ ventasEf, ventasTar, entradas, salidas, esperado })
     } catch { /* silencioso */ }
     setCargandoResumen(false)
-    setConfirmarCierre(true)
+    setModalCierre(true)
   }
 
   // ── Reimprimir ticket desde historial ────────────────────────
@@ -1659,44 +1873,6 @@ export default function VentasPage() {
             </div>
           </div>
 
-          {/* ── Lista de ventas del turno ── */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-primary-500" />
-                <p className="text-sm font-bold text-slate-900">Ventas del turno</p>
-              </div>
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
-                {ventasTurno.length} ticket{ventasTurno.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-            {ventasTurno.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-slate-400">Sin ventas en este turno</p>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {ventasTurno.map(v => (
-                  <div key={v.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0',
-                      v.metodo_pago === 'tarjeta' ? 'bg-sky-50' : 'bg-emerald-50')}>
-                      {v.metodo_pago === 'tarjeta'
-                        ? <CreditCard className="w-4 h-4 text-sky-600" strokeWidth={2} />
-                        : <DollarSign  className="w-4 h-4 text-emerald-600" strokeWidth={2} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-mono font-semibold text-slate-800">
-                        {generarFolio(v.id, sucursalActual?.nombre)}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {formatoHora(v.creado_en)} · {v.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo'}
-                      </p>
-                    </div>
-                    <p className="text-sm font-bold text-slate-800 tabular-nums">{formatoMoneda(v.total)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* ── Entradas manuales — solo si existen ── */}
           {entradas.length > 0 && (
             <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
@@ -1742,162 +1918,15 @@ export default function VentasPage() {
           )}
 
           {/* ── Acciones del turno ── */}
-          {!resultadoCierre ? (
+          {(
             <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
-
-              {!confirmarCierre ? (
-                /* ── Paso 1: imprimir + cerrar ── */
-                <div className="p-4 flex flex-col gap-3">
-                  {/* Imprimir corte — acción principal */}
-                  <button onClick={imprimirCorte}
-                    className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-                    <Printer className="w-4 h-4 text-slate-500" />
-                    Imprimir corte de caja
-                  </button>
-
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-slate-100" />
-                    <span className="text-[11px] text-slate-400 font-medium">¿Listo para cerrar?</span>
-                    <div className="h-px flex-1 bg-slate-100" />
-                  </div>
-
-                  {/* Cerrar turno — acción de cierre */}
+                <div className="p-4">
                   <Button variante="peligro" onClick={prepararCierre} cargando={cargandoResumen} className="w-full">
                     <LogOut className="w-4 h-4 mr-1.5" />
                     Cerrar turno
                   </Button>
                 </div>
-              ) : (
-                /* ── Paso 2: contar efectivo ── */
-                <>
-                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">Cuenta el efectivo en caja</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Ingresa el total físico para calcular el cuadre</p>
-                    </div>
-                    <div className="bg-primary-50 border border-primary-200 rounded-xl px-3 py-1.5 text-right">
-                      <p className="text-[10px] font-bold text-primary-600 uppercase tracking-wide">Esperado</p>
-                      <p className="text-base font-bold text-primary-700 tabular-nums leading-tight">{formatoMoneda(esperado)}</p>
-                    </div>
-                  </div>
 
-                  <div className="p-4 space-y-3">
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                      <input
-                        type="number" step="0.01" min="0"
-                        value={montoCierre}
-                        onChange={e => setMontoCierre(e.target.value)}
-                        placeholder="0.00"
-                        autoFocus
-                        className="w-full pl-8 pr-4 py-3.5 text-xl font-bold bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500/30 text-center"
-                      />
-                    </div>
-
-                    {montoCierre !== '' && resumenTurno && (() => {
-                      const diff = Number(montoCierre) - resumenTurno.esperado
-                      return (
-                        <div className={cn(
-                          'rounded-2xl px-4 py-3 text-center font-bold border',
-                          diff === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                          diff  > 0  ? 'bg-sky-50 border-sky-200 text-sky-700' :
-                                       'bg-red-50 border-red-200 text-red-700'
-                        )}>
-                          <p className="text-xs uppercase tracking-wider opacity-70 mb-0.5">
-                            {diff === 0 ? 'Cuadre' : diff > 0 ? 'Sobrante' : 'Faltante'}
-                          </p>
-                          <p className="text-2xl tabular-nums">
-                            {diff === 0 ? '✓ Perfecto' :
-                             diff  > 0  ? `+${formatoMoneda(diff)}` :
-                                           formatoMoneda(diff)}
-                          </p>
-                        </div>
-                      )
-                    })()}
-
-                    <div className="flex gap-2 pt-1">
-                      <Button variante="secundario" onClick={() => { setConfirmarCierre(false); setResumenTurno(null); setMontoCierre('') }} className="flex-1">
-                        Volver
-                      </Button>
-                      <Button variante="peligro" onClick={cerrarTurno} cargando={cerrandoTurno} className="flex-1">
-                        <LogOut className="w-4 h-4 mr-1.5" />
-                        Confirmar cierre
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            /* ── Resultado post-cierre ── */
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 max-w-md mx-auto space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-slate-900">Corte de caja</h3>
-                <button onClick={imprimirCorte}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-                  <Printer className="w-3.5 h-3.5" /> Imprimir
-                </button>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { label: 'Monto inicial',  valor: resultadoCierre.apertura,  signo: ''  },
-                  { label: 'Ventas',         valor: resultadoCierre.ventas,    signo: '+' },
-                  ...(resultadoCierre.entradas > 0
-                    ? [{ label: 'Entradas', valor: resultadoCierre.entradas, signo: '+' }]
-                    : []),
-                  ...(resultadoCierre.salidas > 0
-                    ? [{ label: 'Salidas',  valor: resultadoCierre.salidas,  signo: '-' }]
-                    : []),
-                  ...(resultadoCierre.gastos > 0
-                    ? [{ label: 'Gastos',   valor: resultadoCierre.gastos,   signo: '-' }]
-                    : []),
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between text-sm">
-                    <span className="text-slate-500">{r.label}</span>
-                    <span className={cn('font-semibold tabular-nums', r.signo === '-' && 'text-red-600')}>
-                      {r.signo}{formatoMoneda(r.valor)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-slate-200 pt-3 space-y-1.5">
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold">Esperado en caja</span>
-                  <span className="font-bold tabular-nums">{formatoMoneda(resultadoCierre.esperado)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold">Contado físicamente</span>
-                  <span className="font-bold text-primary-700 tabular-nums">{formatoMoneda(resultadoCierre.contado)}</span>
-                </div>
-              </div>
-              <div className={cn('rounded-2xl p-4 text-center border',
-                resultadoCierre.diferencia === 0 ? 'bg-emerald-50 border-emerald-200' :
-                resultadoCierre.diferencia  > 0  ? 'bg-sky-50 border-sky-200' :
-                                                   'bg-red-50 border-red-200')}>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{
-                  color: resultadoCierre.diferencia === 0 ? '#065f46' : resultadoCierre.diferencia > 0 ? '#1e40af' : '#991b1b'
-                }}>
-                  {resultadoCierre.diferencia === 0 ? 'Cuadre perfecto' : resultadoCierre.diferencia > 0 ? 'Sobrante' : 'Faltante'}
-                </p>
-                <p className="text-3xl font-bold tabular-nums" style={{
-                  color: resultadoCierre.diferencia === 0 ? '#059669' : resultadoCierre.diferencia > 0 ? '#2563eb' : '#dc2626'
-                }}>
-                  {resultadoCierre.diferencia > 0 ? '+' : ''}{formatoMoneda(resultadoCierre.diferencia)}
-                </p>
-              </div>
-              <Button
-                onClick={() => {
-                  setResultadoCierre(null)
-                  setConfirmarCierre(false)
-                  setMontoCierre('')
-                  setResumenTurno(null)
-                  recargarTurno()
-                  fetchData()
-                }}
-                className="w-full bg-primary-600 hover:bg-primary-700 text-white"
-              >
-                Entendido — Cerrar
-              </Button>
             </div>
           )}
         </div>
@@ -1907,6 +1936,15 @@ export default function VentasPage() {
       {/* Modales */}
       {modalTicket && <ModalVerTicket venta={modalTicket} detalles={detallesHoy} productos={productos} sucursalNombre={sucursalActual?.nombre} onCerrar={() => setModalTicket(null)} />}
       {modalCancelar && <ModalCancelar venta={modalCancelar} sucursalNombre={sucursalActual?.nombre} onCerrar={() => setModalCancelar(null)} onExito={fetchData} />}
+      {modalCierre && resumenTurno && (
+        <ModalCierreTurno
+          turnoActual={turnoActual}
+          resumenTurno={resumenTurno}
+          onImprimir={imprimirCorte}
+          onClose={() => { setModalCierre(false); setResumenTurno(null) }}
+          onCerrado={() => { setModalCierre(false); setResumenTurno(null); setTab('caja'); recargarTurno(); fetchData() }}
+        />
+      )}
     </div>
   )
 }
