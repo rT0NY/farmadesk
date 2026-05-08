@@ -5,7 +5,7 @@ import {
   Wallet, Plus, X, Clock, DollarSign, Store,
   LogOut, RefreshCw, AlertTriangle, ArrowDownLeft,
   ArrowUpRight, TrendingUp, TrendingDown, Minus, Check,
-  User, ChevronDown, CreditCard, Banknote,
+  User, ChevronDown, CreditCard, Banknote, Printer,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
@@ -14,6 +14,54 @@ import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona } from '@/lib
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
+
+// ─── Impresión: Electron IPC o web fallback ──────────────────────────────────
+async function abrirImpresion(html) {
+  if (window.electronAPI) {
+    try {
+      const impresoras = await window.electronAPI.obtenerImpresoras()
+      if (!impresoras || impresoras.length === 0) {
+        toast.error('Sin impresora', {
+          description: 'No hay impresoras instaladas. Instala el driver de tu impresora de tickets e intenta de nuevo.',
+          duration: 8000,
+        })
+        return false
+      }
+      const { success, errorType } = await window.electronAPI.imprimirTicket(html)
+      if (!success && errorType !== 'cancelled') {
+        toast.error('Error al imprimir', {
+          description: `No se pudo enviar a la impresora (${errorType ?? 'desconocido'}).`,
+          duration: 6000,
+        })
+      }
+      return success
+    } catch (e) {
+      toast.error('Error al imprimir', { description: e?.message ?? 'Error inesperado', duration: 6000 })
+      return false
+    }
+  }
+  try {
+    const win = window.open('', '_blank', 'width=320,height=600')
+    if (!win || win.closed) {
+      toast.error('Impresión bloqueada', {
+        description: 'El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e intenta de nuevo.',
+        duration: 8000,
+      })
+      return false
+    }
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 500)
+    return true
+  } catch {
+    toast.error('Error al imprimir', {
+      description: 'No se pudo conectar con la impresora. Verifica que esté encendida y con papel.',
+      duration: 8000,
+    })
+    return false
+  }
+}
 
 // ─── Modal entrada / salida manual ──────────────────────────────────────────
 function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
@@ -140,12 +188,54 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
 
 // ─── Modal cerrar turno ──────────────────────────────────────────────────────
 function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito }) {
+  const { empresa } = useApp()
   const [montoContado, setMontoContado] = useState('')
   const [nota,         setNota]         = useState('')
   const [cargando,     setCargando]     = useState(false)
   const [resultado,    setResultado]    = useState(null)
 
   const efectivoEsperado = resumen?.esperado ?? 0
+
+  function imprimirCorte() {
+    if (!resultado) return
+    const fm = n => '$' + Number(n || 0).toFixed(2)
+    const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const aperturaDt = turno?.fecha_apertura ? new Date(turno.fecha_apertura) : new Date()
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Courier New',monospace;font-size:11px;width:80mm;padding:8px}
+      h2{text-align:center;font-size:13px;margin-bottom:2px}
+      .sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}
+      .fecha{text-align:center;font-size:10px;color:#555;margin-bottom:6px}
+      hr{border:none;border-top:1px dashed #000;margin:5px 0}
+      .fila{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+      .bold{font-weight:bold}.total-box{margin-top:6px;padding:5px;border:1px solid #000;display:flex;justify-content:space-between}
+      .sec{font-size:10px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
+      .neg{color:#cc0000}
+    </style></head><body>
+      <h2>${empresa?.nombre || 'FARMACIA'}</h2>
+      <div class="sub">${sucursalNombre || ''}</div>
+      <div class="fecha">Apertura: ${fd(aperturaDt)} ${fh(aperturaDt)}<br>Corte: ${fd(new Date())} ${fh(new Date())}</div>
+      ${turno?.perfiles?.nombre ? `<div class="sub">Operador: ${turno.perfiles.nombre}</div>` : ''}
+      <hr>
+      <p class="sec">Resumen de caja</p>
+      <div class="fila"><span>Fondo inicial</span><span>${fm(resultado.apertura)}</span></div>
+      <div class="fila"><span>Ventas</span><span>+${fm(resultado.ventas)}</span></div>
+      ${Number(resultado.entradas) > 0 ? `<div class="fila"><span>Entradas manuales</span><span>+${fm(resultado.entradas)}</span></div>` : ''}
+      ${Number(resultado.salidas)  > 0 ? `<div class="fila neg"><span>Salidas / Gastos</span><span>-${fm(resultado.salidas)}</span></div>` : ''}
+      <div class="total-box bold"><span>Efectivo esperado</span><span>${fm(resultado.esperado)}</span></div>
+      <hr>
+      <div class="fila"><span>Contado físicamente</span><span>${fm(resultado.contado)}</span></div>
+      <div class="fila bold ${Number(resultado.diferencia) < 0 ? 'neg' : ''}">
+        <span>${Number(resultado.diferencia) === 0 ? 'Cuadre perfecto' : Number(resultado.diferencia) > 0 ? 'Sobrante' : 'Faltante'}</span>
+        <span>${Number(resultado.diferencia) > 0 ? '+' : ''}${fm(resultado.diferencia)}</span>
+      </div>
+      ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${resultado.nota}</div>` : ''}
+      <hr><div style="text-align:center;font-size:10px;color:#555;margin-top:6px">Firma: _________________</div>
+    </body></html>`
+    abrirImpresion(html)
+  }
 
   async function cerrar() {
     const contado = Number(montoContado)
@@ -411,10 +501,19 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
               </Button>
             </>
           ) : (
-            <Button onClick={finalizar} className="flex-1 bg-primary-600 hover:bg-primary-700 text-white">
-              <Check className="w-4 h-4 mr-1.5" />
-              Entendido
-            </Button>
+            <div className="flex flex-col gap-2 w-full">
+              <button
+                onClick={imprimirCorte}
+                className="w-full flex items-center justify-center gap-2 h-11 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <Printer className="w-4 h-4 text-slate-500" />
+                Imprimir corte
+              </button>
+              <Button onClick={finalizar} className="flex-1 bg-primary-600 hover:bg-primary-700 text-white">
+                <Check className="w-4 h-4 mr-1.5" />
+                Entendido
+              </Button>
+            </div>
           )}
         </div>
       </div>

@@ -5,6 +5,7 @@ import {
   DollarSign, CreditCard, Store, Clock, Receipt, BarChart3,
   Eye, Printer, Ban, User, Package, Wallet, LogOut,
   ChevronDown, AlertTriangle, ScanBarcode,
+  Banknote, ArrowDownLeft, ArrowUpRight, TrendingUp, TrendingDown,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
@@ -178,25 +179,28 @@ function buildTicketHtml({ folio, items, total, montoRecibido, cambio, metodoPag
 }
 
 // ─── Modal: cerrar turno ────────────────────────────────────
-function ModalCierreTurno({ turnoActual, resumenTurno, onImprimir, onClose, onCerrado }) {
-  const [monto,    setMonto]    = useState('')
-  const [cerrando, setCerrando] = useState(false)
-  const [resultado,setResultado]= useState(null)
-  const fm = n => '$' + Number(n || 0).toFixed(2)
+function ModalCierreTurno({ turnoActual, resumenTurno, sucursalNombre, onImprimir, onClose, onCerrado }) {
+  const [montoContado, setMontoContado] = useState('')
+  const [nota,         setNota]         = useState('')
+  const [cerrando,     setCerrando]     = useState(false)
+  const [resultado,    setResultado]    = useState(null)
 
-  const confirmar = async () => {
-    if (monto === '') { toast.error('Ingresa el efectivo contado'); return }
-    const contado = Number(monto)
+  const efectivoEsperado = resumenTurno?.esperado ?? 0
+
+  async function cerrar() {
+    if (montoContado === '') { toast.error('Ingresa el efectivo contado'); return }
+    const contado = Number(montoContado)
     if (isNaN(contado) || contado < 0) { toast.error('Monto no válido'); return }
     setCerrando(true)
     try {
       const { data, error } = await supabase.rpc('cerrar_turno_caja', {
         p_turno_id:      turnoActual.id,
         p_monto_contado: contado,
+        p_nota:          nota.trim() || null,
       })
       if (error) throw error
       setResultado(data)
-      onImprimir?.()   // imprime el corte automáticamente
+      onImprimir?.()
     } catch (err) {
       toast.error(err.message || 'Error al cerrar turno')
     } finally {
@@ -204,152 +208,230 @@ function ModalCierreTurno({ turnoActual, resumenTurno, onImprimir, onClose, onCe
     }
   }
 
-  const diff = monto !== '' && resumenTurno
-    ? Number(monto) - resumenTurno.esperado
-    : null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={!resultado ? onClose : undefined} />
-      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !resultado && onClose()} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 flex-shrink-0">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">
-              {resultado ? 'Turno cerrado' : 'Cerrar turno'}
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {resultado
-                ? 'El corte se imprimió automáticamente'
-                : 'Cuenta el efectivo físico en caja'}
-            </p>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center">
+              <LogOut className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">
+                {resultado ? 'Resumen del turno' : 'Cerrar turno'}
+              </h3>
+              <p className="text-xs text-slate-500">{sucursalNombre}</p>
+            </div>
           </div>
-          {!resultado && (
-            <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          )}
+          <button onClick={() => resultado ? onCerrado() : onClose()}
+            className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+        <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
           {!resultado ? (
             <>
-              {/* Mini resumen */}
+              {/* Info del turno */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col gap-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Apertura</span>
+                  <span className="font-medium text-slate-900">{formatoFechaHora(turnoActual.fecha_apertura)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Fondo inicial</span>
+                  <span className="font-bold text-slate-900">{formatoMoneda(turnoActual.monto_apertura)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Operador</span>
+                  <span className="font-medium text-slate-900">{turnoActual.perfiles?.nombre || '—'}</span>
+                </div>
+              </div>
+
+              {/* Desglose de ventas */}
               {resumenTurno && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 flex flex-col gap-1.5">
-                  {[
-                    { label: 'Monto inicial',     val: turnoActual?.monto_apertura || 0, sign: ''  },
-                    { label: 'Ventas efectivo',    val: resumenTurno.ventasEf,            sign: '+' },
-                    { label: 'Ventas tarjeta',     val: resumenTurno.ventasTar,           sign: '+' },
-                    ...(resumenTurno.entradas > 0 ? [{ label: 'Entradas', val: resumenTurno.entradas, sign: '+' }] : []),
-                    ...(resumenTurno.salidas  > 0 ? [{ label: 'Salidas',  val: resumenTurno.salidas,  sign: '-' }] : []),
-                  ].map(r => (
-                    <div key={r.label} className="flex justify-between text-xs text-slate-500">
-                      <span>{r.label}</span>
-                      <span className="font-mono">{r.sign}{fm(r.val)}</span>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Resumen del turno</p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                        <p className="text-[10px] font-bold text-emerald-700 uppercase">Efectivo</p>
+                      </div>
+                      <p className="text-base font-bold text-emerald-800 tabular-nums">
+                        {formatoMoneda(resumenTurno.ventasEf)}
+                      </p>
                     </div>
-                  ))}
-                  <div className="border-t border-slate-200 pt-1.5 mt-0.5 flex justify-between text-sm font-bold text-slate-900">
-                    <span>Esperado en caja</span>
-                    <span className="font-mono">{fm(resumenTurno.esperado)}</span>
+                    <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <CreditCard className="w-3.5 h-3.5 text-sky-600" />
+                        <p className="text-[10px] font-bold text-sky-700 uppercase">Tarjeta</p>
+                      </div>
+                      <p className="text-base font-bold text-sky-800 tabular-nums">
+                        {formatoMoneda(resumenTurno.ventasTar)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(resumenTurno.entradas > 0 || resumenTurno.salidas > 0) && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex flex-col gap-1.5">
+                      {resumenTurno.entradas > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-500 flex items-center gap-1.5">
+                            <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500" /> Entradas manuales
+                          </span>
+                          <span className="font-semibold text-emerald-700">+{formatoMoneda(resumenTurno.entradas)}</span>
+                        </div>
+                      )}
+                      {resumenTurno.salidas > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-500 flex items-center gap-1.5">
+                            <ArrowUpRight className="w-3.5 h-3.5 text-red-500" /> Salidas / Gastos
+                          </span>
+                          <span className="font-semibold text-red-600">-{formatoMoneda(resumenTurno.salidas)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-primary-50 border-2 border-primary-300 rounded-2xl p-4 text-center">
+                    <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-1">
+                      Efectivo esperado en caja
+                    </p>
+                    <p className="text-3xl font-bold text-primary-800 tabular-nums">
+                      {formatoMoneda(efectivoEsperado)}
+                    </p>
+                    <p className="text-xs text-primary-500 mt-1">
+                      Fondo + ventas efectivo + entradas − salidas
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* Input efectivo */}
+              {/* Input contado */}
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700">Efectivo contado físicamente</label>
+                <label className="text-sm font-semibold text-slate-700">¿Cuánto dinero hay en caja? *</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg pointer-events-none">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">$</span>
                   <input
                     type="number" step="0.01" min="0"
-                    value={monto}
-                    onChange={e => setMonto(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && confirmar()}
+                    value={montoContado}
+                    onChange={e => setMontoContado(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && cerrar()}
                     placeholder="0.00"
                     autoFocus
-                    className="w-full pl-10 pr-4 py-4 text-2xl font-bold text-center rounded-2xl border-2 border-slate-200 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 bg-white"
+                    className="w-full pl-8 pr-4 py-3.5 text-lg font-bold bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition-all"
                   />
                 </div>
+                <p className="text-xs text-slate-400">Cuenta todo el efectivo físico (no tarjeta).</p>
+
+                {montoContado !== '' && (
+                  <div className={cn(
+                    'rounded-2xl p-3 text-center border',
+                    Number(montoContado) - efectivoEsperado === 0 ? 'bg-emerald-50 border-emerald-200' :
+                    Number(montoContado) - efectivoEsperado  > 0  ? 'bg-sky-50 border-sky-200' :
+                                                                     'bg-red-50 border-red-200'
+                  )}>
+                    {(() => {
+                      const diff = Number(montoContado) - efectivoEsperado
+                      const esOk  = diff === 0
+                      const esSob = diff > 0
+                      return (
+                        <>
+                          <p className={cn('text-xs font-bold uppercase tracking-wider mb-0.5',
+                            esOk ? 'text-emerald-700' : esSob ? 'text-sky-700' : 'text-red-700')}>
+                            {esOk ? '¡Cuadre perfecto!' : esSob ? 'Sobrante' : 'Faltante'}
+                          </p>
+                          <p className={cn('text-xl font-bold tabular-nums',
+                            esOk ? 'text-emerald-600' : esSob ? 'text-sky-600' : 'text-red-600')}>
+                            {diff > 0 ? '+' : ''}{formatoMoneda(diff)}
+                          </p>
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
 
-              {/* Diferencia en tiempo real */}
-              {diff !== null && (
-                <div className={cn('rounded-2xl px-4 py-3 text-center border',
-                  diff === 0 ? 'bg-emerald-50 border-emerald-200' :
-                  diff  > 0  ? 'bg-sky-50 border-sky-200' : 'bg-red-50 border-red-200')}>
-                  <p className={cn('text-xs font-semibold uppercase tracking-wider mb-0.5',
-                    diff === 0 ? 'text-emerald-600' : diff > 0 ? 'text-sky-600' : 'text-red-600')}>
-                    {diff === 0 ? 'Cuadre perfecto' : diff > 0 ? 'Sobrante' : 'Faltante'}
-                  </p>
-                  <p className={cn('text-2xl font-bold tabular-nums',
-                    diff === 0 ? 'text-emerald-700' : diff > 0 ? 'text-sky-700' : 'text-red-700')}>
-                    {diff === 0 ? '✓' : diff > 0 ? `+${fm(diff)}` : fm(diff)}
-                  </p>
-                </div>
-              )}
+              <Input
+                label="Nota (opcional)"
+                value={nota}
+                onChange={e => setNota(e.target.value)}
+                placeholder="Observaciones del turno..."
+              />
             </>
           ) : (
+            /* ─── Resultado ─── */
             <>
-              {/* Resultado final */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 {[
-                  { label: 'Monto inicial', val: resultado.apertura, sign: ''  },
-                  { label: 'Ventas',        val: resultado.ventas,   sign: '+' },
-                  ...(resultado.entradas > 0 ? [{ label: 'Entradas', val: resultado.entradas, sign: '+' }] : []),
-                  ...(resultado.salidas  > 0 ? [{ label: 'Salidas',  val: resultado.salidas,  sign: '-' }] : []),
-                  ...(resultado.gastos   > 0 ? [{ label: 'Gastos',   val: resultado.gastos,   sign: '-' }] : []),
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between text-sm text-slate-600">
-                    <span>{r.label}</span>
-                    <span className="font-mono font-semibold">{r.sign}{fm(r.val)}</span>
+                  { label: 'Fondo inicial', valor: resultado.apertura,  Icono: Wallet,        color: 'text-slate-700'    },
+                  { label: 'Ventas',        valor: resultado.ventas,    Icono: TrendingUp,    color: 'text-emerald-700', signo: '+' },
+                  { label: 'Entradas',      valor: resultado.entradas,  Icono: ArrowDownLeft, color: 'text-emerald-700', signo: '+' },
+                  { label: 'Salidas',       valor: resultado.salidas,   Icono: ArrowUpRight,  color: 'text-red-700',     signo: '-' },
+                  { label: 'Gastos',        valor: resultado.gastos,    Icono: TrendingDown,  color: 'text-red-700',     signo: '-' },
+                ].map(({ label, valor, Icono, color, signo }) => (
+                  <div key={label} className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-2">
+                      <Icono className={cn('w-4 h-4', color)} />
+                      <span className="text-sm text-slate-600">{label}</span>
+                    </div>
+                    <span className={cn('text-sm font-semibold tabular-nums', color)}>
+                      {signo || ''}{formatoMoneda(valor)}
+                    </span>
                   </div>
                 ))}
-                <div className="border-t border-slate-200 pt-2 mt-1 space-y-1.5">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-semibold text-slate-700">Esperado en caja</span>
-                    <span className="font-mono font-bold tabular-nums">{fm(resultado.esperado)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="font-semibold text-slate-700">Contado físicamente</span>
-                    <span className="font-mono font-bold text-primary-700 tabular-nums">{fm(resultado.contado)}</span>
-                  </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-900">Esperado</span>
+                  <span className="text-lg font-bold text-slate-900 tabular-nums">{formatoMoneda(resultado.esperado)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-slate-900">Contado</span>
+                  <span className="text-lg font-bold text-primary-700 tabular-nums">{formatoMoneda(resultado.contado)}</span>
                 </div>
               </div>
 
-              <div className={cn('rounded-2xl p-4 text-center border',
+              <div className={cn(
+                'rounded-2xl p-4 text-center border',
                 resultado.diferencia === 0 ? 'bg-emerald-50 border-emerald-200' :
-                resultado.diferencia  > 0  ? 'bg-sky-50 border-sky-200' : 'bg-red-50 border-red-200')}>
-                <p className={cn('text-xs font-semibold uppercase tracking-wider mb-1',
-                  resultado.diferencia === 0 ? 'text-emerald-600' : resultado.diferencia > 0 ? 'text-sky-600' : 'text-red-600')}>
+                resultado.diferencia  > 0  ? 'bg-sky-50 border-sky-200' : 'bg-red-50 border-red-200'
+              )}>
+                <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{
+                  color: resultado.diferencia === 0 ? '#065f46' : resultado.diferencia > 0 ? '#1e40af' : '#991b1b'
+                }}>
                   {resultado.diferencia === 0 ? 'Cuadre perfecto' : resultado.diferencia > 0 ? 'Sobrante' : 'Faltante'}
                 </p>
-                <p className={cn('text-3xl font-bold tabular-nums',
-                  resultado.diferencia === 0 ? 'text-emerald-700' : resultado.diferencia > 0 ? 'text-sky-700' : 'text-red-700')}>
-                  {resultado.diferencia === 0 ? '✓' :
-                   resultado.diferencia  > 0  ? `+${fm(resultado.diferencia)}` : fm(resultado.diferencia)}
+                <p className="text-3xl font-bold tabular-nums" style={{
+                  color: resultado.diferencia === 0 ? '#059669' : resultado.diferencia > 0 ? '#2563eb' : '#dc2626'
+                }}>
+                  {resultado.diferencia > 0 ? '+' : ''}{formatoMoneda(resultado.diferencia)}
                 </p>
+                {resultado.nota && (
+                  <p className="text-xs text-slate-500 mt-2 italic">"{resultado.nota}"</p>
+                )}
               </div>
             </>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
+        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/50 flex gap-2">
           {!resultado ? (
-            <div className="flex gap-3">
-              <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose} disabled={cerrando}>
-                Cancelar
-              </Button>
-              <Button variante="peligro" tamano="md" className="flex-1"
-                cargando={cerrando} disabled={monto === ''} onClick={confirmar}>
+            <>
+              <Button variante="secundario" onClick={onClose} className="flex-1" disabled={cerrando}>Cancelar</Button>
+              <Button variante="peligro" onClick={cerrar} cargando={cerrando} disabled={montoContado === ''} className="flex-1">
                 <LogOut className="w-4 h-4 mr-1.5" />
-                Cerrar y imprimir
+                Cerrar turno
               </Button>
-            </div>
+            </>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 w-full">
               <button
                 onClick={onImprimir}
                 className="w-full flex items-center justify-center gap-2 h-11 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
@@ -357,8 +439,9 @@ function ModalCierreTurno({ turnoActual, resumenTurno, onImprimir, onClose, onCe
                 <Printer className="w-4 h-4 text-slate-500" />
                 Reimprimir corte
               </button>
-              <Button tamano="md" className="w-full bg-primary-600 hover:bg-primary-700 text-white" onClick={onCerrado}>
-                Entendido — Cerrar
+              <Button onClick={onCerrado} className="w-full bg-primary-600 hover:bg-primary-700 text-white">
+                <Check className="w-4 h-4 mr-1.5" />
+                Entendido
               </Button>
             </div>
           )}
@@ -1940,6 +2023,7 @@ export default function VentasPage() {
         <ModalCierreTurno
           turnoActual={turnoActual}
           resumenTurno={resumenTurno}
+          sucursalNombre={sucursalActual?.nombre ?? ''}
           onImprimir={imprimirCorte}
           onClose={() => { setModalCierre(false); setResumenTurno(null) }}
           onCerrado={() => { setModalCierre(false); setResumenTurno(null); setTab('caja'); recargarTurno(); fetchData() }}
