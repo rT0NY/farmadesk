@@ -1,7 +1,10 @@
 {
   "name": "farmadesk",
   "description": "Sistema de gestión para farmacias",
-  "author": "rT0NY",
+  "author": {
+    "name": "Farmadesk",
+    "email": "ajvryt.1514@gmail.com"
+  },
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -36,6 +39,7 @@
     ],
     "win": {
       "icon": "public/logo.png",
+      "publisherName": "Farmadesk",
       "target": [
         {
           "target": "nsis",
@@ -47,6 +51,7 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
