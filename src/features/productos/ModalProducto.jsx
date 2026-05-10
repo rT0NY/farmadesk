@@ -92,21 +92,14 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
   // Para saber cuál campo fue editado por el usuario y no sobreescribirlo en el efecto
   const [ultimoCampoEditado, setUltimoCampoEditado] = useState(null)
 
-  // { id, codigo, unidades_por_empaque } — solo en modo edición
-  const [codigosDetalle, setCodigosDetalle] = useState([])
   // { [sucursal_id]: boolean } — disponibilidad por sucursal, solo edición
   const [disponibilidad, setDisponibilidad] = useState({})
 
   const esEdicion = !!productoEditar
 
-  // Cargar detalles de barcodes (con unidades_por_empaque) en edición
+  // Cargar cantidad_mayoreo en edición (no viene en el RPC listar_productos_completo)
   useEffect(() => {
     if (!abierto || !esEdicion) return
-    supabase.from('codigos_barras')
-      .select('id, codigo, unidades_por_empaque')
-      .eq('producto_id', productoEditar.id)
-      .then(({ data }) => setCodigosDetalle(data ?? []))
-    // cantidad_mayoreo no viene en el RPC listar_productos_completo — cargar directamente
     supabase.from('productos')
       .select('cantidad_mayoreo')
       .eq('id', productoEditar.id)
@@ -138,9 +131,6 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
         setDisponibilidad(map)
       })
   }, [abierto, esEdicion, productoEditar?.id, sucursales])
-
-  const setUnidades = (id, val) =>
-    setCodigosDetalle(prev => prev.map(c => c.id === id ? { ...c, unidades_por_empaque: parseInt(val) || 1 } : c))
 
   useEffect(() => {
     if (!abierto) return
@@ -378,13 +368,6 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
             })
             if (error) throw error
           }
-        }
-
-        // Guardar unidades_por_empaque de los códigos existentes
-        for (const cd of codigosDetalle) {
-          await supabase.from('codigos_barras')
-            .update({ unidades_por_empaque: cd.unidades_por_empaque ?? 1 })
-            .eq('id', cd.id)
         }
 
         // Guardar disponibilidad por sucursal
@@ -698,51 +681,6 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                 onChange={(c) => setForm(v => ({ ...v, codigos: c }))}
                 placeholder="Escanear o escribir y Enter"
               />
-
-              {/* Unidades por empaque — solo en edición cuando hay códigos */}
-              {esEdicion && codigosDetalle.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <div>
-                    <p className="text-xs font-bold text-slate-700">Códigos de barras registrados</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Si un código es de caja o empaque múltiple, cambia las unidades que se suman al escanearlo.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {codigosDetalle.map(cd => {
-                      const uds = cd.unidades_por_empaque ?? 1
-                      const esEmpaque = uds > 1
-                      return (
-                        <div key={cd.id} className={cn(
-                          'flex items-center gap-3 border rounded-xl px-3 py-2',
-                          esEmpaque ? 'bg-purple-50 border-purple-200' : 'bg-slate-50 border-slate-200'
-                        )}>
-                          <Barcode className={cn('w-4 h-4 flex-shrink-0', esEmpaque ? 'text-purple-500' : 'text-slate-400')} />
-                          <span className="text-sm font-mono text-slate-700 flex-1 truncate">{cd.codigo}</span>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {!esEmpaque && (
-                              <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                Individual
-                              </span>
-                            )}
-                            <input
-                              type="number" min="1" max="9999"
-                              value={uds}
-                              onChange={e => setUnidades(cd.id, e.target.value)}
-                              title="Unidades que se suman al escanear"
-                              className={cn(
-                                'w-16 h-7 px-2 rounded-lg border text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-primary-500/30 bg-white',
-                                esEmpaque ? 'border-purple-300 text-purple-700' : 'border-slate-200 text-slate-500'
-                              )}
-                            />
-                            <span className="text-xs text-slate-400">uds</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
 
               {/* Disponibilidad por sucursal — cuando hay múltiples sucursales */}
               {sucursales.length > 1 && Object.keys(disponibilidad).length > 0 && (
