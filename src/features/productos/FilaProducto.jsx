@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Edit2, Archive, ArchiveRestore, AlertTriangle, MoreVertical, X } from 'lucide-react'
+import { Edit2, Trash2, ArchiveRestore, AlertTriangle, MoreVertical, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
@@ -84,33 +84,60 @@ export default function FilaProducto({ producto, onEditar, onCambio }) {
     return () => document.removeEventListener('mousedown', cerrar)
   }, [menuAbierto])
 
-  const cambiarEstado = () => {
-    const nuevoEstado = !producto.activo
-    const texto = nuevoEstado ? 'Reactivar' : 'Archivar'
+  const borrarProducto = () => {
     setMenuAbierto(false)
     setConfirmar({
-      titulo: `${texto} producto`,
-      mensaje: `¿${texto} "${producto.nombre}"? ${nuevoEstado ? 'El producto volverá a estar disponible.' : 'Seguirá en el historial de ventas.'}`,
-      variante: nuevoEstado ? 'warning' : 'warning',
+      titulo:  'Borrar producto',
+      mensaje: `¿Borrar "${producto.nombre}"? Se eliminará su stock e inventario. Las ventas anteriores no se afectan.`,
+      variante: 'danger',
+      onConfirmar: async () => {
+        setConfirmar(null)
+        try {
+          const { error } = await supabase.rpc('eliminar_producto', {
+            p_producto_id: producto.id,
+          })
+          if (error) throw error
+          await logBitacora({
+            empresa_id:    empresa?.id,
+            tipo:          'producto_eliminado',
+            descripcion:   `Producto eliminado: "${producto.nombre}"`,
+            usuario_id:    perfil?.id ?? null,
+            referencia_id: producto.id,
+          })
+          toast.success('Producto borrado')
+          onCambio?.()
+        } catch (err) {
+          toast.error(err.message || 'Error al borrar')
+        }
+      },
+    })
+  }
+
+  const reactivarProducto = () => {
+    setMenuAbierto(false)
+    setConfirmar({
+      titulo:  'Reactivar producto',
+      mensaje: `¿Reactivar "${producto.nombre}"? Volverá a aparecer en ventas e inventario.`,
+      variante: 'warning',
       onConfirmar: async () => {
         setConfirmar(null)
         try {
           const { error } = await supabase.rpc('archivar_producto', {
             p_producto_id: producto.id,
-            p_activo: nuevoEstado,
+            p_activo: true,
           })
           if (error) throw error
           await logBitacora({
             empresa_id:    empresa?.id,
-            tipo:          nuevoEstado ? 'producto_reactivado' : 'producto_archivado',
-            descripcion:   `Producto ${nuevoEstado ? 'reactivado' : 'archivado'}: "${producto.nombre}"`,
+            tipo:          'producto_reactivado',
+            descripcion:   `Producto reactivado: "${producto.nombre}"`,
             usuario_id:    perfil?.id ?? null,
             referencia_id: producto.id,
           })
-          toast.success(nuevoEstado ? 'Producto reactivado' : 'Producto archivado')
+          toast.success('Producto reactivado')
           onCambio?.()
         } catch (err) {
-          toast.error(err.message || 'Error')
+          toast.error(err.message || 'Error al reactivar')
         }
       },
     })
@@ -216,19 +243,21 @@ export default function FilaProducto({ producto, onEditar, onCambio }) {
             >
               <Edit2 className="w-4 h-4" /> Editar
             </button>
-            <button
-              onClick={cambiarEstado}
-              className={cn(
-                'w-full text-left px-3 py-2 rounded-xl text-sm flex items-center gap-2 transition-colors',
-                producto.activo
-                  ? 'text-slate-700 hover:bg-amber-50 hover:text-amber-700'
-                  : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'
-              )}
-            >
-              {producto.activo
-                ? <><Archive className="w-4 h-4" /> Archivar</>
-                : <><ArchiveRestore className="w-4 h-4" /> Reactivar</>}
-            </button>
+            {producto.activo ? (
+              <button
+                onClick={borrarProducto}
+                className="w-full text-left px-3 py-2 rounded-xl text-sm flex items-center gap-2 transition-colors text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4" /> Borrar
+              </button>
+            ) : (
+              <button
+                onClick={reactivarProducto}
+                className="w-full text-left px-3 py-2 rounded-xl text-sm flex items-center gap-2 transition-colors text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+              >
+                <ArchiveRestore className="w-4 h-4" /> Reactivar
+              </button>
+            )}
           </div>
         </div>,
         document.body
