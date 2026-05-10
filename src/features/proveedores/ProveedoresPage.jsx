@@ -914,8 +914,6 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
             fecha_caducidad:   yaRecibido ? (it.fecha_caducidad ?? unAnio) : unAnio,
             expandido:         !yaRecibido,
             recibido_en:       it.updated_at ?? null,
-            modoLote:          'nuevo',
-            loteExistenteId:   '',
           }
         })
         setLineas(init)
@@ -927,15 +925,18 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   const setLinea = (id, campo, valor) =>
     setLineas(prev => ({ ...prev, [id]: { ...prev[id], [campo]: valor } }))
 
+  // Devuelve el lote existente si la fecha coincide exactamente, o null
+  const detectarLoteExistente = (productoId, fecha) => {
+    if (!fecha || !productoId) return null
+    return (lotesMap[productoId] ?? []).find(l => l.fecha_caducidad === fecha) ?? null
+  }
+
   const confirmarItem = (id) => {
     const it   = items.find(i => i.id === id)
     const l    = lineas[id] ?? {}
     const cant = parseInt(l.cantidad_recibida) || 0
     if (cant <= 0) { toast.error(`Ingresa la cantidad de "${it.nombre_producto}"`); return }
-    if (l.modoLote === 'existente' && !l.loteExistenteId) {
-      toast.error(`Selecciona un lote para "${it.nombre_producto}"`); return
-    }
-    if (l.modoLote !== 'existente' && !l.fecha_caducidad) {
+    if (!l.fecha_caducidad) {
       toast.error(`Ingresa la fecha de caducidad de "${it.nombre_producto}"`); return
     }
     if (l.distribucion) {
@@ -1055,6 +1056,15 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
     if (!modalVincular?.codigo) return
     setGuardandoVinc(true)
     try {
+      // Evitar duplicar si el código ya está vinculado a este producto
+      const { data: existe } = await supabase.from('codigos_barras')
+        .select('id').eq('codigo', modalVincular.codigo).eq('producto_id', it.producto_id).maybeSingle()
+      if (existe) {
+        toast.success(`El código ya estaba vinculado a "${it.nombre_producto}"`)
+        setLineas(prev => ({ ...prev, [it.id]: { ...prev[it.id], estado: 'pendiente', expandido: true } }))
+        setModalVincular(null); setSearchVinc('')
+        return
+      }
       await supabase.from('codigos_barras').insert({
         empresa_id: empresa?.id ?? pedido.empresa_id,
         producto_id: it.producto_id,
@@ -1102,22 +1112,24 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
         if (l.bloqueado || l.estado !== 'confirmado') continue
 
         const cant = parseInt(l.cantidad_recibida) || 0
-        if (l.modoLote === 'existente' && !l.loteExistenteId) throw new Error(`Falta seleccionar lote de "${it.nombre_producto}"`)
-        if (l.modoLote !== 'existente' && !l.fecha_caducidad) throw new Error(`Falta caducidad de "${it.nombre_producto}"`)
+        if (!l.fecha_caducidad) throw new Error(`Falta caducidad de "${it.nombre_producto}"`)
 
         const entradas = l.distribucion
           ? Object.entries(l.distribucion).filter(([, v]) => (parseInt(v) || 0) > 0).map(([sId, v]) => ({ sId, qty: parseInt(v) }))
           : [{ sId: sucursalId, qty: cant }]
 
-        if (l.modoLote === 'existente') {
-          // Lote ya existe — ajustar cantidad en cada sucursal
+        // Auto-detectar: si la fecha coincide con un lote existente, sumar stock ahí
+        const loteExistente = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
+
+        if (loteExistente) {
+          // Sumar al lote existente en cada sucursal de destino
           for (const { sId, qty } of entradas) {
             const { data: invActual } = await supabase
               .from('inventario').select('cantidad')
-              .eq('lote_id', l.loteExistenteId).eq('sucursal_id', sId).maybeSingle()
+              .eq('lote_id', loteExistente.id).eq('sucursal_id', sId).maybeSingle()
             const actual = invActual?.cantidad || 0
             const { error: errRpc } = await supabase.rpc('ajustar_inventario', {
-              p_lote_id:        l.loteExistenteId,
+              p_lote_id:        loteExistente.id,
               p_sucursal_id:    sId,
               p_nueva_cantidad: actual + qty,
               p_motivo:         'recepcion_pedido',
@@ -1125,8 +1137,8 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
             if (errRpc) throw errRpc
           }
         } else {
-          // Lote nuevo — crear UNA SOLA VEZ con el primer destino,
-          // luego ajustar inventario en los demás con el mismo lote_id
+          // Lote nuevo — crear UNO SOLO con el primer destino,
+          // luego añadir inventario en los demás con el mismo lote_id
           const [primera, ...resto] = entradas
           const { data: resultado, error: errPrimero } = await supabase.rpc('agregar_inventario', {
             p_producto_id:     it.producto_id,
@@ -1265,11 +1277,12 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
                 <span className="font-bold text-emerald-700">{l.cantidad_recibida} uds</span>
                 {diff !== 0 && <span className={cn('font-bold', diff > 0 ? 'text-emerald-600' : 'text-red-500')}>({diff > 0 ? '+' : ''}{diff})</span>}
                 {Number(l.precio_recibido) > 0 && <span className="text-emerald-600">· {formatoMoneda(l.precio_recibido)}</span>}
-                {l.modoLote === 'existente' && l.loteExistenteId && (() => {
-                  const lt = (lotesMap[it.producto_id] ?? []).find(x => x.id === l.loteExistenteId)
-                  return lt ? <span className="text-emerald-600">· {lt.codigo_lote}</span> : null
+                {l.fecha_caducidad && (() => {
+                  const loteDetectado = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
+                  return loteDetectado
+                    ? <span className="text-emerald-600">· {loteDetectado.codigo_lote || 'Lote existente'}</span>
+                    : <span className="text-emerald-600">· Cad. {new Date(l.fecha_caducidad + 'T12:00:00Z').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                 })()}
-                {l.modoLote !== 'existente' && l.fecha_caducidad && <span className="text-emerald-600">· Cad. {new Date(l.fecha_caducidad + 'T12:00:00Z').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' })}</span>}
               </div>
             </div>
             <button onClick={() => deshacerItem(it.id)} className="w-8 h-8 rounded-xl flex items-center justify-center text-emerald-400 hover:bg-emerald-200 transition-colors flex-shrink-0">
@@ -1377,75 +1390,32 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
               </div>
             </div>
 
-            {/* Selector de lote */}
+            {/* Fecha de caducidad — auto-detecta si coincide con lote existente */}
             {(() => {
-              const lotesExistentes = lotesMap[it.producto_id] ?? []
-              const loteSelObj = lotesExistentes.find(l2 => l2.id === l.loteExistenteId)
+              const loteDetectado = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
               return (
-                <div className="flex flex-col gap-2">
-                  {lotesExistentes.length > 0 && (
-                    <div className="grid grid-cols-2 gap-1.5 bg-slate-100 rounded-xl p-1">
-                      {[{ v: 'existente', label: 'Lote existente' }, { v: 'nuevo', label: 'Nuevo lote' }].map(opt => (
-                        <button key={opt.v} type="button"
-                          onClick={() => {
-                            setLinea(it.id, 'modoLote', opt.v)
-                            if (opt.v === 'existente' && !l.loteExistenteId && lotesExistentes.length > 0) {
-                              setLinea(it.id, 'loteExistenteId', lotesExistentes[0].id)
-                            }
-                          }}
-                          className={cn(
-                            'py-2 rounded-lg text-xs font-semibold transition-all',
-                            l.modoLote === opt.v ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-500'
-                          )}>
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {l.modoLote === 'existente' && lotesExistentes.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {lotesExistentes.map(lt => {
-                        const sel = l.loteExistenteId === lt.id
-                        const dias = lt.fecha_caducidad
-                          ? Math.ceil((new Date(lt.fecha_caducidad + 'T12:00:00') - new Date()) / 86400000)
-                          : null
-                        return (
-                          <button key={lt.id} type="button"
-                            onClick={() => setLinea(it.id, 'loteExistenteId', lt.id)}
-                            className={cn(
-                              'flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-left transition-all',
-                              sel ? 'bg-primary-50 border-primary-300' : 'bg-white border-slate-200 hover:border-slate-300'
-                            )}>
-                            <div className="min-w-0">
-                              <p className="text-xs font-mono font-bold text-slate-800 truncate">{lt.codigo_lote || lt.id.slice(0, 8)}</p>
-                              {lt.fecha_caducidad && (
-                                <p className="text-[10px] text-slate-500">
-                                  Caduca: {new Date(lt.fecha_caducidad + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {dias !== null && dias <= 30 && (
-                                <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', dias < 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')}>
-                                  {dias < 0 ? 'Caducado' : `${dias}d`}
-                                </span>
-                              )}
-                              {sel && <Check className="w-3.5 h-3.5 text-primary-600" strokeWidth={3} />}
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1 mb-1">
-                        <Calendar className="w-3 h-3" /> Fecha de caducidad del lote nuevo
-                      </label>
-                      <input type="date" min={hoy} value={l.fecha_caducidad ?? ''} onChange={e => setLinea(it.id, 'fecha_caducidad', e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 bg-slate-50" />
-                      <p className="text-[10px] text-slate-400 mt-1">Código generado automáticamente: L-AAAAMM-NNN</p>
-                    </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> Fecha de caducidad
+                  </label>
+                  <input type="date" min={hoy} value={l.fecha_caducidad ?? ''}
+                    onChange={e => setLinea(it.id, 'fecha_caducidad', e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 bg-slate-50" />
+                  {l.fecha_caducidad && (
+                    loteDetectado ? (
+                      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" strokeWidth={3} />
+                        <p className="text-xs font-semibold text-emerald-700">
+                          Se sumará al lote existente
+                          {loteDetectado.codigo_lote ? ` · ${loteDetectado.codigo_lote}` : ''}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                        <Plus className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <p className="text-xs text-slate-500">Se creará un lote nuevo</p>
+                      </div>
+                    )
                   )}
                 </div>
               )
