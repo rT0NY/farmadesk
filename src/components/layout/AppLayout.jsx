@@ -5,17 +5,77 @@ import { useDevice } from '@/hooks/useDevice'
 import { useRealtimeAlertas } from '@/components/ui/NotificacionesPanel'
 import BuscadorGlobal, { useBuscadorGlobal } from '@/components/ui/BuscadorGlobal'
 import { useActualizacion } from '@/hooks/useActualizacion'
-import { RefreshCw, X } from 'lucide-react'
+import { useElectronUpdater } from '@/hooks/useElectronUpdater'
+import { RefreshCw, Download, X, Check } from 'lucide-react'
 
 function RealtimeWatcher() {
   useRealtimeAlertas(useCallback(() => {}, []))
   return null
 }
 
-function BannerActualizacion() {
+// Banner para actualizaciones en Electron (con progreso de descarga)
+function BannerElectron() {
+  const { estado, version, progreso, instalar } = useElectronUpdater()
+  const [cerrado, setCerrado] = useState(false)
+
+  if (estado === 'idle' || cerrado) return null
+
+  const esLista = estado === 'lista'
+
+  return (
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[200] w-full max-w-sm px-3">
+      <div className="bg-slate-900 text-white rounded-2xl shadow-xl px-4 py-3 flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          {esLista
+            ? <Check   className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            : <Download className="w-4 h-4 text-primary-400 flex-shrink-0 animate-pulse" />
+          }
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold leading-tight">
+              {esLista
+                ? `Farmadesk ${version} listo para instalar`
+                : `Descargando Farmadesk ${version ?? ''}…`}
+            </p>
+            <p className="text-[10px] text-slate-400 leading-tight">
+              {esLista
+                ? 'Reinicia la app para aplicar la actualización'
+                : `${progreso}% — se instala automáticamente al cerrar`}
+            </p>
+          </div>
+          {esLista && (
+            <button
+              onClick={instalar}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors flex-shrink-0"
+            >
+              Reiniciar
+            </button>
+          )}
+          <button onClick={() => setCerrado(true)} className="text-slate-400 hover:text-white transition-colors flex-shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Barra de progreso — solo mientras descarga */}
+        {!esLista && (
+          <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary-500 rounded-full transition-all duration-500"
+              style={{ width: `${progreso}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Banner para actualizaciones en web (Vercel) — recarga de página
+function BannerWeb() {
   const hayActualizacion = useActualizacion()
   const [cerrado, setCerrado] = useState(false)
 
+  // No mostrar en Electron (tiene su propio sistema)
+  if (window.electronAPI) return null
   if (!hayActualizacion || cerrado) return null
 
   return (
@@ -58,7 +118,8 @@ export default function AppLayout({ children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <RealtimeWatcher />
-      <BannerActualizacion />
+      <BannerElectron />
+      <BannerWeb />
       {!isMobile && <Sidebar abierto={abierto} onToggle={toggle} />}
       {isMobile  && <MobileNav />}
 

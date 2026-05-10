@@ -28,7 +28,6 @@ function crearVentana() {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    // Solo abrir en navegador externo URLs reales — nunca URLs vacías o about:
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url)
     }
@@ -46,7 +45,6 @@ function crearVentana() {
 
 // ── Impresión via IPC ─────────────────────────────────────────────────────────
 
-// Devuelve lista de impresoras instaladas en el sistema
 ipcMain.handle('obtener-impresoras', async () => {
   const win = BrowserWindow.getAllWindows()[0]
   if (!win) return []
@@ -57,10 +55,8 @@ ipcMain.handle('obtener-impresoras', async () => {
   }
 })
 
-// Imprime un ticket HTML usando el diálogo nativo de Windows
 ipcMain.handle('imprimir-ticket', async (event, html) => {
   return new Promise((resolve) => {
-    // Escribe el HTML en un archivo temporal para cargarlo sin límites de URL
     const tmpFile = path.join(os.tmpdir(), 'farmadesk-ticket.html')
     try {
       fs.writeFileSync(tmpFile, html, 'utf8')
@@ -73,14 +69,10 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
       show: false,
       width: 400,
       height: 700,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
     })
 
     printWin.loadFile(tmpFile)
-
     printWin.webContents.once('did-finish-load', () => {
       printWin.webContents.print(
         { silent: false, printBackground: true, color: false },
@@ -90,44 +82,68 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
         }
       )
     })
-
-    // Si el usuario cierra la ventana antes de imprimir
     printWin.on('closed', () => resolve({ success: false, errorType: 'cancelled' }))
   })
 })
 
-// ── Auto-actualizaciones (solo en producción) ─────────────────────────────────
+// ── Auto-actualizaciones ──────────────────────────────────────────────────────
+
+// Broadcast a todas las ventanas del renderer
+function emitirUpdate(canal, payload = {}) {
+  BrowserWindow.getAllWindows().forEach(win => {
+    if (!win.isDestroyed()) win.webContents.send(canal, payload)
+  })
+}
+
 function configurarActualizaciones() {
   if (isDev) return
   try {
     const { autoUpdater } = require('electron-updater')
-    autoUpdater.autoDownload    = true   // descarga en segundo plano
-    autoUpdater.autoInstallOnAppQuit = true // instala al cerrar si no eligió reiniciar
 
-    autoUpdater.on('update-downloaded', () => {
-      dialog.showMessageBox({
-        type:    'info',
-        title:   'Actualización lista',
-        message: 'Se descargó una nueva versión de Farmadesk.',
-        detail:  'Reinicia la aplicación para aplicar la actualización.',
-        buttons: ['Reiniciar ahora', 'Más tarde'],
-        defaultId: 0,
-      }).then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall()
+    autoUpdater.autoDownload         = true   // descarga silenciosa en segundo plano
+    autoUpdater.autoInstallOnAppQuit = true   // instala al cerrar si el usuario difirió
+    autoUpdater.allowDowngrade       = false  // nunca bajar de versión
+
+    // Eventos → renderer (el banner en la UI reacciona a estos)
+    autoUpdater.on('update-available', info => {
+      emitirUpdate('update:available', { version: info.version })
+    })
+
+    autoUpdater.on('download-progress', progress => {
+      emitirUpdate('update:progress', {
+        percent:    Math.round(progress.percent),
+        total:      progress.total,
+        transferred: progress.transferred,
       })
     })
 
-    autoUpdater.on('error', (err) => {
-      console.error('Error al buscar actualizaciones:', err?.message ?? err)
+    autoUpdater.on('update-downloaded', info => {
+      emitirUpdate('update:downloaded', { version: info.version })
     })
 
-    // Verificar al iniciar y cada 4 horas
+    autoUpdater.on('error', err => {
+      console.error('[updater]', err?.message ?? err)
+    })
+
+    // Verificar al iniciar, luego cada 24 horas
     autoUpdater.checkForUpdates()
-    setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000)
+    setInterval(() => autoUpdater.checkForUpdates(), 24 * 60 * 60 * 1000)
   } catch (e) {
-    console.error('electron-updater no disponible:', e?.message)
+    console.error('[updater] electron-updater no disponible:', e?.message)
   }
 }
+
+// Instalar ahora desde el renderer (botón "Reiniciar" en el banner)
+ipcMain.handle('update:quit-and-install', () => {
+  try {
+    const { autoUpdater } = require('electron-updater')
+    autoUpdater.quitAndInstall()
+  } catch (e) {
+    console.error('[updater] quitAndInstall falló:', e?.message)
+  }
+})
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
