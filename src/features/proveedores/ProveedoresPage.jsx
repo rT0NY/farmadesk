@@ -1410,12 +1410,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
                           {loteDetectado.codigo_lote ? ` · ${loteDetectado.codigo_lote}` : ''}
                         </p>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                        <Plus className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                        <p className="text-xs text-slate-500">Se creará un lote nuevo</p>
-                      </div>
-                    )
+                    ) : null
                   )}
                 </div>
               )
@@ -1683,7 +1678,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
           <div className="flex gap-3">
             <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose}>Cancelar</Button>
             <Button tamano="md" className="flex-1" onClick={() => setPaso(2)} disabled={cargando}>
-              Siguiente — Destino
+              Siguiente
             </Button>
           </div>
         )}
@@ -1692,7 +1687,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
           <div className="flex gap-3">
             <Button variante="secundario" tamano="md" onClick={() => setPaso(1)}>← Volver</Button>
             <Button tamano="md" className="flex-1" disabled={!sucursalId} onClick={() => setPaso(3)}>
-              Continuar — Recepción
+              Siguiente
             </Button>
           </div>
         )}
