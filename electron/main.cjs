@@ -5,6 +5,15 @@ const os     = require('os')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
+// ── Log a archivo (para diagnosticar el updater en producción) ───────────────
+function logUpdater(msg) {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'updater.log')
+    const linea   = `[${new Date().toISOString()}] ${msg}\n`
+    fs.appendFileSync(logPath, linea, 'utf8')
+  } catch { /* sin errores en el log */ }
+}
+
 function crearVentana() {
   const win = new BrowserWindow({
     width: 1280,
@@ -88,9 +97,7 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
 
 // ── Auto-actualizaciones ──────────────────────────────────────────────────────
 
-// Último estado conocido — el renderer lo consulta al montar para no perder
-// eventos que dispararon antes de que React estuviera listo
-let ultimoEvento = null  // { canal, payload }
+let ultimoEvento = null
 
 function emitirUpdate(canal, payload = {}) {
   ultimoEvento = { canal, payload }
@@ -101,18 +108,37 @@ function emitirUpdate(canal, payload = {}) {
 
 function configurarActualizaciones() {
   if (isDev) return
+
+  logUpdater(`=== Farmadesk ${app.getVersion()} iniciando updater ===`)
+
   try {
     const { autoUpdater } = require('electron-updater')
 
     autoUpdater.autoDownload         = true
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.allowDowngrade       = false
+    autoUpdater.logger               = {
+      info:  msg => logUpdater(`[info]  ${msg}`),
+      warn:  msg => logUpdater(`[warn]  ${msg}`),
+      error: msg => logUpdater(`[error] ${msg}`),
+      debug: msg => {},  // demasiado verboso
+    }
+
+    autoUpdater.on('checking-for-update', () => {
+      logUpdater('Verificando actualizaciones...')
+    })
 
     autoUpdater.on('update-available', info => {
+      logUpdater(`Actualización disponible: ${info.version}`)
       emitirUpdate('update:available', { version: info.version })
     })
 
+    autoUpdater.on('update-not-available', info => {
+      logUpdater(`Sin actualización. Versión actual: ${app.getVersion()}, última: ${info.version}`)
+    })
+
     autoUpdater.on('download-progress', progress => {
+      logUpdater(`Descargando: ${Math.round(progress.percent)}%`)
       emitirUpdate('update:progress', {
         percent:     Math.round(progress.percent),
         total:       progress.total,
@@ -121,36 +147,48 @@ function configurarActualizaciones() {
     })
 
     autoUpdater.on('update-downloaded', info => {
+      logUpdater(`Descarga completa: ${info.version}`)
       emitirUpdate('update:downloaded', { version: info.version })
     })
 
     autoUpdater.on('error', err => {
-      console.error('[updater]', err?.message ?? err)
+      logUpdater(`ERROR: ${err?.message ?? String(err)}`)
     })
 
-    // Esperar 8 segundos para que React monte y registre sus listeners IPC
-    // antes del primer check, luego repetir cada 24 horas
+    logUpdater('Esperando 8s para que el renderer monte...')
     setTimeout(() => {
+      logUpdater('Lanzando checkForUpdates()')
       autoUpdater.checkForUpdates()
-      setInterval(() => autoUpdater.checkForUpdates(), 24 * 60 * 60 * 1000)
+      setInterval(() => {
+        logUpdater('Check periódico (24h)')
+        autoUpdater.checkForUpdates()
+      }, 24 * 60 * 60 * 1000)
     }, 8000)
 
   } catch (e) {
-    console.error('[updater] electron-updater no disponible:', e?.message)
+    logUpdater(`EXCEPCIÓN: ${e?.message ?? String(e)}`)
   }
 }
 
-// El renderer consulta este handler al montar para obtener el estado actual
-// (resuelve el problema de timing: evento disparado antes de que React montara)
 ipcMain.handle('update:estado-actual', () => ultimoEvento)
 
-// Instalar la actualización descargada desde el renderer
+// Leer el log del updater desde el renderer (para diagnóstico)
+ipcMain.handle('update:leer-log', () => {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'updater.log')
+    if (!fs.existsSync(logPath)) return '(sin log aún)'
+    return fs.readFileSync(logPath, 'utf8').split('\n').slice(-30).join('\n')
+  } catch (e) {
+    return `Error leyendo log: ${e.message}`
+  }
+})
+
 ipcMain.handle('update:quit-and-install', () => {
   try {
     const { autoUpdater } = require('electron-updater')
     autoUpdater.quitAndInstall()
   } catch (e) {
-    console.error('[updater] quitAndInstall falló:', e?.message)
+    logUpdater(`quitAndInstall error: ${e?.message}`)
   }
 })
 

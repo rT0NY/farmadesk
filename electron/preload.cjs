@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Consulta el último estado conocido (resuelve timing: evento antes de que React montara)
   estadoActual: () => ipcRenderer.invoke('update:estado-actual'),
 
+  // Lee las últimas 30 líneas del log del updater (solo diagnóstico)
+  leerLogUpdater: () => ipcRenderer.invoke('update:leer-log'),
+
   // Suscribe a eventos del updater. Retorna un cleanup para el useEffect.
   onUpdateEvento: (callback) => {
     const canales = ['update:available', 'update:progress', 'update:downloaded']
