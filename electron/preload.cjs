@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Instala la actualización ya descargada y reinicia la app
   instalarActualizacion: () => ipcRenderer.invoke('update:quit-and-install'),
 
+  // Consulta el último estado conocido (resuelve timing: evento antes de que React montara)
+  estadoActual: () => ipcRenderer.invoke('update:estado-actual'),
+
   // Suscribe a eventos del updater. Retorna un cleanup para el useEffect.
   onUpdateEvento: (callback) => {
     const canales = ['update:available', 'update:progress', 'update:downloaded']

@@ -88,8 +88,12 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
 
 // ── Auto-actualizaciones ──────────────────────────────────────────────────────
 
-// Broadcast a todas las ventanas del renderer
+// Último estado conocido — el renderer lo consulta al montar para no perder
+// eventos que dispararon antes de que React estuviera listo
+let ultimoEvento = null  // { canal, payload }
+
 function emitirUpdate(canal, payload = {}) {
+  ultimoEvento = { canal, payload }
   BrowserWindow.getAllWindows().forEach(win => {
     if (!win.isDestroyed()) win.webContents.send(canal, payload)
   })
@@ -100,19 +104,18 @@ function configurarActualizaciones() {
   try {
     const { autoUpdater } = require('electron-updater')
 
-    autoUpdater.autoDownload         = true   // descarga silenciosa en segundo plano
-    autoUpdater.autoInstallOnAppQuit = true   // instala al cerrar si el usuario difirió
-    autoUpdater.allowDowngrade       = false  // nunca bajar de versión
+    autoUpdater.autoDownload         = true
+    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.allowDowngrade       = false
 
-    // Eventos → renderer (el banner en la UI reacciona a estos)
     autoUpdater.on('update-available', info => {
       emitirUpdate('update:available', { version: info.version })
     })
 
     autoUpdater.on('download-progress', progress => {
       emitirUpdate('update:progress', {
-        percent:    Math.round(progress.percent),
-        total:      progress.total,
+        percent:     Math.round(progress.percent),
+        total:       progress.total,
         transferred: progress.transferred,
       })
     })
@@ -125,15 +128,23 @@ function configurarActualizaciones() {
       console.error('[updater]', err?.message ?? err)
     })
 
-    // Verificar al iniciar, luego cada 24 horas
-    autoUpdater.checkForUpdates()
-    setInterval(() => autoUpdater.checkForUpdates(), 24 * 60 * 60 * 1000)
+    // Esperar 8 segundos para que React monte y registre sus listeners IPC
+    // antes del primer check, luego repetir cada 24 horas
+    setTimeout(() => {
+      autoUpdater.checkForUpdates()
+      setInterval(() => autoUpdater.checkForUpdates(), 24 * 60 * 60 * 1000)
+    }, 8000)
+
   } catch (e) {
     console.error('[updater] electron-updater no disponible:', e?.message)
   }
 }
 
-// Instalar ahora desde el renderer (botón "Reiniciar" en el banner)
+// El renderer consulta este handler al montar para obtener el estado actual
+// (resuelve el problema de timing: evento disparado antes de que React montara)
+ipcMain.handle('update:estado-actual', () => ultimoEvento)
+
+// Instalar la actualización descargada desde el renderer
 ipcMain.handle('update:quit-and-install', () => {
   try {
     const { autoUpdater } = require('electron-updater')

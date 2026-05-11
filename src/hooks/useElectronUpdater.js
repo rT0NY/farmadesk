@@ -1,15 +1,5 @@
 import { useEffect, useState } from 'react'
 
-/**
- * Escucha los eventos de electron-updater enviados desde main.cjs via IPC.
- * Solo activo cuando la app corre dentro de Electron (window.electronAPI existe).
- *
- * Estados posibles:
- *   idle       → sin actividad (inicial)
- *   disponible → hay actualización, descargando en segundo plano
- *   descargando → con porcentaje de progreso
- *   lista      → descarga completa, lista para instalar
- */
 export function useElectronUpdater() {
   const [estado,   setEstado]   = useState('idle')
   const [version,  setVersion]  = useState(null)
@@ -18,7 +8,7 @@ export function useElectronUpdater() {
   useEffect(() => {
     if (!window.electronAPI?.onUpdateEvento) return
 
-    const cleanup = window.electronAPI.onUpdateEvento((canal, payload) => {
+    function aplicarEvento(canal, payload) {
       if (canal === 'update:available') {
         setVersion(payload.version)
         setEstado('disponible')
@@ -31,6 +21,18 @@ export function useElectronUpdater() {
         setEstado('lista')
         setProgreso(100)
       }
+    }
+
+    // Al montar, consultar el último evento que haya disparado el main process.
+    // Resuelve el timing: si update:available llegó antes de que React montara,
+    // el estado queda guardado en main y lo recuperamos aquí.
+    window.electronAPI.estadoActual?.().then(ultimo => {
+      if (ultimo?.canal) aplicarEvento(ultimo.canal, ultimo.payload)
+    })
+
+    // Escuchar eventos futuros (descargas en progreso, completadas)
+    const cleanup = window.electronAPI.onUpdateEvento((canal, payload) => {
+      aplicarEvento(canal, payload)
     })
 
     return cleanup
