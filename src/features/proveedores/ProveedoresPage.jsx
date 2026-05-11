@@ -1247,112 +1247,158 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
     const diff     = cant - it.cantidad_pedida
     const expandido = l.expandido ?? true
 
+    // ── Entrega previa ──────────────────────────────────────────────────────────
     if (l.bloqueado) {
       return (
         <div key={it.id} className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3">
-          <PackageCheck className="w-4 h-4 text-slate-300 flex-shrink-0" />
+          <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+            <PackageCheck className="w-4 h-4 text-slate-300" />
+          </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-400 truncate">{it.nombre_producto}</p>
             <p className="text-xs text-slate-400">
-              {l.cantidad_recibida} uds recibidas
+              {l.cantidad_recibida} uds
               {l.fecha_caducidad ? ` · Cad. ${new Date(l.fecha_caducidad + 'T12:00:00Z').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' })}` : ''}
             </p>
           </div>
-          <span className="text-[9px] font-bold tracking-wider text-slate-300 bg-slate-100 px-2 py-1 rounded-full flex-shrink-0">PREVIA</span>
+          <span className="text-[9px] font-bold tracking-widest text-slate-300 bg-slate-100 px-2.5 py-1 rounded-full flex-shrink-0">PREVIA</span>
         </div>
       )
     }
 
+    // ── Confirmado ─────────────────────────────────────────────────────────────
     if (estado === 'confirmado') {
       const distEntradas = l.distribucion ? Object.entries(l.distribucion).filter(([, v]) => (parseInt(v) || 0) > 0) : null
+      const loteDetectado = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
       return (
-        <div key={it.id} className="bg-emerald-50 border border-emerald-200 rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-              <Check className="w-4 h-4 text-emerald-600" strokeWidth={3} />
+        <div key={it.id} className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl overflow-hidden shadow-sm shadow-emerald-100">
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <div className="w-9 h-9 rounded-2xl bg-emerald-500 flex items-center justify-center flex-shrink-0 shadow-sm shadow-emerald-300">
+              <Check className="w-4 h-4 text-white" strokeWidth={3} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-emerald-900 truncate">{it.nombre_producto}</p>
-              <div className="flex items-center gap-2 flex-wrap mt-0.5 text-xs">
-                <span className="font-bold text-emerald-700">{l.cantidad_recibida} uds</span>
-                {diff !== 0 && <span className={cn('font-bold', diff > 0 ? 'text-emerald-600' : 'text-red-500')}>({diff > 0 ? '+' : ''}{diff})</span>}
-                {Number(l.precio_recibido) > 0 && <span className="text-emerald-600">· {formatoMoneda(l.precio_recibido)}</span>}
-                {l.fecha_caducidad && (() => {
-                  const loteDetectado = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
-                  return loteDetectado
-                    ? <span className="text-emerald-600">· {loteDetectado.codigo_lote || 'Lote existente'}</span>
-                    : <span className="text-emerald-600">· Cad. {new Date(l.fecha_caducidad + 'T12:00:00Z').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
-                })()}
+              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  {l.cantidad_recibida} uds
+                  {diff !== 0 && <span className={cn('ml-1', diff > 0 ? 'text-emerald-600' : 'text-red-500')}>({diff > 0 ? '+' : ''}{diff})</span>}
+                </span>
+                {Number(l.precio_recibido) > 0 && (
+                  <span className="text-xs font-semibold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">{formatoMoneda(l.precio_recibido)}/u</span>
+                )}
+                {l.fecha_caducidad && (
+                  <span className="text-xs text-emerald-600 bg-white/60 px-2 py-0.5 rounded-full border border-emerald-100">
+                    {loteDetectado
+                      ? (loteDetectado.codigo_lote || 'Lote existente')
+                      : `Cad. ${new Date(l.fecha_caducidad + 'T12:00:00Z').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: '2-digit' })}`}
+                  </span>
+                )}
               </div>
             </div>
-            <button onClick={() => deshacerItem(it.id)} className="w-8 h-8 rounded-xl flex items-center justify-center text-emerald-400 hover:bg-emerald-200 transition-colors flex-shrink-0">
+            <button onClick={() => deshacerItem(it.id)}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-emerald-400 hover:bg-emerald-200 transition-colors flex-shrink-0"
+              title="Deshacer">
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
           </div>
           {distEntradas && distEntradas.length > 0 && (
-            <div className="px-4 pb-3 pt-1 flex flex-wrap gap-1.5 border-t border-emerald-100">
+            <div className="px-4 pb-3 pt-0.5 flex flex-wrap gap-1.5 border-t border-emerald-100/60">
               {distEntradas.map(([sId, v]) => (
-                <span key={sId} className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-200 text-emerald-800">
-                  {sucursales.find(s => s.id === sId)?.nombre ?? sId}: {v} uds
+                <span key={sId} className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">
+                  <MapPin className="w-2.5 h-2.5" />
+                  {sucursales.find(s => s.id === sId)?.nombre ?? sId} · {v} uds
                 </span>
               ))}
+            </div>
+          )}
+          {!distEntradas && sucursal && (
+            <div className="px-4 pb-3 pt-0.5 border-t border-emerald-100/60">
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 w-fit">
+                <MapPin className="w-2.5 h-2.5" />
+                {sucursal.nombre} · {l.cantidad_recibida} uds
+              </span>
             </div>
           )}
         </div>
       )
     }
 
+    // ── Omitido ────────────────────────────────────────────────────────────────
     if (estado === 'omitido') {
       return (
-        <div key={it.id} className="flex items-center gap-3 border border-slate-200 rounded-2xl px-4 py-3 opacity-50">
-          <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-            <Ban className="w-4 h-4 text-slate-400" />
+        <div key={it.id} className="flex items-center gap-3 border border-slate-200 bg-slate-50 rounded-2xl px-4 py-3">
+          <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+            <Ban className="w-4 h-4 text-slate-300" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-500 truncate line-through">{it.nombre_producto}</p>
-            <p className="text-xs text-slate-400">No llegó</p>
+            <p className="text-sm font-semibold text-slate-400 truncate line-through">{it.nombre_producto}</p>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">No llegó</p>
           </div>
-          <button onClick={() => deshacerItem(it.id)} className="text-xs font-semibold text-primary-600 hover:text-primary-700 px-3 py-1.5 rounded-xl hover:bg-primary-50 border border-primary-200 transition-colors flex-shrink-0">
+          <button onClick={() => deshacerItem(it.id)}
+            className="text-xs font-semibold text-primary-600 px-3 py-1.5 rounded-xl bg-white border border-primary-200 hover:bg-primary-50 transition-colors flex-shrink-0">
             Deshacer
           </button>
         </div>
       )
     }
 
-    // Pendiente
+    // ── Pendiente ──────────────────────────────────────────────────────────────
     const deshab  = deshabPorProducto[it.producto_id] ?? new Set()
     const distSum = l.distribucion ? Object.entries(l.distribucion).filter(([sid]) => !deshab.has(sid)).reduce((a, [, v]) => a + (parseInt(v) || 0), 0) : null
     const distOk  = distSum === null || distSum === cant
 
     return (
       <div key={it.id} className="border border-slate-200 bg-white rounded-2xl overflow-hidden shadow-sm">
+
         {/* Header colapsable */}
-        <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left" onClick={() => toggleExpandido(it.id)}>
-          <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0', expandido ? 'bg-primary-50' : 'bg-amber-50')}>
-            <Package className={cn('w-4 h-4', expandido ? 'text-primary-500' : 'text-amber-500')} />
+        <button
+          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50/80 transition-colors text-left"
+          onClick={() => toggleExpandido(it.id)}
+        >
+          <div className="w-9 h-9 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <Package className="w-4 h-4 text-amber-600" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-slate-900 truncate">{it.nombre_producto}</p>
-            <p className="text-xs text-slate-400">Pedido: <span className="font-semibold text-slate-600">{it.cantidad_pedida} uds</span></p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-xs text-slate-400">
+                Pedido: <span className="font-semibold text-slate-600">{it.cantidad_pedida} uds</span>
+              </span>
+              {!l.distribucion && sucursal && (
+                <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 border border-primary-100">
+                  <MapPin className="w-2.5 h-2.5" /> {sucursal.nombre}
+                </span>
+              )}
+              {l.distribucion && (
+                <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 border border-violet-100">
+                  <ArrowLeftRight className="w-2.5 h-2.5" /> Distribución
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">PENDIENTE</span>
-            {expandido ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+              Pendiente
+            </span>
+            {expandido
+              ? <ChevronUp className="w-4 h-4 text-slate-300" />
+              : <ChevronDown className="w-4 h-4 text-slate-300" />}
           </div>
         </button>
 
-        {/* Escáner SIEMPRE VISIBLE — no está dentro del colapsable */}
+        {/* Escáner — siempre visible */}
         <div className="px-4 pb-3 border-b border-slate-100" onClick={e => e.stopPropagation()}>
           <div className={cn(
-            'flex items-center gap-2 rounded-xl px-3 py-2.5 border transition-colors',
+            'flex items-center gap-2.5 rounded-xl px-3 py-2.5 border transition-all',
             l.scanEstado === 'vinculado' ? 'bg-emerald-50 border-emerald-300' :
             l.scanEstado === 'ya_existe' ? 'bg-sky-50 border-sky-200' :
-            l.scanEstado === 'error'     ? 'bg-red-50 border-red-200' :
-            'bg-slate-50 border-slate-200 focus-within:border-primary-400 focus-within:bg-white'
+            l.scanEstado === 'error'     ? 'bg-red-50 border-red-300' :
+            'bg-slate-50 border-slate-200 focus-within:border-primary-300 focus-within:bg-white focus-within:shadow-sm'
           )}>
             <ScanBarcode className={cn('w-4 h-4 flex-shrink-0',
               l.scanEstado === 'vinculado' ? 'text-emerald-500' :
-              l.scanEstado === 'error'     ? 'text-red-400'     : 'text-primary-500'
+              l.scanEstado === 'ya_existe' ? 'text-sky-500' :
+              l.scanEstado === 'error'     ? 'text-red-400' : 'text-primary-400'
             )} />
             <input
               value={l.scanProd || ''}
@@ -1360,10 +1406,10 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
               onKeyDown={e => handleScanProducto(e, it)}
               onFocus={() => { if (!expandido) setLinea(it.id, 'expandido', true) }}
               placeholder={
-                l.scanEstado === 'vinculado' ? '✓ Código vinculado — escanea otro si hay más' :
+                l.scanEstado === 'vinculado' ? '✓ Vinculado — escanea otro si hay más' :
                 l.scanEstado === 'ya_existe' ? 'Ya registrado — escanea otro si hay más' :
                 l.scanEstado === 'error'     ? 'Código de otro producto — verifica' :
-                'Escanear código de barras de este producto…'
+                'Escanear código de barras…'
               }
               className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-slate-400 text-slate-700"
             />
@@ -1371,77 +1417,111 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
           </div>
         </div>
 
+        {/* Contenido expandido */}
         {expandido && (
-          <div className="px-4 pb-4 pt-3 flex flex-col gap-3">
+          <div className="px-4 pb-4 pt-3.5 flex flex-col gap-3.5">
+
             {/* Cantidad + Precio */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Cantidad</label>
-                <input id={`cant-${it.id}`} type="number" min="0" value={l.cantidad_recibida ?? ''} onChange={e => setLinea(it.id, 'cantidad_recibida', e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl border border-slate-200 text-center text-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 bg-slate-50" />
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cantidad recibida</label>
+                <input
+                  id={`cant-${it.id}`}
+                  type="number" min="0"
+                  value={l.cantidad_recibida ?? ''}
+                  onChange={e => setLinea(it.id, 'cantidad_recibida', e.target.value)}
+                  className="w-full h-12 px-3 rounded-xl border-2 border-slate-200 text-center text-2xl font-bold text-slate-900 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/15 bg-white transition-all"
+                />
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">$ Compra</label>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Precio compra</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold pointer-events-none">$</span>
-                  <input type="number" min="0" step="0.01" value={l.precio_recibido ?? ''} onChange={e => setLinea(it.id, 'precio_recibido', e.target.value)}
-                    className="w-full h-11 pl-6 pr-2 rounded-xl border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 bg-slate-50" />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold pointer-events-none">$</span>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={l.precio_recibido ?? ''}
+                    onChange={e => setLinea(it.id, 'precio_recibido', e.target.value)}
+                    className="w-full h-12 pl-7 pr-2 rounded-xl border-2 border-slate-200 text-sm font-bold focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/15 bg-white transition-all"
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Fecha de caducidad — auto-detecta si coincide con lote existente */}
+            {/* Fecha de caducidad */}
             {(() => {
               const loteDetectado = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
               return (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                     <Calendar className="w-3 h-3" /> Fecha de caducidad
                   </label>
-                  <input type="date" min={hoy} value={l.fecha_caducidad ?? ''}
+                  <input
+                    type="date" min={hoy}
+                    value={l.fecha_caducidad ?? ''}
                     onChange={e => setLinea(it.id, 'fecha_caducidad', e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 bg-slate-50" />
-                  {l.fecha_caducidad && (
-                    loteDetectado ? (
-                      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
-                        <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" strokeWidth={3} />
-                        <p className="text-xs font-semibold text-emerald-700">
-                          Se sumará al lote existente
-                          {loteDetectado.codigo_lote ? ` · ${loteDetectado.codigo_lote}` : ''}
-                        </p>
-                      </div>
-                    ) : null
+                    className="w-full h-11 px-3 rounded-xl border-2 border-slate-200 text-sm font-bold focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/15 bg-white transition-all"
+                  />
+                  {l.fecha_caducidad && loteDetectado && (
+                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" strokeWidth={3} />
+                      <p className="text-xs font-semibold text-emerald-700">
+                        Se sumará al lote existente{loteDetectado.codigo_lote ? ` · ${loteDetectado.codigo_lote}` : ''}
+                      </p>
+                    </div>
                   )}
                 </div>
               )
             })()}
 
+            {/* Distribuir entre sucursales */}
             {sucursales.length > 1 && (
-              <div>
-                <button onClick={() => toggleDistribucion(it.id)} className={cn(
-                  'w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all',
-                  l.distribucion ? 'bg-primary-50 border-primary-200 text-primary-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                )}>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => toggleDistribucion(it.id)}
+                  className={cn(
+                    'w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all',
+                    l.distribucion
+                      ? 'bg-violet-50 border-violet-200 text-violet-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                  )}
+                >
                   <div className="flex items-center gap-2">
                     <ArrowLeftRight className="w-3.5 h-3.5" />
                     <span>{l.distribucion ? 'Distribución activa' : 'Distribuir entre sucursales'}</span>
                   </div>
-                  {l.distribucion ? <span className={cn('text-xs font-bold', distOk ? 'text-emerald-600' : 'text-red-500')}>{distSum}/{cant} uds</span> : <ChevronDown className="w-3.5 h-3.5" />}
+                  {l.distribucion
+                    ? <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', distOk ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600')}>
+                        {distSum}/{cant} uds
+                      </span>
+                    : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
+
                 {l.distribucion && (
-                  <div className="mt-2 border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="border-2 border-violet-100 rounded-xl overflow-hidden bg-violet-50/30">
                     {sucursales.filter(s => !deshab.has(s.id)).map((s, idx, arr) => (
-                      <div key={s.id} className={cn('flex items-center gap-3 px-4 py-2.5 bg-white', idx < arr.length - 1 ? 'border-b border-slate-100' : '')}>
-                        <div className="w-2 h-2 rounded-full bg-primary-300 flex-shrink-0" />
+                      <div key={s.id} className={cn(
+                        'flex items-center gap-3 px-4 py-2.5 bg-white',
+                        idx < arr.length - 1 ? 'border-b border-slate-100' : ''
+                      )}>
+                        <div className="w-7 h-7 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
+                          <MapPin className="w-3.5 h-3.5 text-primary-400" />
+                        </div>
                         <span className="text-sm font-medium text-slate-700 flex-1 truncate">{s.nombre}</span>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <input type="number" min="0" value={l.distribucion[s.id] ?? '0'} onChange={e => setDistSuc(it.id, s.id, e.target.value)}
-                            className="w-20 h-9 px-2 rounded-xl border border-slate-200 text-center text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
-                          <span className="text-xs text-slate-400">uds</span>
+                          <input
+                            type="number" min="0"
+                            value={l.distribucion[s.id] ?? '0'}
+                            onChange={e => setDistSuc(it.id, s.id, e.target.value)}
+                            className="w-20 h-9 px-2 rounded-xl border-2 border-slate-200 text-center text-sm font-bold focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/15 bg-white"
+                          />
+                          <span className="text-xs text-slate-400 w-5">uds</span>
                         </div>
                       </div>
                     ))}
-                    <div className={cn('flex items-center justify-between px-4 py-2 text-xs font-bold border-t', distOk ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600')}>
+                    <div className={cn(
+                      'flex items-center justify-between px-4 py-2.5 text-xs font-bold border-t',
+                      distOk ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'
+                    )}>
                       <span>Total distribuido</span>
                       <span>{distSum} / {cant} uds {distOk ? '✓' : `— faltan ${cant - (distSum ?? 0)}`}</span>
                     </div>
@@ -1450,11 +1530,18 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
               </div>
             )}
 
-            <div className="flex gap-2">
-              <button onClick={() => omitirItem(it.id)} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-300 active:scale-[0.97] transition-all">
+            {/* Acciones */}
+            <div className="flex gap-2 pt-0.5">
+              <button
+                onClick={() => omitirItem(it.id)}
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-300 active:scale-[0.97] transition-all"
+              >
                 <Ban className="w-3.5 h-3.5" /> No llegó
               </button>
-              <button onClick={() => confirmarItem(it.id)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 active:scale-[0.97] transition-all shadow-sm shadow-emerald-500/20">
+              <button
+                onClick={() => confirmarItem(it.id)}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 active:scale-[0.98] transition-all shadow-md shadow-emerald-200"
+              >
                 <Check className="w-4 h-4" strokeWidth={3} /> Confirmar recibido
               </button>
             </div>
