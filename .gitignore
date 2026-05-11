@@ -30,3 +30,8 @@ dist-ssr
 
 # Electron builds
 release/
+
+# Script local de build con credenciales — nunca subir
+build-electron.ps1
+*.pfx
+*.cer
