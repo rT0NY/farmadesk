@@ -1633,7 +1633,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Origen del pedido</p>
                 <p className="text-sm font-semibold text-slate-700">
-                  {pedido.sucursales?.nombre ?? 'General — toda la empresa'}
+                  {pedido.sucursales?.nombre ?? 'General'}
                 </p>
               </div>
             </div>
@@ -2061,7 +2061,7 @@ function ModalDetallePedido({ pedido, empresa, sucursales, tz, onClose, onElimin
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Destino planeado</p>
               <p className="text-sm font-semibold text-slate-700">
-                {pedido.sucursales?.nombre ?? 'General — toda la empresa'}
+                {pedido.sucursales?.nombre ?? 'General'}
               </p>
             </div>
           </div>
