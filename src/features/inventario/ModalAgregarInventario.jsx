@@ -106,9 +106,16 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     fetchData()
   }, [abierto, sucursales])
 
-  // Focus en el input del escáner cuando estamos en paso 1 y ningún otro input está activo
+  // Focus en el input del escáner cuando estamos en paso 1
+  // Solo refocusa si el usuario lleva 600ms sin interactuar (teclado o mouse)
   useEffect(() => {
     if (!abierto || paso !== 1) return
+    let ultimaInteraccion = 0
+    const marcarInteraccion = () => { ultimaInteraccion = Date.now() }
+    document.addEventListener('keydown', marcarInteraccion)
+    document.addEventListener('mousedown', marcarInteraccion)
+    document.addEventListener('pointerdown', marcarInteraccion)
+
     const interval = setInterval(() => {
       if (!barcodeRef.current) return
       const active = document.activeElement
@@ -116,9 +123,16 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
         active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' ||
         active.tagName === 'SELECT' || active.isContentEditable
       )
-      if (!otroActivo) barcodeRef.current.focus()
+      const graciaPasada = Date.now() - ultimaInteraccion > 600
+      if (!otroActivo && graciaPasada) barcodeRef.current.focus()
     }, 300)
-    return () => clearInterval(interval)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('keydown', marcarInteraccion)
+      document.removeEventListener('mousedown', marcarInteraccion)
+      document.removeEventListener('pointerdown', marcarInteraccion)
+    }
   }, [abierto, paso])
 
   async function fetchData() {

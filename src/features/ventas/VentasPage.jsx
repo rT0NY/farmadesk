@@ -595,12 +595,14 @@ export default function VentasPage() {
   }, [tab, turnoActual?.id])
 
   // Escáner auto-focus — solo roba foco si ningún otro input está activo
-  // y el usuario lleva al menos 600ms sin escribir en otro campo
+  // y el usuario lleva al menos 600ms sin interactuar (teclado o mouse/touch)
   useEffect(() => {
     if (!turnoActual || tab !== 'caja') return
     let ultimaInteraccion = 0
     const marcarInteraccion = () => { ultimaInteraccion = Date.now() }
     document.addEventListener('keydown', marcarInteraccion)
+    document.addEventListener('mousedown', marcarInteraccion)
+    document.addEventListener('pointerdown', marcarInteraccion)
 
     const iv = setInterval(() => {
       if (!barcodeRef.current) return
@@ -619,6 +621,8 @@ export default function VentasPage() {
     return () => {
       clearInterval(iv)
       document.removeEventListener('keydown', marcarInteraccion)
+      document.removeEventListener('mousedown', marcarInteraccion)
+      document.removeEventListener('pointerdown', marcarInteraccion)
     }
   }, [turnoActual, tab])
 
