@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { toast } from 'sonner'
 import {
   CalendarX, RefreshCw, ChevronDown, ArrowRight,
   AlertTriangle, Timer, Store, Filter, Flame, Clock,
@@ -149,7 +150,10 @@ export default function CaducidadesPage() {
       const stockMap = {}
       ;(inv || []).forEach(i => {
         if (!stockMap[i.lote_id]) stockMap[i.lote_id] = { total: 0 }
-        stockMap[i.lote_id][i.sucursal_id] = (stockMap[i.lote_id][i.sucursal_id] || 0) + Number(i.cantidad || 0)
+        // Solo mapear por sucursal si tiene id válido (evita key null que rompe la visualización)
+        if (i.sucursal_id) {
+          stockMap[i.lote_id][i.sucursal_id] = (stockMap[i.lote_id][i.sucursal_id] || 0) + Number(i.cantidad || 0)
+        }
         stockMap[i.lote_id].total = (stockMap[i.lote_id].total || 0) + Number(i.cantidad || 0)
       })
 
@@ -159,7 +163,7 @@ export default function CaducidadesPage() {
           .filter(l => l.stock.total > 0)
       )
     } catch (err) {
-      console.error(err)
+      toast.error('No se pudieron cargar las caducidades. Verifica la conexión.')
     } finally {
       setCargando(false)
     }

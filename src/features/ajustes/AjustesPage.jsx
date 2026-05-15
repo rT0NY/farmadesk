@@ -18,7 +18,7 @@ function Campo({ label, icono: Icono, children }) {
   )
 }
 
-function InputTexto({ value, onChange, placeholder, maxLength, className }) {
+function InputTexto({ value, onChange, placeholder, maxLength, className, disabled }) {
   return (
     <input
       type="text"
@@ -26,9 +26,11 @@ function InputTexto({ value, onChange, placeholder, maxLength, className }) {
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       maxLength={maxLength}
+      disabled={disabled}
       className={cn(
         'w-full px-4 py-3 border border-slate-200 rounded-2xl text-sm',
         'focus:outline-none focus:ring-2 focus:ring-primary-500/30 bg-white',
+        'disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed',
         className
       )}
     />
@@ -128,7 +130,7 @@ export default function AjustesPage() {
         descripcion="Esta información aparece en los documentos y PDFs generados">
 
         <Campo label="Nombre comercial" icono={Building2}>
-          <InputTexto
+          <InputTexto disabled={guardando}
             value={forma.nombre}
             onChange={cambiar('nombre')}
             placeholder="Farmacia El Sol"
@@ -138,7 +140,7 @@ export default function AjustesPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Campo label="RFC" icono={FileText}>
-            <InputTexto
+            <InputTexto disabled={guardando}
               value={forma.rfc}
               onChange={v => cambiar('rfc')(v.toUpperCase())}
               placeholder="XXXX000000XXX"
@@ -147,7 +149,7 @@ export default function AjustesPage() {
             />
           </Campo>
           <Campo label="Teléfono" icono={Phone}>
-            <InputTexto
+            <InputTexto disabled={guardando}
               value={forma.telefono}
               onChange={cambiar('telefono')}
               placeholder="55 1234 5678"
@@ -157,7 +159,7 @@ export default function AjustesPage() {
         </div>
 
         <Campo label="Correo de contacto" icono={Mail}>
-          <InputTexto
+          <InputTexto disabled={guardando}
             value={forma.correo_contacto}
             onChange={cambiar('correo_contacto')}
             placeholder="contacto@mifarmacia.com"
@@ -171,33 +173,33 @@ export default function AjustesPage() {
             Dirección
           </p>
           <div className="flex flex-col gap-3">
-            <InputTexto
+            <InputTexto disabled={guardando}
               value={forma.calle}
               onChange={cambiar('calle')}
               placeholder="Calle y número · Ej. Av. Reforma 456"
               maxLength={150}
             />
-            <InputTexto
+            <InputTexto disabled={guardando}
               value={forma.colonia}
               onChange={cambiar('colonia')}
               placeholder="Colonia / Fraccionamiento · Ej. Col. Centro"
               maxLength={100}
             />
             <div className="grid grid-cols-2 gap-3">
-              <InputTexto
+              <InputTexto disabled={guardando}
                 value={forma.ciudad}
                 onChange={cambiar('ciudad')}
                 placeholder="Ciudad"
                 maxLength={80}
               />
-              <InputTexto
+              <InputTexto disabled={guardando}
                 value={forma.entidad}
                 onChange={cambiar('entidad')}
                 placeholder="Estado"
                 maxLength={80}
               />
             </div>
-            <InputTexto
+            <InputTexto disabled={guardando}
               value={forma.codigo_postal}
               onChange={cambiar('codigo_postal')}
               placeholder="Código postal · Ej. 44100"

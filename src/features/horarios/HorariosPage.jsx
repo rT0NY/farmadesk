@@ -61,10 +61,12 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
     })
 
   const guardar = async () => {
+    // Los turnos nocturnos (salida < entrada) son válidos — se guardan tal cual
+    // Solo bloqueamos si entrada y salida son idénticas
     for (const d of DIAS) {
       const { activo, entrada, salida } = dias[d]
-      if (activo && salida <= entrada) {
-        return toast.error(`${DIAS_SEMANA[d]}: la salida debe ser después de la entrada`)
+      if (activo && entrada === salida) {
+        return toast.error(`${DIAS_SEMANA[d]}: la entrada y salida no pueden ser iguales`)
       }
     }
 
@@ -168,8 +170,13 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
 
           {/* Horas por día */}
           <div className="flex flex-col gap-2">
-            {DIAS.filter((d) => dias[d].activo).map((d) => (
-              <div key={d} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+            {DIAS.filter((d) => dias[d].activo).map((d) => {
+              const esNocturno = dias[d].salida < dias[d].entrada
+              return (
+              <div key={d} className={cn(
+                'flex items-center gap-3 rounded-2xl px-4 py-3 border',
+                esNocturno ? 'bg-violet-50 border-violet-200' : 'bg-slate-50 border-slate-200'
+              )}>
                 <p className="text-sm font-semibold text-slate-700 w-10 flex-shrink-0">{DIA_CORTO[d]}</p>
                 <input
                   type="time" value={dias[d].entrada}
@@ -182,8 +189,14 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
                   onChange={(e) => cambiarHoraDia(d, 'salida', e.target.value)}
                   className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30"
                 />
+                {esNocturno && (
+                  <span className="text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">
+                    +1 día
+                  </span>
+                )}
               </div>
-            ))}
+              )
+            })}
             {diasActivos === 0 && (
               <p className="text-sm text-slate-400 text-center py-4">
                 Selecciona los días que trabaja este empleado
