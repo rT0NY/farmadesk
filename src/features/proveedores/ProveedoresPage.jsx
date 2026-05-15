@@ -852,6 +852,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   // { [id]: { estado, cantidad_recibida, precio_recibido, fecha_caducidad, expandido } }
   const [lineas, setLineas] = useState({})
   // Escáner de código de barras
+  const normalizarCodigo = (s) => (s || '').trim().toUpperCase()
   const [scanInput,    setScanInput]    = useState('')
   const [modalVincular,setModalVincular]= useState(null)  // { codigo }
   const [searchVinc,   setSearchVinc]  = useState('')
@@ -975,16 +976,15 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
 
   // Confirmar todos los pendientes de golpe (excluye los ya recibidos en entregas previas)
   // Escaneo por producto: vincula un código directamente al producto de la fila
-  const handleScanProducto = async (e, it) => {
-    if (e.key !== 'Enter') return
-    const codigo = (lineas[it.id]?.scanProd || '').trim()
+  const procesarScanProducto = async (it, raw) => {
+    const codigo = normalizarCodigo(raw)
     if (!codigo) return
     setLinea(it.id, 'scanProd', '')
     try {
       const { data: existente } = await supabase
         .from('codigos_barras')
         .select('producto_id, productos(nombre)')
-        .eq('codigo', codigo)
+        .ilike('codigo', codigo)
         .maybeSingle()
 
       if (existente) {
@@ -1018,6 +1018,24 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
     }
   }
 
+  const handleScanProducto = (e, it) => {
+    if (e.key !== 'Enter') return
+    const val = (lineas[it.id]?.scanProd || '').trim()
+    if (val) procesarScanProducto(it, val)
+  }
+
+  // Debounce para escáneres sin Enter: dispara cuando scanProd lleva 300ms sin cambiar
+  useEffect(() => {
+    const timers = []
+    items.forEach(it => {
+      const val = (lineas[it.id]?.scanProd || '').trim()
+      if (!val || val.length < 3) return
+      const t = setTimeout(() => procesarScanProducto(it, val), 300)
+      timers.push(t)
+    })
+    return () => timers.forEach(clearTimeout)
+  }, [lineas])
+
   const confirmarTodo = () => {
     setLineas(prev => {
       const next = { ...prev }
@@ -1031,13 +1049,12 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   }
 
   // Escáner: buscar el producto por código de barras
-  const handleScan = (e) => {
-    if (e.key !== 'Enter') return
-    const codigo = scanInput.trim()
+  const procesarScan = (raw) => {
+    const codigo = normalizarCodigo(raw)
     if (!codigo) return
     setScanInput('')
     const encontrado = items.find(it =>
-      it.productos?.codigos_barras?.some(cb => cb.codigo === codigo)
+      it.productos?.codigos_barras?.some(cb => normalizarCodigo(cb.codigo) === codigo)
     )
     if (!encontrado) {
       setModalVincular({ codigo })
@@ -1051,14 +1068,27 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
     document.getElementById(`cant-${encontrado.id}`)?.focus()
   }
 
+  const handleScan = (e) => {
+    if (e.key !== 'Enter') return
+    procesarScan(scanInput)
+  }
+
+  useEffect(() => {
+    const val = scanInput.trim()
+    if (!val || val.length < 3) return
+    const t = setTimeout(() => procesarScan(val), 300)
+    return () => clearTimeout(t)
+  }, [scanInput])
+
   // Vincular código de barras desconocido a un producto del pedido
   const guardarVincular = async (it) => {
     if (!modalVincular?.codigo) return
+    const codigoNorm = normalizarCodigo(modalVincular.codigo)
     setGuardandoVinc(true)
     try {
       // Evitar duplicar si el código ya está vinculado a este producto
       const { data: existe } = await supabase.from('codigos_barras')
-        .select('id').eq('codigo', modalVincular.codigo).eq('producto_id', it.producto_id).maybeSingle()
+        .select('id').ilike('codigo', codigoNorm).eq('producto_id', it.producto_id).maybeSingle()
       if (existe) {
         toast.success(`El código ya estaba vinculado a "${it.nombre_producto}"`)
         setLineas(prev => ({ ...prev, [it.id]: { ...prev[it.id], estado: 'pendiente', expandido: true } }))
@@ -1068,14 +1098,14 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
       await supabase.from('codigos_barras').insert({
         empresa_id: empresa?.id ?? pedido.empresa_id,
         producto_id: it.producto_id,
-        codigo: modalVincular.codigo,
+        codigo: codigoNorm,
       })
       // Actualizar los codigos del item en memoria
       setItems(prev => prev.map(i => i.id !== it.id ? i : {
         ...i,
         productos: {
           ...i.productos,
-          codigos_barras: [...(i.productos?.codigos_barras ?? []), { codigo: modalVincular.codigo }],
+          codigos_barras: [...(i.productos?.codigos_barras ?? []), { codigo: codigoNorm }],
         },
       }))
       toast.success(`Código vinculado a "${it.nombre_producto}"`)

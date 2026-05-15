@@ -113,7 +113,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
       if (barcodeRef.current && !searchRef.current && !asociarRef.current) {
         barcodeRef.current.focus()
       }
-    }, 400)
+    }, 300)
     return () => clearInterval(interval)
   }, [abierto, paso])
 
@@ -165,31 +165,43 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     setSucursalesHabilitadas(sucursales.filter(s => !deshabIds.has(s.id)))
   }
 
-  function handleBarcodeKey(e) {
-    if (e.key !== 'Enter') return
-    const val = barcodeInput.trim()
+  const normalizarCodigo = (s) => (s || '').trim().toUpperCase()
+
+  function procesarCodigoInventario(val, limpiar) {
+    val = normalizarCodigo(val)
     if (!val) return
-    const encontrado = codigosCat.find(bc => bc.codigo === val)
+    const encontrado = codigosCat.find(bc => normalizarCodigo(bc.codigo) === val)
     if (encontrado) {
       const prod = productos.find(p => p.id === encontrado.producto_id)
-      if (prod) { seleccionarProducto(prod); setBarcodeInput(''); setPaso(2) }
+      if (prod) { seleccionarProducto(prod); limpiar(); setPaso(2) }
     } else {
-      setModalAsociar(val)
-      setBarcodeInput('')
+      setModalAsociar(val); limpiar()
     }
   }
+
+  function handleBarcodeKey(e) {
+    if (e.key !== 'Enter') return
+    procesarCodigoInventario(barcodeInput, () => setBarcodeInput(''))
+  }
+
+  // Auto-procesar 300ms después del último carácter (escáneres sin Enter)
+  useEffect(() => {
+    const val = barcodeInput.trim()
+    if (!val || val.length < 3) return
+    const t = setTimeout(() => procesarCodigoInventario(val, () => setBarcodeInput('')), 300)
+    return () => clearTimeout(t)
+  }, [barcodeInput]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSearchKey(e) {
     if (e.key !== 'Enter') return
     const val = busqueda.trim()
     if (!val) return
-    const encontrado = codigosCat.find(bc => bc.codigo === val)
+    const encontrado = codigosCat.find(bc => normalizarCodigo(bc.codigo) === normalizarCodigo(val))
     if (encontrado) {
       const prod = productos.find(p => p.id === encontrado.producto_id)
       if (prod) { seleccionarProducto(prod); setBusqueda(''); setPaso(2) }
     } else if (/^\d+$/.test(val)) {
-      setModalAsociar(val)
-      setBusqueda('')
+      setModalAsociar(val); setBusqueda('')
     }
   }
 

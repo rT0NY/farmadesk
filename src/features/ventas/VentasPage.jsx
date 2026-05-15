@@ -840,10 +840,13 @@ export default function VentasPage() {
     }
   }
 
+  // Normaliza el código para comparación (trim + mayúsculas)
+  const normalizarCodigo = (s) => (s || '').trim().toUpperCase()
+
   function procesarBarcode(val) {
-    val = val.trim()
+    val = normalizarCodigo(val)
     if (!val) return
-    const bc = codigosCat.find(b => b.codigo === val)
+    const bc = codigosCat.find(b => normalizarCodigo(b.codigo) === val)
     if (bc) {
       const prod = productos.find(p => p.id === bc.producto_id && !deshabilitados.has(p.id))
       if (prod) { agregarAlCarrito(prod, bc.unidades_por_empaque || 1); setBarcodeInput(''); return }
@@ -857,11 +860,11 @@ export default function VentasPage() {
     procesarBarcode(barcodeInput)
   }
 
-  // Auto-procesar 150ms después del último carácter (escáneres sin Enter)
+  // Auto-procesar 300ms después del último carácter (escáneres sin Enter o Bluetooth)
   useEffect(() => {
     const val = barcodeInput.trim()
     if (!val || val.length < 3) return
-    const t = setTimeout(() => procesarBarcode(val), 150)
+    const t = setTimeout(() => procesarBarcode(val), 300)
     return () => clearTimeout(t)
   }, [barcodeInput]) // eslint-disable-line react-hooks/exhaustive-deps
 
