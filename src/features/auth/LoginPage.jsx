@@ -7,6 +7,7 @@ import { sanitizar } from '@/lib/sanitizar'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import Logo from '@/components/ui/Logo'
+import { version } from '../../../package.json'
 
 // Rate limiting simple en memoria
 const intentos = { fallidos: 0, bloqueadoHasta: 0 }
@@ -241,6 +242,11 @@ export default function LoginPage() {
           Si olvidaste tu contraseña, contacta al administrador de tu farmacia.
         </p>
       </div>
+
+      {/* Versión */}
+      <p className="fixed bottom-3 right-4 text-[11px] text-slate-400 select-none">
+        v{version}
+      </p>
     </div>
   )
 }
