@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, BadgeCheck, RefreshCw, Users, Bell, Settings, Check, ChevronRight } from 'lucide-react'
+import { X, BadgeCheck, RefreshCw, Users, Bell, Settings, Check, ChevronRight, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
@@ -388,6 +388,7 @@ export default function SalariosPage() {
   const [modal,        setModal]        = useState(null)
   const [modalDiaPago, setModalDiaPago] = useState(false)
   const [diaPago,      setDiaPago]      = useState(empresa?.dia_pago ?? 5)
+  const [busqueda,     setBusqueda]     = useState('')
 
   const hoy       = new Date().getDay()
   const esDiaPago = hoy === diaPago
@@ -459,6 +460,9 @@ export default function SalariosPage() {
   const totalPendienteGlobal = semanas
     .filter(s => !s.pagado).reduce((acc, s) => acc + (s.total_calculado ?? 0), 0)
   const pendientesPago = empleados.filter(emp => pendienteDeEmp(emp.id) > 0)
+  const empleadosFiltrados = busqueda.trim()
+    ? empleados.filter(e => e.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+    : empleados
 
   return (
     <div className="flex flex-col gap-5">
@@ -506,6 +510,20 @@ export default function SalariosPage() {
         </div>
       )}
 
+      {/* Buscador */}
+      {!cargando && empleados.length > 3 && (
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar empleado..."
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+          />
+        </div>
+      )}
+
       {/* Cards de empleados */}
       {cargando ? (
         <div className="flex justify-center py-16">
@@ -516,9 +534,14 @@ export default function SalariosPage() {
           <Users className="w-8 h-8 text-slate-300" />
           <p className="text-sm font-medium text-slate-500">Sin empleados registrados</p>
         </div>
+      ) : empleadosFiltrados.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 gap-2">
+          <Users className="w-7 h-7 text-slate-300" />
+          <p className="text-sm text-slate-400">Sin resultados para "{busqueda}"</p>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {empleados.map((emp) => {
+          {empleadosFiltrados.map((emp) => {
             const sal        = salarioDeEmp(emp.id)
             const pendiente  = pendienteDeEmp(emp.id)
             const diasHoy    = diasSemana[emp.id] ?? 0

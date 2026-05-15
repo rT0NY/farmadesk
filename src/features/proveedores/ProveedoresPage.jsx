@@ -2234,17 +2234,24 @@ export default function ProveedoresPage() {
     if (!empresa?.id) return
     setCargando(true)
     try {
+      let pedidosQ = supabase
+        .from('pedidos')
+        .select('*, proveedores(id,nombre,telefono,email,contacto), sucursales(nombre)')
+        .eq('empresa_id', empresa.id)
+        .order('created_at', { ascending: false })
+
+      if (filtroEstadoPed) pedidosQ = pedidosQ.eq('estado', filtroEstadoPed)
+      if (filtroProv)      pedidosQ = pedidosQ.eq('proveedor_id', filtroProv)
+      if (fechaDesde)      pedidosQ = pedidosQ.gte('created_at', fechaDesde + 'T00:00:00')
+      if (fechaHasta)      pedidosQ = pedidosQ.lte('created_at', fechaHasta + 'T23:59:59')
+
       const [{ data: provs, error: e1 }, { data: peds, error: e2 }, { data: prods }] = await Promise.all([
         supabase.from('proveedores')
           .select('*')
           .eq('empresa_id', empresa.id)
           .eq('activo', true)
           .order('nombre'),
-        supabase.from('pedidos')
-          .select('*, proveedores(id,nombre,telefono,email,contacto), sucursales(nombre)')
-          .eq('empresa_id', empresa.id)
-          .order('created_at', { ascending: false })
-          .limit(100),
+        pedidosQ,
         supabase.from('productos')
           .select('proveedor_id')
           .eq('empresa_id', empresa.id)
@@ -2265,7 +2272,7 @@ export default function ProveedoresPage() {
     } finally {
       setCargando(false)
     }
-  }, [empresa])
+  }, [empresa, filtroEstadoPed, filtroProv, fechaDesde, fechaHasta])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -2277,10 +2284,6 @@ export default function ProveedoresPage() {
     : proveedores
 
   const pedidosFiltrados = pedidos.filter(p => {
-    if (filtroProv      && p.proveedor_id !== filtroProv)                              return false
-    if (filtroEstadoPed && (p.estado ?? 'pendiente') !== filtroEstadoPed)              return false
-    if (fechaDesde && p.created_at.slice(0, 10) < fechaDesde)                         return false
-    if (fechaHasta && p.created_at.slice(0, 10) > fechaHasta)                         return false
     if (busquedaPed.trim()) {
       const q = busquedaPed.toLowerCase()
       return p.proveedores?.nombre?.toLowerCase().includes(q) ||
