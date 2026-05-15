@@ -106,13 +106,17 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     fetchData()
   }, [abierto, sucursales])
 
-  // Focus en el input del escáner cuando estamos en paso 1
+  // Focus en el input del escáner cuando estamos en paso 1 y ningún otro input está activo
   useEffect(() => {
     if (!abierto || paso !== 1) return
     const interval = setInterval(() => {
-      if (barcodeRef.current && !searchRef.current && !asociarRef.current) {
-        barcodeRef.current.focus()
-      }
+      if (!barcodeRef.current) return
+      const active = document.activeElement
+      const otroActivo = active && active !== barcodeRef.current && (
+        active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' ||
+        active.tagName === 'SELECT' || active.isContentEditable
+      )
+      if (!otroActivo) barcodeRef.current.focus()
     }, 300)
     return () => clearInterval(interval)
   }, [abierto, paso])
@@ -165,7 +169,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     setSucursalesHabilitadas(sucursales.filter(s => !deshabIds.has(s.id)))
   }
 
-  const normalizarCodigo = (s) => (s || '').trim().toUpperCase()
+  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F\x7F]/g, '').trim().toUpperCase()
 
   function procesarCodigoInventario(val, limpiar) {
     val = normalizarCodigo(val)
@@ -180,7 +184,8 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   }
 
   function handleBarcodeKey(e) {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter' && e.key !== 'Tab') return
+    if (e.key === 'Tab') e.preventDefault()
     procesarCodigoInventario(barcodeInput, () => setBarcodeInput(''))
   }
 

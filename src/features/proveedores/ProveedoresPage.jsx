@@ -852,13 +852,11 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   // { [id]: { estado, cantidad_recibida, precio_recibido, fecha_caducidad, expandido } }
   const [lineas, setLineas] = useState({})
   // Escáner de código de barras
-  const normalizarCodigo = (s) => (s || '').trim().toUpperCase()
-  const [scanInput,    setScanInput]    = useState('')
+  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F\x7F]/g, '').trim().toUpperCase()
   const [modalVincular,setModalVincular]= useState(null)  // { codigo }
   const [searchVinc,   setSearchVinc]  = useState('')
   const [guardandoVinc,setGuardandoVinc]= useState(false)
   const [busquedaItem, setBusquedaItem]= useState('')
-  const scanRef = useRef(null)
 
   const hoy      = fechaEnZona(tz)
   const unAnio   = addDias(hoy, 365)
@@ -1019,12 +1017,13 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   }
 
   const handleScanProducto = (e, it) => {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter' && e.key !== 'Tab') return
+    if (e.key === 'Tab') e.preventDefault()
     const val = (lineas[it.id]?.scanProd || '').trim()
     if (val) procesarScanProducto(it, val)
   }
 
-  // Debounce para escáneres sin Enter: dispara cuando scanProd lleva 300ms sin cambiar
+  // Debounce para escáneres sin Enter o con Tab: dispara cuando scanProd lleva 300ms sin cambiar
   useEffect(() => {
     const timers = []
     items.forEach(it => {
@@ -1049,37 +1048,6 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   }
 
   // Escáner: buscar el producto por código de barras
-  const procesarScan = (raw) => {
-    const codigo = normalizarCodigo(raw)
-    if (!codigo) return
-    setScanInput('')
-    const encontrado = items.find(it =>
-      it.productos?.codigos_barras?.some(cb => normalizarCodigo(cb.codigo) === codigo)
-    )
-    if (!encontrado) {
-      setModalVincular({ codigo })
-      setSearchVinc('')
-      return
-    }
-    const l = lineas[encontrado.id]
-    if (l?.estado === 'confirmado') { toast.success(`Ya confirmado: ${encontrado.nombre_producto}`); return }
-    setLineas(prev => ({ ...prev, [encontrado.id]: { ...prev[encontrado.id], estado: 'pendiente', expandido: true } }))
-    toast.success(`Encontrado: ${encontrado.nombre_producto}`)
-    document.getElementById(`cant-${encontrado.id}`)?.focus()
-  }
-
-  const handleScan = (e) => {
-    if (e.key !== 'Enter') return
-    procesarScan(scanInput)
-  }
-
-  useEffect(() => {
-    const val = scanInput.trim()
-    if (!val || val.length < 3) return
-    const t = setTimeout(() => procesarScan(val), 300)
-    return () => clearTimeout(t)
-  }, [scanInput])
-
   // Vincular código de barras desconocido a un producto del pedido
   const guardarVincular = async (it) => {
     if (!modalVincular?.codigo) return

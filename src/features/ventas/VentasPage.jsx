@@ -840,8 +840,8 @@ export default function VentasPage() {
     }
   }
 
-  // Normaliza el código para comparación (trim + mayúsculas)
-  const normalizarCodigo = (s) => (s || '').trim().toUpperCase()
+  // Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y convierte a mayúsculas
+  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F\x7F]/g, '').trim().toUpperCase()
 
   function procesarBarcode(val) {
     val = normalizarCodigo(val)
@@ -854,9 +854,10 @@ export default function VentasPage() {
     setBusqueda(val); buscarProducto(val); setBarcodeInput('')
   }
 
-  // Enter inmediato (escáneres que lo mandan)
+  // Enter o Tab inmediato (escáneres configurados con cualquier sufijo)
   function handleBarcode(e) {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter' && e.key !== 'Tab') return
+    if (e.key === 'Tab') e.preventDefault()
     procesarBarcode(barcodeInput)
   }
 
