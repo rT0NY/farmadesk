@@ -287,6 +287,19 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
     if (!form.tipo) { toast.error('Selecciona un tipo de oferta'); return }
     if (form.dias_semana.length === 0) { toast.error('Selecciona al menos un día'); return }
 
+    if (form.tipo === 'descuento_porcentaje') {
+      const pct = Number(form.valor)
+      if (pct <= 0) { toast.error('El porcentaje debe ser mayor a 0'); return }
+      if (pct > 100) { toast.error('El descuento no puede superar el 100%'); return }
+    }
+    if (form.tipo === 'nxm') {
+      const n = Number(form.n_compra)
+      const m = Number(form.m_paga)
+      if (n < 2) { toast.error('El cliente debe comprar al menos 2 unidades'); return }
+      if (m < 1) { toast.error('El cliente debe pagar al menos 1 unidad'); return }
+      if (m >= n) { toast.error(`El cliente paga (${m}) debe ser menor a lo que compra (${n})`); return }
+    }
+
     if (form.alcance === 'producto') {
       const { data: existente } = await supabase.from('ofertas').select('id, nombre')
         .eq('producto_id', form.producto_id).eq('activa', true)
@@ -343,13 +356,19 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
   function puedeAvanzar() {
     if (paso === 1) return !!form.tipo
     if (paso === 2) {
+      if (form.tipo === 'nxm') {
+        const n = Number(form.n_compra), m = Number(form.m_paga)
+        if (n < 2 || m < 1 || m >= n) return false
+      }
       if (!form.esCruzada) {
         if (form.alcance === 'producto' && !form.producto_id) return false
         if (form.alcance === 'categoria' && !form.categoria) return false
         if (form.tipo !== 'nxm' && (!form.valor || Number(form.valor) <= 0)) return false
+        if (form.tipo === 'descuento_porcentaje' && Number(form.valor) > 100) return false
       } else {
         if (!form.producto_trigger_id || !form.producto_id) return false
         if (!form.valor || Number(form.valor) <= 0) return false
+        if (form.tipo === 'descuento_porcentaje' && Number(form.valor) > 100) return false
         if (form.producto_trigger_id === form.producto_id) return false
       }
       return true
@@ -559,13 +578,13 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1 block">El cliente compra (N)</label>
-                      <input type="number" min="2" value={form.n_compra}
+                      <input type="number" min="2" max="999" value={form.n_compra}
                         onChange={e => setForm(f => ({ ...f, n_compra: e.target.value }))}
                         className="w-full h-11 px-3 text-center text-lg font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/30" />
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1 block">El cliente paga (M)</label>
-                      <input type="number" min="1" value={form.m_paga}
+                      <input type="number" min="1" max={Math.max(1, Number(form.n_compra) - 1) || 1} value={form.m_paga}
                         onChange={e => setForm(f => ({ ...f, m_paga: e.target.value }))}
                         className="w-full h-11 px-3 text-center text-lg font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/30" />
                     </div>
@@ -576,6 +595,7 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
                       : form.tipo === 'descuento_monto' ? 'Monto a descontar *'
                       : 'Precio fijo de venta *'}
                     type="number" step="0.01" min="0"
+                    max={form.tipo === 'descuento_porcentaje' ? '100' : undefined}
                     iconoIzq={form.tipo === 'descuento_porcentaje' ? <Percent className="w-5 h-5" /> : <DollarSign className="w-5 h-5" />}
                     value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))}
                     placeholder={form.tipo === 'descuento_porcentaje' ? '20' : '50.00'}
