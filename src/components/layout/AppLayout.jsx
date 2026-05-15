@@ -6,11 +6,24 @@ import { useRealtimeAlertas } from '@/components/ui/NotificacionesPanel'
 import BuscadorGlobal, { useBuscadorGlobal } from '@/components/ui/BuscadorGlobal'
 import { useActualizacion } from '@/hooks/useActualizacion'
 import { useElectronUpdater } from '@/hooks/useElectronUpdater'
-import { RefreshCw, Download, X, Check } from 'lucide-react'
+import { useConexion } from '@/hooks/useConexion'
+import { RefreshCw, Download, X, Check, WifiOff } from 'lucide-react'
 
 function RealtimeWatcher() {
   useRealtimeAlertas(useCallback(() => {}, []))
   return null
+}
+
+// Banner de sin conexión — aparece en toda la app cuando se pierde el internet
+function BannerSinConexion() {
+  const { online } = useConexion()
+  if (online) return null
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[300] flex items-center justify-center gap-2.5 bg-red-600 text-white px-4 py-2.5 text-sm font-semibold shadow-lg">
+      <WifiOff className="w-4 h-4 flex-shrink-0" />
+      Sin conexión a internet — los cambios no se guardarán hasta reconectarte
+    </div>
+  )
 }
 
 // Banner para actualizaciones en Electron (con progreso de descarga)
@@ -115,9 +128,12 @@ export default function AppLayout({ children }) {
     })
   }
 
+  const { online } = useConexion()
+
   return (
     <div className="min-h-screen bg-slate-50">
       <RealtimeWatcher />
+      <BannerSinConexion />
       <BannerElectron />
       <BannerWeb />
       {!isMobile && <Sidebar abierto={abierto} onToggle={toggle} />}
@@ -130,7 +146,7 @@ export default function AppLayout({ children }) {
           paddingBottom: isMobile ? '88px' : 0,
         }}
       >
-        <main className={isMobile ? 'px-3 pt-4 pb-4' : 'px-6 pt-6 pb-8'}>
+        <main className={isMobile ? 'px-3 pt-4 pb-4' : 'px-6 pt-6 pb-8'} style={!online ? { paddingTop: isMobile ? '52px' : '60px' } : {}}>
           {children}
         </main>
       </div>
