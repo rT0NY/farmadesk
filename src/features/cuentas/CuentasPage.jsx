@@ -47,8 +47,10 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
 
     setGuardando(true)
     try {
-      const nuevoAbonado = cuenta.abonado + abono
-      const pagada = nuevoAbonado >= cuenta.total - 0.001
+      // Redondear a centavos para evitar errores de punto flotante (ej: 99.9 + 0.1 = 100.00000000000001)
+      const round2 = (n) => Math.round(n * 100) / 100
+      const nuevoAbonado = round2(cuenta.abonado + abono)
+      const pagada = nuevoAbonado >= round2(cuenta.total)
 
       const { error } = await supabase
         .from('cuentas_pendientes')

@@ -369,6 +369,7 @@ export default function EmpleadosPage() {
   const [modalInvitar,     setModalInvitar]     = useState(false)
   const [modalEditar,      setModalEditar]      = useState(null)
   const [confirmarToggle,  setConfirmarToggle]  = useState(null) // { emp, nuevo }
+  const [procesandoToggle, setProcesandoToggle] = useState(false)
 
   const cargar = useCallback(async () => {
     if (!empresa?.id) return
@@ -403,6 +404,7 @@ export default function EmpleadosPage() {
 
   const toggleActivo = async (emp) => {
     const nuevo = !emp.activo
+    setProcesandoToggle(true)
     try {
       const { error } = await supabase.functions.invoke('toggle-empleado', {
         body: { user_id: emp.id, activo: nuevo },
@@ -412,6 +414,8 @@ export default function EmpleadosPage() {
       cargar()
     } catch (e) {
       toast.error(e.message ?? 'Error al actualizar empleado')
+    } finally {
+      setProcesandoToggle(false)
     }
   }
 
@@ -584,11 +588,12 @@ export default function EmpleadosPage() {
                 : `¿Desactivar la cuenta de ${confirmarToggle.emp.nombre}? No podrá iniciar sesión.`}
             </p>
             <div className="flex gap-2">
-              <Button variante="secundario" className="flex-1" onClick={() => setConfirmarToggle(null)}>
+              <Button variante="secundario" className="flex-1" disabled={procesandoToggle} onClick={() => setConfirmarToggle(null)}>
                 Cancelar
               </Button>
               <Button
                 className={cn('flex-1 text-white', confirmarToggle.nuevo ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700')}
+                cargando={procesandoToggle}
                 onClick={() => { toggleActivo(confirmarToggle.emp); setConfirmarToggle(null) }}
               >
                 {confirmarToggle.nuevo ? 'Activar' : 'Desactivar'}

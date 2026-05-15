@@ -134,9 +134,10 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
       if (origenId && stockOrigen === 0) e.origen = 'Sin stock en esta sucursal para este lote'
     }
     if (p === 4) {
-      const cant = Number(cantidad)
-      if (!cantidad || isNaN(cant) || cant <= 0) e.cantidad = 'Ingresa una cantidad válida'
-      else if (cant > stockOrigen)               e.cantidad = `Máximo disponible: ${stockOrigen} uds`
+      const cant = parseInt(cantidad, 10)
+      if (!cantidad || isNaN(cant) || cant <= 0)           e.cantidad = 'Ingresa una cantidad mayor a cero'
+      else if (String(cant) !== String(Number(cantidad)))  e.cantidad = 'Solo se aceptan cantidades enteras'
+      else if (cant > stockOrigen)                         e.cantidad = `Máximo disponible: ${stockOrigen} uds`
     }
     setErrores(e)
     return Object.keys(e).length === 0
@@ -467,7 +468,7 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
                         className="w-12 h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xl font-bold transition-colors flex items-center justify-center flex-shrink-0"
                       >−</button>
                       <input
-                        type="number" min="1" max={stockOrigen} value={cantidad}
+                        type="number" min="1" max={stockOrigen} step="1" value={cantidad}
                         onChange={(e) => { setCantidad(e.target.value); setErrores((er) => ({ ...er, cantidad: '' })) }}
                         placeholder="0"
                         className={cn(
@@ -481,9 +482,9 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
                       >+</button>
                     </div>
                     {errores.cantidad && <p className="text-xs text-red-500">{errores.cantidad}</p>}
-                    {Number(cantidad) > 0 && Number(cantidad) <= stockOrigen && (
+                    {parseInt(cantidad, 10) > 0 && parseInt(cantidad, 10) <= stockOrigen && (
                       <p className="text-xs text-slate-400">
-                        Quedará en origen: <strong className="text-slate-600">{stockOrigen - Number(cantidad)} uds</strong>
+                        Quedará en origen: <strong className="text-slate-600">{stockOrigen - parseInt(cantidad, 10)} uds</strong>
                       </p>
                     )}
                   </div>
