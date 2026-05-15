@@ -15,8 +15,7 @@ function RealtimeWatcher() {
 }
 
 // Banner de sin conexión — aparece en toda la app cuando se pierde el internet
-function BannerSinConexion() {
-  const { online } = useConexion()
+function BannerSinConexion({ online }) {
   if (online) return null
   return (
     <div className="fixed top-0 left-0 right-0 z-[300] flex items-center justify-center gap-2.5 bg-red-600 text-white px-4 py-2.5 text-sm font-semibold shadow-lg">
@@ -128,12 +127,15 @@ export default function AppLayout({ children }) {
     })
   }
 
-  const { online } = useConexion()
+  // Una sola instancia del hook para todo el layout — evita pings duplicados a Supabase
+  const { online, latencia } = useConexion()
+  // Sin internet real: o el SO reporta offline, o está "conectado" pero Supabase no responde
+  const sinInternet = !online || (online && latencia === null && navigator.onLine === false)
 
   return (
     <div className="min-h-screen bg-slate-50">
       <RealtimeWatcher />
-      <BannerSinConexion />
+      <BannerSinConexion online={online} />
       <BannerElectron />
       <BannerWeb />
       {!isMobile && <Sidebar abierto={abierto} onToggle={toggle} />}
@@ -146,7 +148,7 @@ export default function AppLayout({ children }) {
           paddingBottom: isMobile ? '88px' : 0,
         }}
       >
-        <main className={isMobile ? 'px-3 pt-4 pb-4' : 'px-6 pt-6 pb-8'} style={!online ? { paddingTop: isMobile ? '52px' : '60px' } : {}}>
+        <main className={isMobile ? 'px-3 pt-4 pb-4' : 'px-6 pt-6 pb-8'} style={sinInternet ? { paddingTop: isMobile ? '52px' : '60px' } : {}}>
           {children}
         </main>
       </div>

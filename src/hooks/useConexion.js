@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 // Mide latencia haciendo un query ligero a Supabase
+// Retorna ms si hay conexión real, null si falla (incluye "conectado al router sin internet")
 async function medirLatencia() {
   const t0 = performance.now()
   try {
-    await supabase.from('sucursales').select('id').limit(1)
+    const { error } = await supabase.from('sucursales').select('id').limit(1)
+    if (error) return null
     return Math.round(performance.now() - t0)
   } catch {
     return null
