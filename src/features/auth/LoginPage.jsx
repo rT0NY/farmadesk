@@ -175,7 +175,7 @@ export default function LoginPage() {
                     setMostrarSugs(true)
                   }}
                   onBlur={() => setTimeout(() => setMostrarSugs(false), 150)}
-                  placeholder="tu@farmacia.com"
+                  placeholder="ejemplo@farmacia.com"
                   autoComplete="off"
                   required
                   disabled={cargando}
