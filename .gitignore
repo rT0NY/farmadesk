@@ -34,5 +34,6 @@ release/
 # Scripts locales con credenciales — nunca subir
 build-electron.ps1
 instalar-farmadesk.ps1
+instalar-farmadesk.bat
 *.pfx
 *.cer
