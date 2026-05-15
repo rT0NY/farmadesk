@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import {
-  TrendingUp, TrendingDown, Users, Receipt, ShoppingCart, Package, Download,
+  TrendingUp, TrendingDown, Users, Receipt, ShoppingCart, Package, Download, Calendar,
 } from 'lucide-react'
 import {
   ResponsiveContainer, AreaChart, Area,
@@ -130,10 +131,10 @@ export default function ReportesPage() {
     const run = async () => {
     try {
       const [
-        { data: ventas },
-        { data: gastos },
-        { data: semanas },
-        { data: perfilesData },
+        { data: ventas,      error: e1 },
+        { data: gastos,      error: e2 },
+        { data: semanas,     error: e3 },
+        { data: perfilesData,error: e4 },
       ] = await Promise.all([
         supabase.from('ventas')
           .select('id, total, creado_en, sucursal_id')
@@ -153,6 +154,9 @@ export default function ReportesPage() {
           .select('id, nombre, sucursal_id')
           .eq('empresa_id', empresa.id),
       ])
+
+      if (e1 || e2 || e4) toast.error('Error al cargar datos del reporte. Algunos números pueden estar incompletos.')
+      if (e3) toast.warning('No se pudieron cargar los salarios. Los costos de nómina no estarán incluidos.')
 
       // Mapa de perfil por usuario_id
       const perfilMap = {}
@@ -388,7 +392,7 @@ export default function ReportesPage() {
         numVentas: (ventas ?? []).length,
       })
     } catch (e) {
-      console.error(e)
+      toast.error('Error inesperado al generar el reporte.')
     } finally {
       if (activo) setCargando(false)
     }
@@ -603,6 +607,14 @@ export default function ReportesPage() {
       {cargando ? (
         <div className="flex justify-center py-20">
           <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+        </div>
+      ) : periodo === 'custom' && (!fechaInicio || !fechaFin) ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+            <Calendar className="w-6 h-6 text-slate-400" />
+          </div>
+          <p className="text-sm font-semibold text-slate-600">Selecciona el rango de fechas</p>
+          <p className="text-xs text-slate-400">Elige una fecha de inicio y una fecha de fin para ver el reporte.</p>
         </div>
       ) : datos && (
         <>

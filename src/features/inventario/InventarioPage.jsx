@@ -4,6 +4,7 @@ import {
   X, Clock, Filter, ChevronDown, Check, Package, Eye,
   PackageCheck, PackageX, Timer, CalendarX, Store,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
@@ -178,6 +179,7 @@ export default function InventarioPage() {
   const [lotesCaducidad, setLotesCaducidad] = useState([])
   const [cargando, setCargando] = useState(true)
   const [cargandoCad, setCargandoCad] = useState(false)
+  const [errorCarga, setErrorCarga] = useState(null)
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroOtrasSuc, setFiltroOtrasSuc] = useState(false)
@@ -187,6 +189,7 @@ export default function InventarioPage() {
 
   const cargar = async () => {
     setCargando(true)
+    setErrorCarga(null)
     try {
       const { data, error } = await supabase.rpc('inventario_completo', {
         p_solo_con_stock: false,
@@ -195,7 +198,8 @@ export default function InventarioPage() {
       if (error) throw error
       setDatos(data || [])
     } catch (err) {
-      console.error('Error cargando inventario:', err)
+      setErrorCarga(err.message ?? 'Error al cargar inventario')
+      toast.error('No se pudo cargar el inventario. Verifica la conexión.')
     } finally {
       setCargando(false)
     }
@@ -223,7 +227,7 @@ export default function InventarioPage() {
 
       setLotesCaducidad(lotes.map(l => ({ ...l, cantidad: cantMap[l.id] || 0 })).filter(l => l.cantidad > 0))
     } catch (err) {
-      console.error(err)
+      toast.error('No se pudieron cargar las caducidades.')
     } finally {
       setCargandoCad(false)
     }
@@ -438,10 +442,26 @@ export default function InventarioPage() {
         </div>
       ) : filtradosConOtrasSuc.length === 0 ? (
         <EmptyState
-          icono={Archive}
-          titulo={datos.length === 0 ? 'Sin productos' : filtroOtrasSuc ? 'Ningún producto disponible en otras farmacias' : 'Sin resultados'}
-          descripcion={datos.length === 0 ? 'Crea productos primero y luego agrega stock.' : filtroOtrasSuc ? 'Todos los productos que buscas están disponibles en tu sucursal.' : 'Ajusta los filtros o la búsqueda.'}
-          accion={hayFiltros ? <Button variante="secundario" onClick={() => { setBusqueda(''); setCategoriaSel(''); setFiltroEstado('todos'); setFiltroOtrasSuc(false) }} iconoIzq={<X className="w-4 h-4" />}>Limpiar filtros</Button> : null}
+          icono={errorCarga ? AlertTriangle : Archive}
+          titulo={
+            errorCarga                ? 'Error al cargar inventario'
+            : datos.length === 0     ? 'Sin productos'
+            : filtroOtrasSuc         ? 'Ningún producto disponible en otras farmacias'
+            :                          'Sin resultados'
+          }
+          descripcion={
+            errorCarga                ? 'No se pudo conectar. Verifica tu conexión e intenta de nuevo.'
+            : datos.length === 0     ? 'Crea productos primero y luego agrega stock.'
+            : filtroOtrasSuc         ? 'Todos los productos que buscas están disponibles en tu sucursal.'
+            :                          'Ajusta los filtros o la búsqueda.'
+          }
+          accion={
+            errorCarga
+              ? <Button variante="secundario" onClick={cargar} iconoIzq={<RefreshCw className="w-4 h-4" />}>Reintentar</Button>
+              : hayFiltros
+                ? <Button variante="secundario" onClick={() => { setBusqueda(''); setCategoriaSel(''); setFiltroEstado('todos'); setFiltroOtrasSuc(false) }} iconoIzq={<X className="w-4 h-4" />}>Limpiar filtros</Button>
+                : null
+          }
         />
       ) : (
         <div className="bg-white border border-slate-200/70 rounded-3xl overflow-hidden shadow-sm">
