@@ -111,9 +111,16 @@ export default function BitacoraPage() {
   const POR_PAGINA = 50
 
   const [busqueda,    setBusqueda]    = useState('')
+  const [busquedaDB,  setBusquedaDB]  = useState('')
   const [fechaFiltro, setFechaFiltro] = useState('')
   const [tipoFiltro,  setTipoFiltro]  = useState('')
   const [sucFiltro,   setSucFiltro]   = useState('')
+
+  // Debounce: espera 400ms sin escribir antes de lanzar la query
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaDB(busqueda.trim()), 400)
+    return () => clearTimeout(t)
+  }, [busqueda])
 
   const cargar = useCallback(async (pg = 0) => {
     if (!empresa?.id) return
@@ -126,6 +133,7 @@ export default function BitacoraPage() {
         .order('creado_en', { ascending: false })
         .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1)
 
+      if (busquedaDB) q = q.ilike('descripcion', `%${busquedaDB}%`)
       if (fechaFiltro) {
         q = q.gte('creado_en', fechaFiltro + 'T00:00:00+00:00')
              .lte('creado_en', fechaFiltro + 'T23:59:59+00:00')
@@ -143,27 +151,12 @@ export default function BitacoraPage() {
     } finally {
       setCargando(false)
     }
-  }, [empresa, fechaFiltro, tipoFiltro, sucFiltro])
+  }, [empresa, busquedaDB, fechaFiltro, tipoFiltro, sucFiltro])
 
   useEffect(() => { cargar(0) }, [cargar])
 
-  const filtrados = busqueda.trim()
-    ? registros.filter(r =>
-        r.descripcion?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        r.perfiles?.nombre?.toLowerCase().includes(busqueda.toLowerCase()))
-    : registros
+  const hayFiltros = busqueda.trim() || fechaFiltro || tipoFiltro || sucFiltro
 
-  const hayFiltros = fechaFiltro || tipoFiltro || sucFiltro
-
-  // Agrupar por día
-  const grupos = filtrados.reduce((acc, r) => {
-    const dia = new Date(r.creado_en).toLocaleDateString('es-MX', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-    })
-    if (!acc[dia]) acc[dia] = []
-    acc[dia].push(r)
-    return acc
-  }, {})
 
   return (
     <div className="flex flex-col gap-5">
@@ -234,7 +227,7 @@ export default function BitacoraPage() {
         <div className="flex justify-center py-16">
           <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
         </div>
-      ) : filtrados.length === 0 ? (
+      ) : registros.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <History className="w-8 h-8 text-slate-300" />
           <p className="text-sm font-medium text-slate-500">Sin registros</p>
@@ -242,7 +235,14 @@ export default function BitacoraPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {Object.entries(grupos).map(([dia, items]) => (
+          {Object.entries(registros.reduce((acc, r) => {
+            const dia = new Date(r.creado_en).toLocaleDateString('es-MX', {
+              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+            })
+            if (!acc[dia]) acc[dia] = []
+            acc[dia].push(r)
+            return acc
+          }, {})).map(([dia, items]) => (
             <div key={dia}>
               {/* Separador de día */}
               <div className="flex items-center gap-3 mb-3">
