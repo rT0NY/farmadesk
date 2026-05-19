@@ -407,7 +407,7 @@ export default function DetalleEmpresaPage() {
         variante: 'danger',
         onConfirmar: async () => {
           setConfirmar(null)
-          const { error } = await supabase.rpc('eliminar_empresa', { p_empresa_id: id })
+          const { error } = await supabase.rpc('eliminar_empresa_completo', { p_empresa_id: id })
           if (error) return toast.error(error.message)
           toast.success('Empresa eliminada')
           navigate('/super')
