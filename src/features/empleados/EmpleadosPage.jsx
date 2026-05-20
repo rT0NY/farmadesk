@@ -56,7 +56,15 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
       )
       onGuardado()
     } catch (e) {
-      toast.error(e.message ?? 'Error al registrar empleado')
+      const msg = e.message ?? ''
+      if (msg.toLowerCase().includes('already registered') ||
+          msg.toLowerCase().includes('already in use') ||
+          msg.toLowerCase().includes('duplicate') ||
+          msg.toLowerCase().includes('already exists')) {
+        toast.error('Este correo ya está registrado, utiliza otro')
+      } else {
+        toast.error(msg || 'Error al registrar empleado')
+      }
     } finally {
       setGuardando(false)
     }
