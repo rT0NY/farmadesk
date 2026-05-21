@@ -73,6 +73,21 @@ export function AppProvider({ children }) {
         .select('*')
         .eq('id', perfilData.empresa_id)
         .maybeSingle()
+
+      // Si la empresa no existe o no está activa, cerrar sesión con mensaje claro
+      if (!empresaData || empresaData.estado === 'eliminada') {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
+        toast.error('Tu empresa no está disponible. Contacta al proveedor de Farmadesk.', { duration: 8000 })
+        await supabase.auth.signOut()
+        return
+      }
+      if (empresaData.estado === 'suspendida') {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
+        toast.error('Esta empresa ha sido suspendida. Contacta al proveedor de Farmadesk para reactivarla.', { duration: 8000 })
+        await supabase.auth.signOut()
+        return
+      }
+
       setEmpresa(empresaData)
 
       const { data: sucursalesData } = await supabase

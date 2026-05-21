@@ -58,7 +58,13 @@ export function AuthProvider({ children }) {
         }
 
         if (evento === 'SIGNED_OUT' && !cierreIntencional.current) {
-          toast.error('Tu sesión expiró. Inicia sesión de nuevo.', { duration: 6000 })
+          // Si el cierre vino del login (suspensión, cuenta inactiva, etc.)
+          // no mostrar "sesión expiró" — el LoginPage ya mostró el mensaje correcto
+          const salidaLogin = sessionStorage.getItem('farmadesk_salida_login')
+          if (!salidaLogin) {
+            toast.error('Tu sesión expiró. Inicia sesión de nuevo.', { duration: 6000 })
+          }
+          sessionStorage.removeItem('farmadesk_salida_login')
           sessionStorage.removeItem('farmadesk_sucursal_rotativo')
         }
         cierreIntencional.current = false

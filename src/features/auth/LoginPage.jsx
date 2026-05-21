@@ -78,12 +78,14 @@ export default function LoginPage() {
         .maybeSingle()
 
       if (!perfilData) {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
         toast.error('Tu cuenta no tiene perfil configurado. Contacta al proveedor.')
         return
       }
 
       if (!perfilData.activo) {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
         toast.error('Tu cuenta está inactiva. Contacta al administrador.')
         return
@@ -99,6 +101,7 @@ export default function LoginPage() {
 
       // Usuarios normales: verificar que su empresa esté activa
       if (!perfilData.empresa_id) {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
         toast.error('Tu cuenta no está asignada a una empresa. Contacta al administrador.')
         return
@@ -111,15 +114,17 @@ export default function LoginPage() {
         .maybeSingle()
 
       if (!empresaData || empresaData.estado === 'eliminada') {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
         toast.error('Tu empresa no está disponible. Contacta al proveedor de Farmadesk.')
         return
       }
 
       if (empresaData.estado === 'suspendida') {
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
-        toast.error('Tu empresa está suspendida. Contacta al proveedor de Farmadesk para reactivarla.', {
-          duration: 6000,
+        toast.error('Esta empresa ha sido suspendida. Contacta al proveedor de Farmadesk para reactivarla.', {
+          duration: 8000,
         })
         return
       }
