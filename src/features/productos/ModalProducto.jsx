@@ -255,8 +255,8 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
     const pc = Number(form.precio_compra) || 0
     const pv = Number(form.precio_venta) || 0
     if (pm <= 0) return null
-    if (pc > 0 && pm <= pc)  return { ok: false, msg: `El precio de mayoreo (${formatoMoneda(pm)}) no puede ser menor o igual al precio de compra (${formatoMoneda(pc)}). Estarías vendiendo a pérdida.` }
-    if (pv > 0 && pm >= pv)  return { ok: false, msg: `El precio de mayoreo (${formatoMoneda(pm)}) debe ser menor al precio de venta al público (${formatoMoneda(pv)}). Si no, no tendría sentido el descuento por mayoreo.` }
+    if (pc > 0 && pm <= pc)  return { ok: false, msg: `El precio de mayoreo debe ser mayor al costo de compra (${formatoMoneda(pc)})` }
+    if (pv > 0 && pm >= pv)  return { ok: false, msg: `El precio de mayoreo debe ser menor al precio de venta al público (${formatoMoneda(pv)})` }
     if (pv > 0) {
       const desc = ((pv - pm) / pv * 100).toFixed(1)
       return { ok: true, msg: `${desc}% de descuento sobre precio público${pc > 0 ? ` · ganancia: ${formatoMoneda(pm - pc)} por unidad` : ''}` }
