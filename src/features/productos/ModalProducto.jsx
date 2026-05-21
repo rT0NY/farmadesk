@@ -652,6 +652,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                   value={form.cantidad_mayoreo}
                   onChange={cambiarCampo('cantidad_mayoreo')}
                   placeholder="ej. 5"
+                  error={form.precio_mayoreo && !form.cantidad_mayoreo ? 'Ingresa la cantidad mínima para aplicar el precio de mayoreo' : ''}
                 />
                 <Input
                   label="Stock mínimo *"
@@ -676,12 +677,6 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                   {analisisMayoreo.msg}
                 </div>
               )}
-              {form.precio_mayoreo && !form.cantidad_mayoreo && analisisMayoreo?.ok && (
-                <p className="text-[11px] text-amber-600 -mt-1">
-                  Sin cantidad mínima configurada — el mayoreo se activará manualmente en la venta.
-                </p>
-              )}
-
               {/* Disponibilidad por sucursal — cuando hay múltiples sucursales */}
               {sucursales.length > 1 && Object.keys(disponibilidad).length > 0 && (
                 <div className="flex flex-col gap-2">
