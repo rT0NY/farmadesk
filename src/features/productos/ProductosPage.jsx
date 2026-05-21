@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import {
   Plus, Search, Package, Filter, RefreshCw, Archive,
   AlertTriangle, ChevronDown, X, Check, CircleCheck,
-  ShoppingBag, Wallet, Upload,
+  ShoppingBag, Wallet,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatoMoneda } from '@/lib/formatos'
@@ -13,7 +13,6 @@ import { Table } from '@/components/ui/Table'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/clases'
 import ModalProducto from './ModalProducto'
-import ModalImportarCSV from './ModalImportarCSV'
 import FilaProducto from './FilaProducto'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 
@@ -69,7 +68,6 @@ export default function ProductosPage() {
   const esCajero = perfil?.rol === 'cajero'
   const [productos, setProductos] = useState([])
   const [cargando, setCargando] = useState(true)
-  const [modalCSV, setModalCSV] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('activos')
   const [categoriaSel, setCategoriaSel] = useState('')
@@ -184,11 +182,7 @@ export default function ProductosPage() {
         <div className="flex gap-2">
           {!esCajero && (
             <>
-              <Button variante="secundario" onClick={() => setModalCSV(true)} iconoIzq={<Upload className="w-4 h-4" />}>
-                <span className="hidden sm:inline">Importar CSV</span>
-                <span className="sm:hidden">CSV</span>
-              </Button>
-              <Button onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
+<Button onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
                 <span className="hidden sm:inline">Nuevo producto</span>
                 <span className="sm:hidden">Nuevo</span>
               </Button>
@@ -479,13 +473,6 @@ export default function ProductosPage() {
         onExito={cargar}
         productoEditar={productoEditar}
       />
-
-      {modalCSV && (
-        <ModalImportarCSV
-          onClose={() => setModalCSV(false)}
-          onExito={cargar}
-        />
-      )}
 
     </div>
   )
