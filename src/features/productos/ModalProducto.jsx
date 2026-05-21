@@ -546,6 +546,14 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                 autoFocus
               />
 
+              <Chips
+                label="Códigos de barras"
+                iconoChip={<Barcode className="w-3 h-3" />}
+                valores={form.codigos}
+                onChange={(c) => setForm(v => ({ ...v, codigos: c }))}
+                placeholder="Escanear o escribir y Enter"
+              />
+
               <Select
                 label="Categoría *"
                 iconoIzq={<Tag className="w-5 h-5" />}
@@ -673,14 +681,6 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                   Sin cantidad mínima configurada — el mayoreo se activará manualmente en la venta.
                 </p>
               )}
-
-              <Chips
-                label="Códigos de barras"
-                iconoChip={<Barcode className="w-3 h-3" />}
-                valores={form.codigos}
-                onChange={(c) => setForm(v => ({ ...v, codigos: c }))}
-                placeholder="Escanear o escribir y Enter"
-              />
 
               {/* Disponibilidad por sucursal — cuando hay múltiples sucursales */}
               {sucursales.length > 1 && Object.keys(disponibilidad).length > 0 && (
