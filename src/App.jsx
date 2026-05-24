@@ -100,7 +100,7 @@ export default function App() {
       <Route path="/productos" element={<RutaNormal roles={['admin','encargado']}><ProductosPage /></RutaNormal>} />
       <Route path="/inventario" element={<RutaNormal roles={['admin','encargado','cajero']}><InventarioPage /></RutaNormal>} />
       <Route path="/historial-inventario" element={<RutaNormal roles={['admin','encargado']}><HistorialInventarioPage /></RutaNormal>} />
-      <Route path="/caducidades" element={<RutaNormal roles={['admin','encargado']}><CaducidadesPage /></RutaNormal>} />
+      <Route path="/caducidades" element={<RutaNormal roles={['admin','encargado','cajero']}><CaducidadesPage /></RutaNormal>} />
       <Route path="/ofertas" element={<RutaNormal roles={['admin','encargado']}><OfertasPage /></RutaNormal>} />
 <Route path="/transferencias" element={<RutaNormal roles={['admin','encargado']}><TransferenciasPage /></RutaNormal>} />
 

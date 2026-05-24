@@ -114,7 +114,12 @@ function SeccionGrupo({ titulo, lotes, color, Icono, sucursales, hoy }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CaducidadesPage() {
-  const { empresa, sucursales, tz } = useApp()
+  const { empresa, sucursales, tz, perfil, sucursalActiva, turnoActivo } = useApp()
+
+  const esCajero     = perfil?.rol === 'cajero'
+  const sucursalPropia = esCajero
+    ? (sucursalActiva ?? sucursales.find(s => s.id === perfil?.sucursal_id) ?? null)
+    : null
 
   const [lotes,       setLotes]       = useState([])
   const [cargando,    setCargando]    = useState(true)
@@ -150,7 +155,6 @@ export default function CaducidadesPage() {
       const stockMap = {}
       ;(inv || []).forEach(i => {
         if (!stockMap[i.lote_id]) stockMap[i.lote_id] = { total: 0 }
-        // Solo mapear por sucursal si tiene id válido (evita key null que rompe la visualización)
         if (i.sucursal_id) {
           stockMap[i.lote_id][i.sucursal_id] = (stockMap[i.lote_id][i.sucursal_id] || 0) + Number(i.cantidad || 0)
         }
@@ -171,11 +175,30 @@ export default function CaducidadesPage() {
 
   useEffect(() => { cargar() }, [cargar])
 
+  // Cajero sin turno activo → pedir que abra turno
+  if (esCajero && !turnoActivo) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center">
+          <Clock className="w-8 h-8 text-amber-600" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Abre tu turno primero</h2>
+          <p className="text-sm text-slate-500 mt-1 max-w-xs">
+            Para ver las caducidades necesitas tener un turno activo. Ve a Ventas y abre tu caja.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const hoy  = fechaEnZona(tz)
   const en30 = addDias(hoy, 30)
 
   const filtrados = lotes.filter(l => {
-    if (sucFiltro && !(l.stock[sucFiltro] > 0)) return false
+    // Cajero: solo ver lotes con stock en su sucursal
+    if (esCajero && sucursalPropia && !(l.stock[sucursalPropia.id] > 0)) return false
+    if (!esCajero && sucFiltro && !(l.stock[sucFiltro] > 0)) return false
     if (catFiltro && l.productos?.categoria !== catFiltro) return false
     return true
   })
@@ -248,8 +271,8 @@ export default function CaducidadesPage() {
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
         </div>
 
-        {/* Sucursal */}
-        {sucursales.length > 1 && (
+        {/* Sucursal — oculto para cajero (solo ve la suya) */}
+        {!esCajero && sucursales.length > 1 && (
           <div className="relative">
             <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             <select value={sucFiltro} onChange={e => setSucFiltro(e.target.value)}
@@ -258,6 +281,13 @@ export default function CaducidadesPage() {
               {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          </div>
+        )}
+        {/* Cajero: indicador de sucursal fija */}
+        {esCajero && sucursalPropia && (
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-2xl text-sm text-slate-600">
+            <Store className="w-3.5 h-3.5 text-slate-400" />
+            {sucursalPropia.nombre}
           </div>
         )}
 

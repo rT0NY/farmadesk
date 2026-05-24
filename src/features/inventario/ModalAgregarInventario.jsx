@@ -49,7 +49,7 @@ function PasoIndicador({ pasos, actual }) {
 }
 
 export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
-  const { sucursales, empresa, tz, perfil } = useApp()
+  const { sucursales, sucursalActiva, empresa, tz, perfil } = useApp()
 
   // Estado principal
   const [paso, setPaso] = useState(1)
@@ -67,6 +67,9 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   // Paso 3 — Cantidades
   const [cantidades, setCantidades] = useState({})
   const [sucursalesHabilitadas, setSucursalesHabilitadas] = useState([])
+
+  // Contador de escaneos — cada scan del mismo producto suma 1
+  const [scanCount, setScanCount] = useState(0)
 
   // Escáner / código de barras
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -99,6 +102,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     setModalAsociar(null)
     setSearchAsociar('')
     setBarcodeInput('')
+    setScanCount(0)
     const init = {}
     sucursales.forEach(s => { init[s.id] = '' })
     setCantidades(init)
@@ -165,6 +169,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
 
   async function seleccionarProducto(prod) {
     setProductoSel(prod)
+    setScanCount(0)  // se sobreescribirá a 1 si viene de un scan
     setErrors({})
     const lots = lotes.filter(l => l.producto_id === prod.id)
     if (lots.length > 0) {
@@ -191,7 +196,18 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     const encontrado = codigosCat.find(bc => normalizarCodigo(bc.codigo) === val)
     if (encontrado) {
       const prod = productos.find(p => p.id === encontrado.producto_id)
-      if (prod) { seleccionarProducto(prod); limpiar(); setPaso(2) }
+      if (prod) {
+        if (productoSel?.id === prod.id) {
+          // Mismo producto → sumar al contador
+          setScanCount(c => c + 1)
+        } else {
+          // Producto diferente → seleccionar y empezar en 1
+          seleccionarProducto(prod)
+          setScanCount(1)
+        }
+        limpiar()
+        // No auto-avanzar: el usuario confirma con "Siguiente"
+      }
     } else {
       setModalAsociar(val); limpiar()
     }
@@ -218,7 +234,15 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     const encontrado = codigosCat.find(bc => normalizarCodigo(bc.codigo) === normalizarCodigo(val))
     if (encontrado) {
       const prod = productos.find(p => p.id === encontrado.producto_id)
-      if (prod) { seleccionarProducto(prod); setBusqueda(''); setPaso(2) }
+      if (prod) {
+        if (productoSel?.id === prod.id) {
+          setScanCount(c => c + 1)
+        } else {
+          seleccionarProducto(prod)
+          setScanCount(1)
+        }
+        setBusqueda('')
+      }
     } else if (/^\d+$/.test(val)) {
       setModalAsociar(val); setBusqueda('')
     }
@@ -270,14 +294,27 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
       const encontrado = codigosCat.find(bc => bc.codigo === val)
       if (encontrado) {
         const prod = productos.find(p => p.id === encontrado.producto_id)
-        if (prod) { seleccionarProducto(prod); setBusqueda(''); setPaso(2); return }
+        if (prod) { seleccionarProducto(prod); setScanCount(1); setBusqueda(''); setPaso(2); return }
       } else if (/^\d+$/.test(val)) {
         setModalAsociar(val)
         setBusqueda('')
         return
       }
     }
-    if (validarPaso(paso)) setPaso(s => s + 1)
+    if (validarPaso(paso)) {
+      // Al pasar de lote → cantidades, pre-llenar con el conteo de escaneos
+      if (paso === 2 && scanCount > 0) {
+        setCantidades(prev => {
+          const todoCero = sucursalesHabilitadas.every(s => !Number(prev[s.id]))
+          if (!todoCero) return prev  // el usuario ya editó, no pisar
+          // Asignar al la sucursal activa del contexto, o si no está disponible, a la primera
+          const target = sucursalesHabilitadas.find(s => s.id === sucursalActiva?.id)
+            ?? sucursalesHabilitadas[0]
+          return target ? { ...prev, [target.id]: String(scanCount) } : prev
+        })
+      }
+      setPaso(s => s + 1)
+    }
   }
 
   async function handleGuardar() {
@@ -408,12 +445,41 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
                 tabIndex={-1}
               />
 
-              <div className="bg-primary-50 border border-primary-200 rounded-2xl p-3 flex items-center gap-2">
-                <ScanBarcode className="w-5 h-5 text-primary-600 flex-shrink-0" />
-                <p className="text-xs font-medium text-primary-800">
-                  Escáner activo — escanea el código de barras o busca por nombre
-                </p>
-              </div>
+              {/* Contador de escaneos */}
+              {productoSel && scanCount > 0 ? (
+                <div className="bg-primary-50 border border-primary-200 rounded-2xl p-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ScanBarcode className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                    <p className="text-xs font-medium text-primary-800 truncate">
+                      {productoSel.nombre} — escanea de nuevo para sumar
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => setScanCount(c => Math.max(1, c - 1))}
+                      className="w-7 h-7 rounded-lg bg-white border border-primary-200 flex items-center justify-center text-primary-600 hover:bg-primary-100"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xl font-bold text-primary-700 min-w-[2ch] text-center tabular-nums">
+                      {scanCount}
+                    </span>
+                    <button
+                      onClick={() => setScanCount(c => c + 1)}
+                      className="w-7 h-7 rounded-lg bg-white border border-primary-200 flex items-center justify-center text-primary-600 hover:bg-primary-100"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-primary-50 border border-primary-200 rounded-2xl p-3 flex items-center gap-2">
+                  <ScanBarcode className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                  <p className="text-xs font-medium text-primary-800">
+                    Escáner activo — escanea el código de barras o busca por nombre
+                  </p>
+                </div>
+              )}
 
               <Input
                 placeholder="Buscar por nombre o código de barras..."
@@ -442,8 +508,15 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
                         <p className="text-xs text-slate-500">{p.categoria || 'Sin categoría'} · {formatoMoneda(p.precio_venta)}</p>
                       </div>
                       {sel && (
-                        <div className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0">
-                          <Check className="w-3.5 h-3.5 text-white" />
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {scanCount > 0 && (
+                            <span className="text-xs font-bold text-primary-700 bg-primary-100 px-2 py-0.5 rounded-full tabular-nums">
+                              ×{scanCount}
+                            </span>
+                          )}
+                          <div className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center">
+                            <Check className="w-3.5 h-3.5 text-white" />
+                          </div>
                         </div>
                       )}
                     </button>
@@ -648,9 +721,12 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
                     <p className="text-2xl font-bold text-emerald-900">{totalCantidad} uds</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-semibold text-emerald-700">Valor estimado</p>
+                    <p className="text-xs font-semibold text-emerald-700">Valor estimado (costo)</p>
                     <p className="text-lg font-bold text-emerald-900">
                       {formatoMoneda(totalCantidad * (productoSel?.precio_compra || 0))}
+                    </p>
+                    <p className="text-[11px] text-emerald-600 mt-0.5">
+                      {totalCantidad} × {formatoMoneda(productoSel?.precio_compra || 0)} precio costo
                     </p>
                   </div>
                 </div>

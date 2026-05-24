@@ -1,8 +1,8 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, Search, Archive, RefreshCw, AlertTriangle,
   X, Clock, Filter, ChevronDown, Check, Package, Eye,
-  PackageCheck, PackageX, Timer, CalendarX, Store,
+  PackageCheck, PackageX, Timer, CalendarX, Store, MapPin,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -169,8 +169,25 @@ function VistaCaducidad({ lotes, cargando }) {
 }
 
 export default function InventarioPage() {
-  const { sucursales, perfil, sucursalActiva, empresa } = useApp()
+  const { sucursales, perfil, sucursalActiva, turnoActivo, empresa } = useApp()
   const esCajero  = perfil?.rol === 'cajero'
+
+  // Cajero sin turno activo → no tiene sucursal asignada, no puede ver inventario
+  if (esCajero && !turnoActivo) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center">
+          <Clock className="w-8 h-8 text-amber-600" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Abre tu turno primero</h2>
+          <p className="text-sm text-slate-500 mt-1 max-w-xs">
+            Para ver el inventario necesitas tener un turno activo. Ve a Ventas y abre tu caja.
+          </p>
+        </div>
+      </div>
+    )
+  }
   // Admin y propietario son globales — no tienen "su" sucursal
   const esGlobal  = perfil?.rol === 'admin' || perfil?.id === empresa?.propietario
   // Sucursal propia del usuario (cajeros/encargados tienen una asignada)
@@ -184,8 +201,15 @@ export default function InventarioPage() {
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroOtrasSuc, setFiltroOtrasSuc] = useState(false)
   const [categoriaSel, setCategoriaSel] = useState('')
-  const [modalAgregar, setModalAgregar] = useState(false)
-  const [productoLotes, setProductoLotes] = useState(null)
+  const [modalAgregar,      setModalAgregar]      = useState(false)
+  const [productoLotes,     setProductoLotes]     = useState(null)
+  const [modalExistencias,  setModalExistencias]  = useState(false)
+
+  // Para cajero: el stock relevante es solo el de su sucursal
+  const stockEnMiSuc = useCallback((p) => {
+    if (!sucursalPropia) return p.stock_total
+    return Number((p.stock_por_sucursal || {})[sucursalPropia.id] || 0)
+  }, [sucursalPropia])
 
   const cargar = async () => {
     setCargando(true)
@@ -243,18 +267,18 @@ export default function InventarioPage() {
   }, [datos])
 
   const conteos = useMemo(() => ({
-    todos: datos.length,
-    con_stock: datos.filter(p => p.stock_total > 0).length,
-    sin_stock: datos.filter(p => p.stock_total === 0).length,
-    bajo_stock: datos.filter(p => p.bajo_stock).length,
+    todos:       datos.length,
+    con_stock:   datos.filter(p => (esCajero ? stockEnMiSuc(p) : p.stock_total) > 0).length,
+    sin_stock:   datos.filter(p => (esCajero ? stockEnMiSuc(p) : p.stock_total) === 0).length,
+    bajo_stock:  datos.filter(p => esCajero ? (sucursalPropia && stockEnMiSuc(p) < (p.stock_minimo ?? 0) && (p.stock_minimo ?? 0) > 0) : p.bajo_stock).length,
     por_caducar: datos.filter(p => p.lotes_por_caducar > 0 || p.lotes_caducados > 0).length,
-  }), [datos])
+  }), [datos, esCajero, stockEnMiSuc, sucursalPropia])
 
   const filtrados = useMemo(() => {
     let r = datos
-    if (filtroEstado === 'con_stock') r = r.filter(p => p.stock_total > 0)
-    else if (filtroEstado === 'sin_stock') r = r.filter(p => p.stock_total === 0)
-    else if (filtroEstado === 'bajo_stock') r = r.filter(p => p.bajo_stock)
+    if (filtroEstado === 'con_stock')   r = r.filter(p => (esCajero ? stockEnMiSuc(p) : p.stock_total) > 0)
+    else if (filtroEstado === 'sin_stock')  r = r.filter(p => (esCajero ? stockEnMiSuc(p) : p.stock_total) === 0)
+    else if (filtroEstado === 'bajo_stock') r = r.filter(p => esCajero ? (sucursalPropia && stockEnMiSuc(p) < (p.stock_minimo ?? 0) && (p.stock_minimo ?? 0) > 0) : p.bajo_stock)
     else if (filtroEstado === 'por_caducar') r = r.filter(p => p.lotes_por_caducar > 0 || p.lotes_caducados > 0)
 
     if (categoriaSel) r = r.filter(p => p.categoria === categoriaSel)
@@ -287,13 +311,15 @@ export default function InventarioPage() {
 
   const bordeIzq = (p) => {
     if (p.lotes_caducados > 0) return 'border-l-4 border-l-red-500'
-    if (p.stock_total === 0)   return 'border-l-4 border-l-red-400'
-    // Alguna sucursal en 0 aunque el total global sea positivo
-    const stockSuc = p.stock_por_sucursal || {}
-    const algunaSinStock = sucursales.some(s => (Number(stockSuc[s.id]) || 0) === 0)
-    if (algunaSinStock)        return 'border-l-4 border-l-amber-400'
+    const stock = esCajero ? stockEnMiSuc(p) : p.stock_total
+    if (stock === 0) return 'border-l-4 border-l-red-400'
+    if (!esCajero) {
+      const stockSuc = p.stock_por_sucursal || {}
+      const algunaSinStock = sucursales.some(s => (Number(stockSuc[s.id]) || 0) === 0)
+      if (algunaSinStock) return 'border-l-4 border-l-amber-400'
+    }
     if (p.lotes_por_caducar > 0) return 'border-l-4 border-l-orange-400'
-    if (p.bajo_stock)          return 'border-l-4 border-l-amber-400'
+    if (esCajero ? (sucursalPropia && stock < (p.stock_minimo ?? 0) && (p.stock_minimo ?? 0) > 0) : p.bajo_stock) return 'border-l-4 border-l-amber-400'
     return 'border-l-4 border-l-emerald-400'
   }
 
@@ -313,29 +339,21 @@ export default function InventarioPage() {
         )}
       </div>
 
-      {/* Banner para cajeros: consulta en otras sucursales */}
+      {/* Cajero: botón de consulta en otras sucursales */}
       {esCajero && sucursales.length > 1 && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-sky-50 border border-sky-200 rounded-2xl px-4 py-3">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Store className="w-4 h-4 text-sky-500 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-sky-900">Consulta de existencias</p>
-              <p className="text-xs text-sky-700">Puedes ver el stock de todas las sucursales. Usa el filtro para encontrar productos disponibles en otras farmacias.</p>
-            </div>
+        <button
+          onClick={() => setModalExistencias(true)}
+          className="w-full flex items-center gap-3 bg-sky-600 hover:bg-sky-700 active:scale-[0.99] rounded-2xl px-4 py-3.5 transition-all text-left shadow-sm shadow-sky-200"
+        >
+          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <MapPin className="w-4 h-4 text-white" />
           </div>
-          <button
-            onClick={() => setFiltroOtrasSuc(v => !v)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all flex-shrink-0 border',
-              filtroOtrasSuc
-                ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
-                : 'bg-white text-sky-700 border-sky-300 hover:border-sky-400'
-            )}
-          >
-            <Store className="w-3.5 h-3.5" />
-            {filtroOtrasSuc ? 'Mostrando otras farmacias' : 'Ver en otras farmacias'}
-          </button>
-        </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white">Consultar producto en otra farmacia</p>
+            <p className="text-xs text-sky-100">Consultar existencia de un producto en todas las sucursales</p>
+          </div>
+          <Search className="w-4 h-4 text-white/70 flex-shrink-0" />
+        </button>
       )}
 
       {/* Tarjetas resumen */}
@@ -477,8 +495,21 @@ export default function InventarioPage() {
                     {p.categoria && (
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary-50 text-primary-600 inline-block mt-0.5">{p.categoria}</span>
                     )}
-                    {/* Stock por sucursal — tarjetas claras */}
-                    {sucursales.length > 1 && (
+                    {/* Stock por sucursal */}
+                    {esCajero ? (
+                      // Cajero: solo su sucursal
+                      sucursalPropia && (
+                        <span className={cn(
+                          'inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border mt-1.5',
+                          Number(stockSuc[sucursalPropia.id] || 0) > 0
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-red-50 border-red-200 text-red-600'
+                        )}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {Number(stockSuc[sucursalPropia.id] || 0)} uds
+                        </span>
+                      )
+                    ) : sucursales.length > 1 && (
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
                         {sucursales.map(s => {
                           const cant = Number(stockSuc[s.id] || 0)
@@ -504,9 +535,15 @@ export default function InventarioPage() {
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <div className="text-right">
-                      <span className={cn('text-sm font-bold tabular-nums',
-                        p.stock_total === 0 ? 'text-red-600' : p.bajo_stock ? 'text-amber-700' : 'text-slate-900')}>{p.stock_total}</span>
-                      <span className="text-xs text-slate-400 ml-1">total</span>
+                      {(() => {
+                        const s = esCajero ? stockEnMiSuc(p) : p.stock_total
+                        const bajo = esCajero ? (sucursalPropia && s < (p.stock_minimo ?? 0) && (p.stock_minimo ?? 0) > 0) : p.bajo_stock
+                        return (
+                          <span className={cn('text-sm font-bold tabular-nums',
+                            s === 0 ? 'text-red-600' : bajo ? 'text-amber-700' : 'text-slate-900')}>{s}</span>
+                        )
+                      })()}
+                      <span className="text-xs text-slate-400 ml-1">uds</span>
                     </div>
                     {!esCajero && (
                       <button onClick={() => setProductoLotes(p)}
@@ -525,19 +562,27 @@ export default function InventarioPage() {
               <thead className="bg-slate-50/70 border-b border-slate-200">
                 <tr>
                   <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider min-w-[200px]">Producto</th>
-                  {sucursales.map(s => {
-                    const esMia = sucursalPropia?.id === s.id
-                    return (
-                      <th key={s.id} className={cn(
-                        'px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider min-w-[90px]',
-                        esMia ? 'text-primary-700 bg-primary-50/60' : 'text-slate-500'
-                      )}>
-                        {esMia && <span className="mr-1">★</span>}{s.nombre}
-                      </th>
-                    )
-                  })}
-                  <th className="px-3 py-2.5 text-right text-[11px] font-bold text-primary-700 uppercase tracking-wider bg-primary-50/50 min-w-[90px]">Total</th>
-                  {!esCajero && <th className="px-3 py-2.5 w-20"></th>}
+                  {esCajero ? (
+                    <th className="px-3 py-2.5 text-right text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/50 min-w-[100px]">
+                      {sucursalPropia?.nombre ?? 'Tu sucursal'}
+                    </th>
+                  ) : (
+                    <>
+                      {sucursales.map(s => {
+                        const esMia = sucursalPropia?.id === s.id
+                        return (
+                          <th key={s.id} className={cn(
+                            'px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider min-w-[90px]',
+                            esMia ? 'text-primary-700 bg-primary-50/60' : 'text-slate-500'
+                          )}>
+                            {esMia && <span className="mr-1">★</span>}{s.nombre}
+                          </th>
+                        )
+                      })}
+                      <th className="px-3 py-2.5 text-right text-[11px] font-bold text-primary-700 uppercase tracking-wider bg-primary-50/50 min-w-[90px]">Total</th>
+                      <th className="px-3 py-2.5 w-20"></th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -563,32 +608,49 @@ export default function InventarioPage() {
                           </div>
                         </div>
                       </td>
-                      {sucursales.map(s => {
-                        const cant = Number(stockSuc[s.id] || 0)
-                        const esMia = sucursalPropia?.id === s.id
-                        return (
-                          <td key={s.id} className={cn('px-3 py-2.5 text-right text-sm tabular-nums', esMia && 'bg-primary-50/40')}>
-                            <span className={cn(
-                              'font-bold',
-                              esMia
-                                ? cant > 0 ? 'text-emerald-600' : 'text-red-500'
-                                : cant === 0 ? 'text-red-400'   : 'text-slate-700'
-                            )}>{cant}</span>
-                          </td>
-                        )
-                      })}
-                      <td className="px-3 py-2.5 text-right bg-primary-50/30">
-                        <span className={cn('text-sm font-bold tabular-nums',
-                          p.stock_total === 0 ? 'text-red-600' : p.bajo_stock ? 'text-amber-700' : 'text-slate-900')}>{p.stock_total}</span>
-                        <span className="text-xs text-slate-400 ml-1">/ {p.stock_minimo}</span>
-                      </td>
-                      {!esCajero && (
-                        <td className="px-3 py-2.5 text-right">
-                          <button onClick={() => setProductoLotes(p)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors">
-                            <Eye className="w-3.5 h-3.5" /> Lotes
-                          </button>
+                      {esCajero ? (
+                        // Cajero: solo su sucursal
+                        <td className="px-3 py-2.5 text-right bg-emerald-50/30">
+                          {(() => {
+                            const cant = sucursalPropia ? Number(stockSuc[sucursalPropia.id] || 0) : p.stock_total
+                            const bajo = sucursalPropia && cant < (p.stock_minimo ?? 0) && (p.stock_minimo ?? 0) > 0
+                            return (
+                              <>
+                                <span className={cn('text-sm font-bold tabular-nums',
+                                  cant === 0 ? 'text-red-600' : bajo ? 'text-amber-700' : 'text-emerald-700')}>{cant}</span>
+                                <span className="text-xs text-slate-400 ml-1">/ {p.stock_minimo}</span>
+                              </>
+                            )
+                          })()}
                         </td>
+                      ) : (
+                        <>
+                          {sucursales.map(s => {
+                            const cant = Number(stockSuc[s.id] || 0)
+                            const esMia = sucursalPropia?.id === s.id
+                            return (
+                              <td key={s.id} className={cn('px-3 py-2.5 text-right text-sm tabular-nums', esMia && 'bg-primary-50/40')}>
+                                <span className={cn(
+                                  'font-bold',
+                                  esMia
+                                    ? cant > 0 ? 'text-emerald-600' : 'text-red-500'
+                                    : cant === 0 ? 'text-red-400'   : 'text-slate-700'
+                                )}>{cant}</span>
+                              </td>
+                            )
+                          })}
+                          <td className="px-3 py-2.5 text-right bg-primary-50/30">
+                            <span className={cn('text-sm font-bold tabular-nums',
+                              p.stock_total === 0 ? 'text-red-600' : p.bajo_stock ? 'text-amber-700' : 'text-slate-900')}>{p.stock_total}</span>
+                            <span className="text-xs text-slate-400 ml-1">/ {p.stock_minimo}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <button onClick={() => setProductoLotes(p)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors">
+                              <Eye className="w-3.5 h-3.5" /> Lotes
+                            </button>
+                          </td>
+                        </>
                       )}
                     </tr>
                   )
@@ -601,6 +663,150 @@ export default function InventarioPage() {
 
       <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={cargar} />
       <ModalLotes producto={productoLotes} onCerrar={() => setProductoLotes(null)} onCambio={cargar} />
+      {modalExistencias && <ModalExistenciasInv onCerrar={() => setModalExistencias(false)} />}
+    </div>
+  )
+}
+
+// ─── Modal consultar existencias en otras sucursales (para cajero) ────────────
+function ModalExistenciasInv({ onCerrar }) {
+  const { empresa } = useApp()
+  const [busqueda,   setBusqueda]   = useState('')
+  const [resultados, setResultados] = useState([])
+  const [buscando,   setBuscando]   = useState(false)
+  const timerRef = useRef(null)
+
+  useEffect(() => {
+    const q = busqueda.trim()
+    if (q.length < 2) { setResultados([]); return }
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => buscar(q), 380)
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [busqueda]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function buscar(q) {
+    if (!empresa?.id) return
+    setBuscando(true)
+    try {
+      const { data: prods } = await supabase
+        .from('productos').select('id, nombre, categoria')
+        .eq('empresa_id', empresa.id).eq('activo', true)
+        .ilike('nombre', `%${q}%`).order('nombre').limit(8)
+      if (!prods?.length) { setResultados([]); setBuscando(false); return }
+
+      const { data: lotes } = await supabase
+        .from('lotes').select('id, producto_id')
+        .in('producto_id', prods.map(p => p.id)).eq('activo', true)
+
+      const loteIds   = (lotes ?? []).map(l => l.id)
+      const loteAProd = {}
+      ;(lotes ?? []).forEach(l => { loteAProd[l.id] = l.producto_id })
+
+      const { data: inv } = loteIds.length
+        ? await supabase
+            .from('inventario').select('cantidad, sucursal_id, lote_id, sucursales(id, nombre)')
+            .in('lote_id', loteIds)
+        : { data: [] }
+
+      const porProd = {}
+      prods.forEach(p => { porProd[p.id] = { ...p, sucursales: {} } })
+      ;(inv ?? []).forEach(i => {
+        const prodId = loteAProd[i.lote_id]
+        if (!prodId || !porProd[prodId]) return
+        const sid = i.sucursal_id
+        if (!porProd[prodId].sucursales[sid])
+          porProd[prodId].sucursales[sid] = { nombre: i.sucursales?.nombre ?? '—', total: 0 }
+        porProd[prodId].sucursales[sid].total += i.cantidad ?? 0
+      })
+      setResultados(Object.values(porProd))
+    } catch { /* silencioso */ } finally { setBuscando(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col">
+
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-sky-100 flex items-center justify-center">
+              <MapPin className="w-5 h-5 text-sky-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Consultar producto en otra farmacia</h3>
+              <p className="text-xs text-slate-500">Consultar existencia de un producto en todas las sucursales</p>
+            </div>
+          </div>
+          <button onClick={onCerrar} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-3 border-b border-slate-100">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Nombre del medicamento..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition-all"
+            />
+            {buscando && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {busqueda.trim().length < 2 ? (
+            <p className="text-sm text-slate-400 text-center py-8">Escribe el nombre del producto para buscar</p>
+          ) : !buscando && resultados.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-8">Sin resultados para "{busqueda}"</p>
+          ) : (
+            resultados.map(prod => {
+              const sucursales = Object.values(prod.sucursales).sort((a, b) => b.total - a.total)
+              const totalGeneral = sucursales.reduce((s, x) => s + x.total, 0)
+              return (
+                <div key={prod.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{prod.nombre}</p>
+                      <p className="text-xs text-slate-400">{prod.categoria || 'Sin categoría'}</p>
+                    </div>
+                    <span className="text-xs font-bold text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full flex-shrink-0">
+                      {totalGeneral} total
+                    </span>
+                  </div>
+                  {sucursales.length === 0 ? (
+                    <p className="px-4 py-3 text-xs text-slate-400">Sin stock registrado</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {sucursales.map(suc => (
+                        <div key={suc.nombre} className="flex items-center justify-between px-4 py-2.5 gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Store className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            <span className="text-sm text-slate-700 truncate">{suc.nombre}</span>
+                          </div>
+                          <span className={cn(
+                            'text-xs font-bold px-2.5 py-0.5 rounded-full flex-shrink-0',
+                            suc.total === 0 ? 'bg-red-100 text-red-700' :
+                            suc.total < 5   ? 'bg-amber-100 text-amber-700' :
+                                              'bg-emerald-100 text-emerald-700'
+                          )}>
+                            {suc.total} uds
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
     </div>
   )
 }

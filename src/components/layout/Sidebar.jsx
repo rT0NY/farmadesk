@@ -27,11 +27,11 @@ const SECCIONES = [
     titulo: 'Catálogo',
     items: [
       { ruta: '/productos', nombre: 'Productos', icono: Package, roles: ['admin', 'encargado'] },
-      { ruta: '/inventario', nombre: 'Inventario', icono: Archive, roles: ['admin', 'encargado'] },
+      { ruta: '/inventario', nombre: 'Inventario', icono: Archive, roles: ['admin', 'encargado', 'cajero'] },
       { ruta: '/ofertas', nombre: 'Ofertas', icono: Tag, roles: ['admin', 'encargado'] },
       { ruta: '/transferencias',       nombre: 'Transferencias',        icono: ArrowLeftRight, roles: ['admin', 'encargado'] },
       { ruta: '/historial-inventario', nombre: 'Historial inventario',  icono: ListOrdered,    roles: ['admin', 'encargado'] },
-      { ruta: '/caducidades',          nombre: 'Caducidades',           icono: CalendarX,      roles: ['admin', 'encargado'] },
+      { ruta: '/caducidades',          nombre: 'Caducidades',           icono: CalendarX,      roles: ['admin', 'encargado', 'cajero'] },
     ],
   },
   {

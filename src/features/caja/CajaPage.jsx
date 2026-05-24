@@ -199,11 +199,13 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
   function imprimirCorte() {
     if (!resultado) return
     const fm = n => '$' + Number(n || 0).toFixed(2)
-    const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-    const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
     const aperturaDt = turno?.fecha_apertura ? new Date(turno.fecha_apertura) : new Date()
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      @page{size:80mm auto;margin:0}
       *{margin:0;padding:0;box-sizing:border-box}
+      html,body{height:auto}
       body{font-family:'Courier New',monospace;font-size:11px;width:80mm;padding:8px}
       h2{text-align:center;font-size:13px;margin-bottom:2px}
       .sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}
@@ -524,7 +526,8 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
 // ─── Tarjeta de sucursal ─────────────────────────────────────────────────────
 // resumen y movimientos vienen del padre (CajaPage.cargar) para que el refresh
 // del header o cualquier cambio externo (gastos, ventas) los refleje siempre.
-function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, puedeAbrir = true, resumen, movimientos, onAbrir, onCerrar, onActualizar }) {
+function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, puedeAbrir = true, resumen, movimientos, onAbrir, onCerrar, onActualizar, sinCabezal = false }) {
+  const { perfil } = useApp()
   const [monto,       setMonto]      = useState('')
   const [abriendo,    setAbriendo]   = useState(false)
   const [mostrarForm, setMostrarForm]= useState(false)
@@ -542,9 +545,13 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
       })
     } catch { /* verificamos después */ }
 
+    // Filtrar por usuario_id: puede haber varios turnos abiertos en la misma sucursal
     const { data: t } = await supabase
       .from('turnos_caja').select('id')
-      .eq('sucursal_id', sucursal.id).eq('estado', 'abierto').maybeSingle()
+      .eq('sucursal_id', sucursal.id)
+      .eq('usuario_id', perfil?.id)
+      .eq('estado', 'abierto')
+      .maybeSingle()
 
     if (t) {
       await logBitacora({
@@ -571,46 +578,61 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden border-l-4 border-l-emerald-500 shadow-sm">
           {/* Cabecera */}
           <div className="p-4 pb-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
-                  <Store className="w-4 h-4 text-emerald-600" />
-                </div>
+            {sinCabezal ? (
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-sm font-bold text-slate-900">{sucursal.nombre}</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    {esMiTurno ? 'Mi turno' : (turno.perfiles?.nombre || 'Empleado')}
+                  </p>
                   <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                    Turno activo desde {formatoHora(turno.fecha_apertura)}
+                    Activo desde {formatoHora(turno.fecha_apertura)}
                   </p>
                 </div>
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                {/* Nombre del operador (si no es el propio usuario) */}
-                {!esMiTurno && turno.perfiles?.nombre && (
-                  <p className="text-xs text-slate-500 font-medium">{turno.perfiles.nombre}</p>
-                )}
-                {/* Indicador de presencia */}
                 {turno.usuario_id && (
                   <div className={cn(
                     'flex items-center gap-1.5 rounded-xl px-2.5 py-1',
-                    estaEnLinea
-                      ? 'bg-emerald-50 border border-emerald-200'
-                      : 'bg-slate-100 border border-slate-200'
+                    estaEnLinea ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-100 border border-slate-200'
                   )}>
-                    <span className={cn(
-                      'w-2 h-2 rounded-full flex-shrink-0',
-                      estaEnLinea ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                    )} />
-                    <p className={cn(
-                      'text-[11px] font-bold',
-                      estaEnLinea ? 'text-emerald-700' : 'text-slate-500'
-                    )}>
+                    <span className={cn('w-2 h-2 rounded-full flex-shrink-0', estaEnLinea ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400')} />
+                    <p className={cn('text-[11px] font-bold', estaEnLinea ? 'text-emerald-700' : 'text-slate-500')}>
                       {estaEnLinea ? 'Activo' : 'Ausente'}
                     </p>
                   </div>
                 )}
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
+                    <Store className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{sucursal.nombre}</p>
+                    <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                      Turno activo desde {formatoHora(turno.fecha_apertura)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  {!esMiTurno && turno.perfiles?.nombre && (
+                    <p className="text-xs text-slate-500 font-medium">{turno.perfiles.nombre}</p>
+                  )}
+                  {turno.usuario_id && (
+                    <div className={cn(
+                      'flex items-center gap-1.5 rounded-xl px-2.5 py-1',
+                      estaEnLinea ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-100 border border-slate-200'
+                    )}>
+                      <span className={cn('w-2 h-2 rounded-full flex-shrink-0', estaEnLinea ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400')} />
+                      <p className={cn('text-[11px] font-bold', estaEnLinea ? 'text-emerald-700' : 'text-slate-500')}>
+                        {estaEnLinea ? 'Activo' : 'Ausente'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Resumen en vivo */}
             {resumen && (
@@ -765,17 +787,21 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
   return (
     <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden border-l-4 border-l-slate-300 shadow-sm">
       <div className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">
-              <Store className="w-4 h-4 text-slate-400" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-900">{sucursal.nombre}</p>
-              <p className="text-xs text-slate-400">Sin turno abierto</p>
+        {sinCabezal ? (
+          <p className="text-xs font-semibold text-slate-500 mb-3">Abrir mi turno</p>
+        ) : (
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">
+                <Store className="w-4 h-4 text-slate-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-900">{sucursal.nombre}</p>
+                <p className="text-xs text-slate-400">Sin turno abierto</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {!mostrarForm ? (
           puedeAbrir ? (
@@ -823,6 +849,30 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
   )
 }
 
+// ─── Sección de sucursal (agrupación para vista admin) ───────────────────────
+function SeccionSucursal({ sucursal, conteoTurnos, children }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-1">
+        <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+          <Store className="w-3.5 h-3.5 text-slate-500" />
+        </div>
+        <span className="text-sm font-bold text-slate-700">{sucursal.nombre}</span>
+        {conteoTurnos > 0 ? (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+            {conteoTurnos} abierto{conteoTurnos > 1 ? 's' : ''}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400">Sin turnos</span>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 ml-2 pl-3 border-l-2 border-slate-100">
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function CajaPage() {
   const { perfil, sucursales, sucursalActiva, recargarTurno, tz, usuariosEnLinea } = useApp()
@@ -839,11 +889,14 @@ export default function CajaPage() {
   }, [esCajero, esEncargado, sucActId, sucursales])
 
   const location = useLocation()
+  // turnosPorSucursal: { [sucursalId]: Turno[] }
+  // Admin ve todos los turnos de la sucursal; cajero/encargado solo el suyo.
   const [turnosPorSucursal,  setTurnosPorSucursal]  = useState({})
-  const [resumenesPorSucursal, setResumenesPorSucursal] = useState({})
-  const [historial,            setHistorial]            = useState([])
-  const [cargando,             setCargando]             = useState(true)
-  const [modalCerrar,          setModalCerrar]          = useState(null)
+  // resumenesPorTurno: { [turnoId]: { ventasEfectivo, ventasTarjeta, entradas, salidas, esperado, movimientos } }
+  const [resumenesPorTurno,  setResumenesPorTurno]  = useState({})
+  const [historial,          setHistorial]           = useState([])
+  const [cargando,           setCargando]            = useState(true)
+  const [modalCerrar,        setModalCerrar]         = useState(null)
 
   const cargar = useCallback(async () => {
     // Cajero/encargado sin sucursal aún confirmada: no hay nada que cargar
@@ -853,22 +906,42 @@ export default function CajaPage() {
     }
     setCargando(true)
     try {
-      // ── Turnos abiertos (solo en las sucursales visibles para este usuario) ──
-      const abiertos = {}
-      for (const s of sucursalesVisibles) {
+      // ── Turnos abiertos ───────────────────────────────────────────────────────
+      // Cajero/encargado: solo su propio turno en su sucursal.
+      // Admin: TODOS los turnos abiertos en las sucursales visibles (puede haber
+      //        varios empleados con turno simultáneo en la misma sucursal).
+      let todosTurnos = []
+      if (esCajero || esEncargado) {
         const { data } = await supabase
           .from('turnos_caja')
           .select('*, perfiles(nombre)')
-          .eq('sucursal_id', s.id)
+          .eq('sucursal_id', sucActId)
+          .eq('usuario_id', perfil?.id)
           .eq('estado', 'abierto')
           .maybeSingle()
-        if (data) abiertos[s.id] = data
+        if (data) todosTurnos = [data]
+      } else if (sucursalesVisibles.length > 0) {
+        const { data } = await supabase
+          .from('turnos_caja')
+          .select('*, perfiles(nombre)')
+          .in('sucursal_id', sucursalesVisibles.map(s => s.id))
+          .eq('estado', 'abierto')
+          .order('fecha_apertura', { ascending: true })
+        todosTurnos = data || []
+      }
+
+      // Agrupar por sucursal_id para el render
+      const abiertos = {}
+      for (const t of todosTurnos) {
+        if (!abiertos[t.sucursal_id]) abiertos[t.sucursal_id] = []
+        abiertos[t.sucursal_id].push(t)
       }
       setTurnosPorSucursal(abiertos)
 
-      // ── Resumen de cada turno abierto (ventas + movimientos) ───────────────
+      // ── Resumen de cada turno abierto (ventas + movimientos) ─────────────────
+      // Clave: turno.id (no sucursal_id) porque puede haber varios por sucursal
       const resumenes = {}
-      for (const [sucId, turno] of Object.entries(abiertos)) {
+      for (const turno of todosTurnos) {
         const [{ data: ventas }, { data: movs }] = await Promise.all([
           supabase.from('ventas')
             .select('total, metodo_pago')
@@ -892,12 +965,12 @@ export default function CajaPage() {
           .filter(m => m.tipo === 'salida')
           .reduce((s, m) => s + Number(m.monto || 0), 0)
         const esperado = Number(turno.monto_apertura || 0) + ventasEfectivo + entradas - salidas
-        resumenes[sucId] = {
+        resumenes[turno.id] = {
           ventasEfectivo, ventasTarjeta, entradas, salidas, esperado,
           movimientos: movs || [],
         }
       }
-      setResumenesPorSucursal(resumenes)
+      setResumenesPorTurno(resumenes)
 
       // ── Historial hoy (solo sucursales visibles) ──────────────────────────
       const hoy = fechaEnZona(tz)
@@ -931,7 +1004,7 @@ export default function CajaPage() {
     return () => window.removeEventListener('focus', onFocus)
   }, [cargar])  // cargar solo cambia cuando sucursalesVisibles o tz cambian
 
-  const totalAbiertos = Object.keys(turnosPorSucursal).length
+  const totalAbiertos = Object.values(turnosPorSucursal).reduce((s, arr) => s + arr.length, 0)
 
   // Para cajero sin sucursal visible (aún no ha abierto turno), aviso amigable
   if ((esCajero || esEncargado) && sucursalesVisibles.length === 0 && !cargando) {
@@ -977,32 +1050,96 @@ export default function CajaPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {sucursalesVisibles.map(s => {
-            const turno = turnosPorSucursal[s.id]
-            const res   = resumenesPorSucursal[s.id]
-            // Cajero restringido a su sucursal: si hay turno, puede cerrarlo siempre
-            // Admin/encargado: solo cierra el turno que él abrió
-            const puedeAbrir  = !esCajero || !turno
-            const puedeCerrar = esCajero ? !!turno : turno?.usuario_id === perfil?.id
-            const estaEnLinea = turno?.usuario_id
-              ? (usuariosEnLinea ?? new Set()).has(turno.usuario_id)
-              : false
-            return (
-              <TarjetaSucursal
-                key={s.id}
-                sucursal={s}
-                turno={turno}
-                esMiTurno={esCajero ? !!turno : turno?.usuario_id === perfil?.id}
-                estaEnLinea={estaEnLinea}
-                puedeAbrir={puedeAbrir}
-                resumen={res}
-                movimientos={res?.movimientos ?? []}
-                onAbrir={cargar}
-                onActualizar={cargar}
-                onCerrar={puedeCerrar ? (t) => setModalCerrar({ turno: t, sucursalNombre: s.nombre, resumen: res }) : null}
-              />
-            )
-          })}
+          {(esCajero || esEncargado)
+            // ── Cajero / Encargado: solo su propio turno, tarjeta completa ──
+            ? sucursalesVisibles.flatMap(s => {
+                const turnos  = turnosPorSucursal[s.id] ?? []
+                const miTurno = turnos[0] ?? null
+                if (miTurno) {
+                  const res = resumenesPorTurno[miTurno.id]
+                  return [
+                    <TarjetaSucursal
+                      key={miTurno.id}
+                      sucursal={s}
+                      turno={miTurno}
+                      esMiTurno
+                      estaEnLinea={(usuariosEnLinea ?? new Set()).has(miTurno.usuario_id)}
+                      puedeAbrir={false}
+                      resumen={res}
+                      movimientos={res?.movimientos ?? []}
+                      onAbrir={cargar}
+                      onActualizar={cargar}
+                      onCerrar={(t) => setModalCerrar({ turno: t, sucursalNombre: s.nombre, resumen: res })}
+                    />,
+                  ]
+                }
+                return [
+                  <TarjetaSucursal
+                    key={`${s.id}-abrir`}
+                    sucursal={s}
+                    turno={null}
+                    esMiTurno={false}
+                    estaEnLinea={false}
+                    puedeAbrir
+                    resumen={null}
+                    movimientos={[]}
+                    onAbrir={cargar}
+                    onActualizar={cargar}
+                    onCerrar={null}
+                  />,
+                ]
+              })
+            // ── Admin: vista por sección de sucursal con turnos compactos ──
+            : sucursalesVisibles.map(s => {
+                const turnos  = turnosPorSucursal[s.id] ?? []
+                const miTurno = turnos.find(t => t.usuario_id === perfil?.id)
+                return (
+                  <SeccionSucursal key={s.id} sucursal={s} conteoTurnos={turnos.length}>
+                    {turnos.map(turno => {
+                      const res         = resumenesPorTurno[turno.id]
+                      const esMio       = turno.usuario_id === perfil?.id
+                      const estaEnLinea = turno.usuario_id
+                        ? (usuariosEnLinea ?? new Set()).has(turno.usuario_id)
+                        : false
+                      return (
+                        <TarjetaSucursal
+                          key={turno.id}
+                          sucursal={s}
+                          turno={turno}
+                          esMiTurno={esMio}
+                          estaEnLinea={estaEnLinea}
+                          puedeAbrir={false}
+                          resumen={res}
+                          movimientos={res?.movimientos ?? []}
+                          onAbrir={cargar}
+                          onActualizar={cargar}
+                          onCerrar={esMio
+                            ? (t) => setModalCerrar({ turno: t, sucursalNombre: s.nombre, resumen: res })
+                            : null}
+                          sinCabezal
+                        />
+                      )
+                    })}
+                    {!miTurno && (
+                      <TarjetaSucursal
+                        key={`${s.id}-abrir`}
+                        sucursal={s}
+                        turno={null}
+                        esMiTurno={false}
+                        estaEnLinea={false}
+                        puedeAbrir
+                        resumen={null}
+                        movimientos={[]}
+                        onAbrir={cargar}
+                        onActualizar={cargar}
+                        onCerrar={null}
+                        sinCabezal
+                      />
+                    )}
+                  </SeccionSucursal>
+                )
+              })
+          }
         </div>
       )}
 

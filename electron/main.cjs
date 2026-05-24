@@ -82,9 +82,24 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
     })
 
     printWin.loadFile(tmpFile)
-    printWin.webContents.once('did-finish-load', () => {
+    printWin.webContents.once('did-finish-load', async () => {
+      // Medir alto real del contenido (px → micrones a 96 DPI: 1px = 25400/96 µm)
+      let heightMicrons = 200000
+      try {
+        const heightPx = await printWin.webContents.executeJavaScript(
+          'document.documentElement.scrollHeight'
+        )
+        heightMicrons = Math.max(Math.ceil(heightPx * 264.583), 50000)
+      } catch { /* usar valor por defecto */ }
+
       printWin.webContents.print(
-        { silent: false, printBackground: true, color: false },
+        {
+          silent: false,
+          printBackground: true,
+          color: false,
+          pageSize: { width: 80000, height: heightMicrons },
+          margins: { marginType: 'none' },
+        },
         (success, errorType) => {
           printWin.destroy()
           resolve({ success, errorType: errorType || null })

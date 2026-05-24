@@ -66,7 +66,7 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
     setEnviando(true)
     try {
       const { error } = await supabase.from('cancelaciones').insert([{
-        empresa_id: (await supabase.from('ventas').select('empresa_id').eq('id', venta.id).single()).data.empresa_id,
+        empresa_id: venta.empresa_id,
         venta_id: venta.id,
         solicitado_por: (await supabase.auth.getUser()).data.user.id,
         motivo: motivo.trim(),
@@ -167,15 +167,15 @@ function buildTicketHtml({ folio, items, total, montoRecibido, cambio, metodoPag
     ? partes.join(', ') + (suc.codigo_postal ? ` C.P. ${suc.codigo_postal}` : '')
     : ''
   const f      = fecha instanceof Date ? fecha : new Date()
-  const fStr   = f.toLocaleDateString('es-MX',  { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const hStr   = f.toLocaleTimeString('es-MX',  { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const fStr   = f.toLocaleDateString('es-MX',  { day: '2-digit', month: 'long', year: 'numeric' })
+  const hStr   = f.toLocaleTimeString('es-MX',  { hour: '2-digit', minute: '2-digit', hour12: false })
   const rows   = items.map(i =>
     `<tr><td>${i.nombre}</td><td style="text-align:center">${i.cantidad}</td><td style="text-align:right">$${(i.precio * i.cantidad).toFixed(2)}</td></tr>`
   ).join('')
   const pagoHtml = montoRecibido > 0
     ? `<div class="fila"><span>Recibido</span><span>$${Number(montoRecibido).toFixed(2)}</span></div><div class="fila cambio"><span>Cambio</span><span>$${Number(cambio).toFixed(2)}</span></div>`
     : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${empresaNombre || 'FARMACIA'}</h2><div class="sub">${sucursalNombre || ''}</div>${dir ? `<div class="dir">${dir}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${folio}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{height:auto}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${empresaNombre || 'FARMACIA'}</h2><div class="sub">${sucursalNombre || ''}</div>${dir ? `<div class="dir">${dir}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${folio}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
 }
 
 // ─── Modal: cerrar turno ────────────────────────────────────
@@ -453,7 +453,7 @@ function ModalCierreTurno({ turnoActual, resumenTurno, sucursalNombre, onImprimi
 
 // ─── Página principal de Ventas ─────────────────────────────
 export default function VentasPage() {
-  const { perfil, empresa, sucursales, sucursalActiva, cambiarSucursal, recargarTurno, tz } = useApp()
+  const { perfil, empresa, sucursales, sucursalActiva, turnoActivo, cambiarSucursal, recargarTurno, tz } = useApp()
   const esAdmin   = perfil?.rol === 'admin'
   const esCajero  = perfil?.rol === 'cajero'
 
@@ -528,27 +528,30 @@ export default function VentasPage() {
   const [movimientosTurno,  setMovimientosTurno]  = useState([])
 
   // ── Cargar datos ──────────────────────────────────────────
+  const perfilId = perfil?.id ?? null
   const fetchData = useCallback(async () => {
     if (!sucursalId) { setLoading(false); return }
     setLoading(true)
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: turno }, { data: ofVig }, { data: cuentas }, { data: prodSuc }, { data: progHoy }] = await Promise.all([
+      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }, { data: progHoy }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
         supabase.from('lotes').select('*').eq('activo', true),
         supabase.from('inventario').select('*'),
         supabase.from('codigos_barras').select('*'),
         supabase.from('ventas').select('*').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         supabase.from('detalle_ventas').select('*'),
-        supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfil?.id).eq('estado', 'abierto').maybeSingle(),
+        perfilId
+          ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
         supabase.rpc('ofertas_vigentes'),
         supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
         esCajero
           ? Promise.resolve({ data: [] })
           : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
         // Para empleados rotativos: ver dónde están programados hoy
-        perfil?.id && !perfil?.sucursal_id
-          ? supabase.from('programacion').select('sucursal_id').eq('usuario_id', perfil.id).eq('fecha', hoy).maybeSingle()
+        perfilId && !perfil?.sucursal_id
+          ? supabase.from('programacion').select('sucursal_id').eq('usuario_id', perfilId).eq('fecha', hoy).maybeSingle()
           : Promise.resolve({ data: null }),
       ])
       // Auto-confirmar sucursal desde programacion (Caso A: empleado con horario hoy)
@@ -564,7 +567,10 @@ export default function VentasPage() {
       setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
       setCodigosCat(cod || []); setVentasHoy(vts || []); setDetallesHoy(det || [])
       setCuentasHoy(cuentas || [])
-      setTurnoActual(turno)
+      // Solo actualizar turnoActual si la query fue exitosa y tenemos usuario identificado.
+      // Si hay error (e.g. PGRST116 por múltiples filas, sesión expirada) o si perfilId
+      // es null (cierre de sesión en curso), preservar el turno ya cargado.
+      if (!errTurnoQ && perfilId) setTurnoActual(turno)
       setOfertasVigentes(ofVig || [])
 
       if (turno?.id) {
@@ -580,9 +586,28 @@ export default function VentasPage() {
       }
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
-  }, [sucursalId, tz])
+  }, [sucursalId, tz, perfilId])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Recargar al volver a la pestaña (igual que CajaPage) para detectar turnos
+  // abiertos o cerrados desde otra pestaña o dispositivo.
+  useEffect(() => {
+    const onFocus = () => fetchData()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [fetchData])
+
+  // Sincronizar turnoActual desde el contexto cuando el componente regresa por navegación.
+  // turnoActivo en el contexto sobrevive a navegación entre páginas; turnoActual (local)
+  // se pierde al desmontar. Sin esto, al volver a Ventas se muestra "abrir caja" durante
+  // el tiempo que tarda fetchData, o permanentemente si sucursalId queda vacío.
+  useEffect(() => {
+    if (turnoActual || !turnoActivo) return
+    // Solo aplicar si el turno del contexto es para la sucursal activa actual
+    if (sucursalId && turnoActivo.sucursal_id !== sucursalId) return
+    setTurnoActual(turnoActivo)
+  }, [turnoActivo?.id, sucursalId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (tab !== 'corte' || !turnoActual?.id) return
@@ -882,6 +907,25 @@ export default function VentasPage() {
     }
     setProcesando(true)
     try {
+      // Verificar que el turno sigue abierto antes de registrar la venta
+      if (turnoActual?.id) {
+        const { data: turnoCheck } = await supabase
+          .from('turnos_caja')
+          .select('estado')
+          .eq('id', turnoActual.id)
+          .maybeSingle()
+        if (!turnoCheck || turnoCheck.estado !== 'abierto') {
+          toast.error('Tu turno fue cerrado', {
+            description: 'El turno ya no está activo. Abre un nuevo turno para continuar.',
+            duration: 8000,
+          })
+          setTurnoActual(null)
+          fetchData()
+          setProcesando(false)
+          return
+        }
+      }
+
       const items = carrito.map(i => ({
         producto_id: i.producto.id,
         lote_id: i.lote.id,
@@ -966,13 +1010,25 @@ export default function VentasPage() {
     const sucId = (typeof sid === 'string' && sid) ? sid : sucursalId
     setAbriendoTurno(true)
 
-    // Anti-duplicado: verificar si ya existe turno abierto en esta sucursal
-    const { data: turnoExistente } = await supabase
+    // Anti-duplicado: buscar el turno abierto del USUARIO en esta sucursal.
+    // Filtrar por usuario_id es crítico cuando hay varios empleados con turnos
+    // abiertos en la misma sucursal — sin este filtro, maybeSingle() falla con
+    // múltiples filas y el error silencioso creaba un turno extra.
+    const { data: turnoExistente, error: errAntiDup } = await supabase
       .from('turnos_caja')
       .select('id, fecha_apertura, monto_apertura')
       .eq('sucursal_id', sucId)
+      .eq('usuario_id', perfil?.id)
       .eq('estado', 'abierto')
       .maybeSingle()
+
+    // Si la sesión expiró, el error llega aquí; cerramos sesión limpiamente
+    if (errAntiDup?.status === 401 || errAntiDup?.message?.toLowerCase().includes('jwt') || errAntiDup?.message?.toLowerCase().includes('token')) {
+      toast.error('Tu sesión expiró. Inicia sesión de nuevo.')
+      setAbriendoTurno(false)
+      await supabase.auth.signOut()
+      return
+    }
 
     if (!turnoExistente) {
       // No existe → crear via RPC
@@ -984,11 +1040,12 @@ export default function VentasPage() {
       } catch { /* el RPC puede rechazar si ya existe por condición de carrera */ }
     }
 
-    // Leer el turno resultante (nuevo o el ya existente)
-    const { data: turno } = await supabase
+    // Leer el turno resultante del USUARIO (nuevo o el ya existente)
+    const { data: turno, error: errTurno } = await supabase
       .from('turnos_caja')
       .select('*, perfiles(nombre)')
       .eq('sucursal_id', sucId)
+      .eq('usuario_id', perfil?.id)
       .eq('estado', 'abierto')
       .maybeSingle()
 
@@ -1018,36 +1075,75 @@ export default function VentasPage() {
       }
 
       // ── Auto-registrar asistencia en programacion ─────────
+      // Tres casos al abrir caja:
+      // A) Sin registro hoy → registrar con sucursal/turno actual
+      // B) Con registro pero en otra sucursal → actualizar sucursal (emergencia)
+      // C) Con registro, misma sucursal, pero llegó +1h tarde → cancelar el
+      //    turno programado (marcar como no-presentado) y registrar el nuevo
       if (perfil?.id) {
         try {
           const hoyAuto = fechaEnZona(tz)
-          const { data: yaProg } = await supabase
-            .from('programacion').select('id')
-            .eq('empresa_id', empresa.id).eq('usuario_id', perfil.id).eq('fecha', hoyAuto)
-            .maybeSingle()
+          const horaActual = new Intl.DateTimeFormat('en-GB', {
+            timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+          }).format(new Date())
 
-          if (!yaProg) {
+          // Buscar programación del usuario hoy con detalles del turno.
+          // .limit(1) en lugar de maybeSingle() porque el constraint permite
+          // múltiples entradas por día (distinto turno_id) y maybeSingle() fallaría.
+          const { data: progsHoy } = await supabase
+            .from('programacion')
+            .select('id, sucursal_id, turno_id, turnos_empresa(hora_inicio, hora_fin)')
+            .eq('empresa_id', empresa.id)
+            .eq('usuario_id', perfil.id)
+            .eq('fecha', hoyAuto)
+            .limit(1)
+          const progHoy = progsHoy?.[0] ?? null
+
+          const registrarConTurnoActual = async () => {
             const { data: turnosEmp } = await supabase
               .from('turnos_empresa').select('id, hora_inicio, hora_fin')
               .eq('empresa_id', empresa.id).order('hora_inicio')
-
-            if (turnosEmp?.length > 0) {
-              const horaActual = new Intl.DateTimeFormat('en-GB', {
-                timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
-              }).format(new Date())
-              const turnoEmpresa = turnosEmp.find(
-                t => t.hora_inicio <= horaActual && horaActual < t.hora_fin
-              ) ?? turnosEmp[0]
-              await supabase.from('programacion').insert({
-                empresa_id: empresa.id,
-                usuario_id: perfil.id,
-                sucursal_id: sucId,
-                turno_id: turnoEmpresa.id,
-                fecha: hoyAuto,
-              })
-            }
+            if (!turnosEmp?.length) return
+            const turnoEmpresa = turnosEmp.find(
+              t => t.hora_inicio.slice(0, 5) <= horaActual && horaActual < t.hora_fin.slice(0, 5)
+            ) ?? turnosEmp[0]
+            await supabase.from('programacion').insert({
+              empresa_id: empresa.id,
+              usuario_id: perfil.id,
+              sucursal_id: sucId,
+              turno_id:    turnoEmpresa.id,
+              fecha:       hoyAuto,
+            })
           }
-        } catch { /* silencioso */ }
+
+          if (!progHoy) {
+            // Caso A: sin registro → registrar automáticamente
+            await registrarConTurnoActual()
+          } else {
+            const horaInicio = (progHoy.turnos_empresa?.hora_inicio || '').slice(0, 5)
+            // Minutos transcurridos desde que empezó su turno programado
+            const [hI, mI] = horaInicio ? horaInicio.split(':').map(Number) : [0, 0]
+            const [hA, mA] = horaActual.split(':').map(Number)
+            const minutosLlegada = horaInicio ? (hA * 60 + mA) - (hI * 60 + mI) : 0
+
+            const otraSucursal  = progHoy.sucursal_id !== sucId
+            const llegoMuyTarde = horaInicio && minutosLlegada > 60
+
+            if (llegoMuyTarde) {
+              // Caso C: llegó +1h después de su turno programado →
+              // se borra el registro (no-show) y se crea uno nuevo con el turno actual
+              await supabase.from('programacion').delete().eq('id', progHoy.id)
+              await registrarConTurnoActual()
+            } else if (otraSucursal) {
+              // Caso B: emergencia, lo mandaron a otra sucursal →
+              // actualizar el sucursal_id para que salarios/asistencia reflejen dónde trabajó
+              await supabase.from('programacion')
+                .update({ sucursal_id: sucId })
+                .eq('id', progHoy.id)
+            }
+            // Si llegó a tiempo y en la misma sucursal → ya está bien registrado
+          }
+        } catch { /* silencioso — nunca bloquear apertura de turno */ }
       }
       // Recargar datos de la sucursal
       const hoy = fechaEnZona(tz)
@@ -1069,7 +1165,13 @@ export default function VentasPage() {
       setOfertasVigentes(ofVig || [])
       recargarTurno()
     } else {
-      toast.error('No se pudo abrir el turno')
+      // Si el error es de sesión expirada, cerrar limpiamente
+      if (errTurno?.status === 401 || errTurno?.message?.toLowerCase().includes('jwt') || errTurno?.message?.toLowerCase().includes('token')) {
+        toast.error('Tu sesión expiró. Inicia sesión de nuevo.')
+        await supabase.auth.signOut()
+      } else {
+        toast.error('No se pudo abrir el turno')
+      }
     }
     setAbriendoTurno(false)
   }

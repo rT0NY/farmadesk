@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthProvider'
 
@@ -185,11 +186,13 @@ export function AppProvider({ children }) {
           .eq('sucursal_id', sucursalActivaId)
           .eq('usuario_id', perfilId)
           .eq('estado', 'abierto')
+          .order('fecha_apertura', { ascending: false })
+          .limit(1)
           .maybeSingle()
-        if (error) { setTurnoActivo(null); return }
+        if (error) return // no sobreescribir si hay error de red
         setTurnoActivo(data)
       } catch {
-        setTurnoActivo(null)
+        // no sobreescribir si hay error inesperado
       }
     }
     cargarTurno()
@@ -215,11 +218,13 @@ export function AppProvider({ children }) {
         .eq('sucursal_id', sucursalActivaId)
         .eq('usuario_id', perfilId)
         .eq('estado', 'abierto')
+        .order('fecha_apertura', { ascending: false })
+        .limit(1)
         .maybeSingle()
-      if (error) { setTurnoActivo(null); return }
+      if (error) return // no sobreescribir si hay error de red
       setTurnoActivo(data)
     } catch {
-      setTurnoActivo(null)
+      // no sobreescribir si hay error inesperado
     }
   }, [sucursalActivaId, perfilId])
 
@@ -229,28 +234,40 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!perfil?.id || !empresa?.id) return
 
+    let cancelado = false
     const canal = supabase.channel(`presencia-${empresa.id}`, {
       config: { presence: { key: perfil.id } },
     })
 
     const sincronizar = () => {
+      if (cancelado) return
       const state = canal.presenceState()
       setUsuariosEnLinea(new Set(Object.keys(state)))
     }
 
-    canal
-      .on('presence', { event: 'sync'  }, sincronizar)
-      .on('presence', { event: 'join'  }, sincronizar)
-      .on('presence', { event: 'leave' }, sincronizar)
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await canal.track({ nombre: perfil.nombre, rol: perfil.rol })
-          sincronizar()
-        }
-      })
+    // try-catch: si el canal ya está suscrito (condición de carrera en login),
+    // no debe tumbar el árbol React — la presencia simplemente no estará activa.
+    try {
+      canal
+        .on('presence', { event: 'sync'  }, sincronizar)
+        .on('presence', { event: 'join'  }, sincronizar)
+        .on('presence', { event: 'leave' }, sincronizar)
+        .subscribe(async (status) => {
+          if (cancelado) return
+          if (status === 'SUBSCRIBED') {
+            await canal.track({ nombre: perfil.nombre, rol: perfil.rol })
+            sincronizar()
+          }
+        })
+    } catch (err) {
+      console.warn('Presencia no disponible:', err)
+    }
 
     return () => {
-      canal.untrack().finally(() => supabase.removeChannel(canal))
+      cancelado = true
+      // removeChannel directo (sin .finally) para que Supabase elimine el canal
+      // de su registro interno antes de que el efecto vuelva a correr.
+      supabase.removeChannel(canal)
     }
   }, [perfil?.id, empresa?.id])
 
