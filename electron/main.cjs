@@ -76,20 +76,23 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
 
     const printWin = new BrowserWindow({
       show: false,
-      width: 400,
-      height: 700,
+      width: 302,  // 80mm a 96dpi — ancho real del ticket
+      height: 1,   // mínimo para que scrollHeight = contenido, no ventana
       webPreferences: { nodeIntegration: false, contextIsolation: true },
     })
 
     printWin.loadFile(tmpFile)
-    printWin.webContents.once('did-finish-load', async () => {
+    printWin.webContents.once('did-finish-load', () => {
+      // Esperar que CSS termine de pintar antes de medir
+      setTimeout(async () => {
       // Medir alto real del contenido (px → micrones a 96 DPI: 1px = 25400/96 µm)
       let heightMicrons = 200000
       try {
         const heightPx = await printWin.webContents.executeJavaScript(
-          'document.documentElement.scrollHeight'
+          'document.body.scrollHeight'
         )
-        heightMicrons = Math.max(Math.ceil(heightPx * 264.583), 50000)
+        // +10px de margen para evitar corte del último renglón
+        heightMicrons = Math.max(Math.ceil((heightPx + 10) * 264.583), 50000)
       } catch { /* usar valor por defecto */ }
 
       printWin.webContents.print(
@@ -105,6 +108,7 @@ ipcMain.handle('imprimir-ticket', async (event, html) => {
           resolve({ success, errorType: errorType || null })
         }
       )
+      }, 200)
     })
     printWin.on('closed', () => resolve({ success: false, errorType: 'cancelled' }))
   })

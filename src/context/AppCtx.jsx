@@ -168,6 +168,22 @@ export function AppProvider({ children }) {
     cargarDatosUsuario()
   }, [cargarDatosUsuario])
 
+  // Limpiar programaciones de empleados que no abrieron caja en 1.5h
+  // Se ejecuta cada vez que empresa o tz cambian (login/cambio de empresa)
+  useEffect(() => {
+    if (!empresa?.id) return
+    const tzEmp = empresa.zona_horaria || 'America/Mexico_City'
+    const limpiar = async () => {
+      try {
+        await supabase.rpc('limpiar_ausentes_programacion', {
+          p_empresa_id: empresa.id,
+          p_tz: tzEmp,
+        })
+      } catch { /* silencioso */ }
+    }
+    limpiar()
+  }, [empresa?.id, empresa?.zona_horaria])
+
   // Cargar turno activo — el turno es PERSONAL al usuario.
   // Cada cajero tiene su propio turno aunque estén en la misma sucursal.
   // Esto permite turnos secuenciales (mañana/tarde) Y simultáneos (2 computadoras).

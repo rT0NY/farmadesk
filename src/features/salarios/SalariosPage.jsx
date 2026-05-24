@@ -30,12 +30,14 @@ function formatRango(isoDate) {
   return `${fmt(d)} – ${fmt(fin)}`
 }
 
-// Días trabajados según programacion (horario asignado — puede incluir ausencias)
-async function diasDesdeProgramacion(usuarioId, semanaInicio) {
+// Días según programacion (horario asignado — incluye días futuros de la semana y asistencias registradas)
+async function diasDesdeProgramacion(usuarioId, empresaId, semanaInicio) {
   const fechas = semanaFechas(semanaInicio)
   const { data } = await supabase
     .from('programacion').select('fecha')
-    .eq('usuario_id', usuarioId).in('fecha', fechas)
+    .eq('usuario_id', usuarioId)
+    .eq('empresa_id', empresaId)
+    .in('fecha', fechas)
   return [...new Set((data ?? []).map(p => new Date(p.fecha + 'T12:00:00').getDay()))]
 }
 
@@ -120,24 +122,47 @@ function ModalDiaPago({ empresa, onClose, onGuardado }) {
 
 function ModalSalario({ empleado, onClose }) {
   const { empresa, tz } = useApp()
-  const [salarioDia,    setSalarioDia]    = useState('')
-  const [salarioId,     setSalarioId]     = useState(null)
-  const [semanas,       setSemanas]       = useState([])
-  const [cargando,      setCargando]      = useState(true)
-  const [guardandoSal,  setGuardandoSal]  = useState(false)
-  const [sincronizando, setSincronizando] = useState(null)
+  const [salarioDia,      setSalarioDia]      = useState('')
+  const [salarioId,       setSalarioId]       = useState(null)
+  const [semanas,         setSemanas]         = useState([])
+  const [diasEnHorario,   setDiasEnHorario]   = useState(0)
+  const [cargando,        setCargando]        = useState(true)
+  const [guardandoSal,    setGuardandoSal]    = useState(false)
+  const [sincronizando,   setSincronizando]   = useState(null)
 
   const cargar = useCallback(async () => {
     setCargando(true)
+    const semana_inicio = lunesActual(tz)
     const [{ data: sal }, { data: sem }] = await Promise.all([
       supabase.from('salarios').select('id, salario_diario').eq('usuario_id', empleado.id).maybeSingle(),
       supabase.from('semanas_salario').select('*').eq('usuario_id', empleado.id)
         .order('semana_inicio', { ascending: false }),
     ])
     if (sal) { setSalarioDia(String(sal.salario_diario)); setSalarioId(sal.id) }
-    setSemanas(sem ?? [])
+
+    // Días en horario (programacion) de la semana actual — solo como referencia visual
+    const diasProg = await diasDesdeProgramacion(empleado.id, empresa.id, semana_inicio)
+    setDiasEnHorario(diasProg.length)
+
+    let todasSemanas = sem ?? []
+
+    // Auto-crear semana actual con días realmente trabajados (turnos_caja)
+    if (!todasSemanas.some(s => s.semana_inicio === semana_inicio)) {
+      try {
+        const dias    = await diasDesdeTurnos(empleado.id, semana_inicio, empresa.id, tz)
+        const salario = parseFloat(sal?.salario_diario) || 0
+        const total   = dias.length * salario
+        const { data: nueva } = await supabase.from('semanas_salario')
+          .insert({ usuario_id: empleado.id, empresa_id: empresa.id, semana_inicio,
+                    dias_trabajados: dias.length, dias_marcados: dias, total_calculado: total, pagado: false })
+          .select().single()
+        if (nueva) todasSemanas = [nueva, ...todasSemanas]
+      } catch { /* silencioso */ }
+    }
+
+    setSemanas(todasSemanas)
     setCargando(false)
-  }, [empleado.id])
+  }, [empleado.id, empresa?.id, tz])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -166,29 +191,6 @@ function ModalSalario({ empleado, onClose }) {
     }
   }
 
-  const agregarSemana = async () => {
-    const semana_inicio = lunesActual(tz)
-    if (semanas.some((s) => s.semana_inicio === semana_inicio))
-      return toast.error('Ya existe un registro para esta semana')
-    try {
-      // Usar turnos reales abiertos como fuente de verdad para asistencia
-      const dias    = await diasDesdeTurnos(empleado.id, semana_inicio, empresa.id, tz)
-      const salario = parseFloat(salarioDia) || 0
-      const total   = dias.length * salario
-      const { data, error } = await supabase.from('semanas_salario')
-        .insert({ usuario_id: empleado.id, empresa_id: empresa.id, semana_inicio,
-                  dias_trabajados: dias.length, dias_marcados: dias, total_calculado: total, pagado: false })
-        .select().single()
-      if (error) throw error
-      setSemanas((prev) => [data, ...prev])
-      toast.success(dias.length > 0
-        ? `${dias.length} días trabajados (verificado con turnos)`
-        : 'Sin turnos registrados esta semana · puedes marcarlos manualmente')
-    } catch (e) {
-      toast.error(e.message ?? 'Error al agregar semana')
-    }
-  }
-
   const sincronizar = async (semana) => {
     setSincronizando(semana.id)
     try {
@@ -204,8 +206,8 @@ function ModalSalario({ empleado, onClose }) {
       ))
       toast.success(
         dias.length > 0
-          ? `${dias.length} día${dias.length !== 1 ? 's' : ''} verificados con turnos reales`
-          : 'Sin turnos abiertos esta semana — los días marcados se limpiaron'
+          ? `${dias.length} día${dias.length !== 1 ? 's' : ''} trabajados verificados`
+          : 'Sin turnos esta semana — días trabajados limpiados'
       )
     } catch (e) {
       toast.error(e.message ?? 'Error al sincronizar')
@@ -232,8 +234,6 @@ function ModalSalario({ empleado, onClose }) {
     await supabase.from('semanas_salario').update({ pagado }).eq('id', semana.id)
   }
 
-  const lunes             = lunesActual(tz)
-  const tieneSemanaActual = semanas.some((s) => s.semana_inicio === lunes)
   const totalPendiente    = semanas.filter((s) => !s.pagado)
     .reduce((acc, s) => acc + (s.total_calculado ?? 0), 0)
 
@@ -287,14 +287,6 @@ function ModalSalario({ empleado, onClose }) {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {!tieneSemanaActual && (
-                <button onClick={agregarSemana}
-                  className="flex items-center justify-center gap-2 py-3.5 border-2 border-dashed border-primary-200 rounded-2xl text-sm font-medium text-primary-600 hover:bg-primary-50 active:bg-primary-100 transition-colors">
-                  <RefreshCw className="w-4 h-4" />
-                  Cargar semana actual desde horario
-                </button>
-              )}
-
               {semanas.length === 0 && (
                 <p className="text-sm text-slate-400 text-center py-4">Sin registros de semanas aún</p>
               )}
@@ -307,13 +299,18 @@ function ModalSalario({ empleado, onClose }) {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold text-slate-700">{formatRango(sem.semana_inicio)}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className={cn(
                           'text-xs font-semibold px-2 py-0.5 rounded-lg',
                           sem.dias_trabajados > 0 ? 'bg-primary-100 text-primary-700' : 'bg-slate-100 text-slate-400'
                         )}>
-                          {sem.dias_trabajados} día{sem.dias_trabajados !== 1 ? 's' : ''}
+                          {sem.dias_trabajados} trabajado{sem.dias_trabajados !== 1 ? 's' : ''}
                         </span>
+                        {sem.semana_inicio === lunesActual(tz) && diasEnHorario > 0 && (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500">
+                            {diasEnHorario} en horario
+                          </span>
+                        )}
                         <span className={cn(
                           'text-xs font-bold',
                           sem.total_calculado > 0 ? 'text-slate-700' : 'text-slate-300'
@@ -325,7 +322,7 @@ function ModalSalario({ empleado, onClose }) {
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {!sem.pagado && (
                         <button onClick={() => sincronizar(sem)} disabled={sincronizando === sem.id}
-                          title="Sincronizar desde horario"
+                          title="Sincronizar con turnos reales"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors">
                           <RefreshCw className={cn('w-3.5 h-3.5', sincronizando === sem.id && 'animate-spin')} />
                         </button>
@@ -601,9 +598,9 @@ export default function SalariosPage() {
                       {semAct && (
                         <>
                           <div className="hidden sm:block w-px bg-slate-100 self-stretch" />
-                          {/* Días marcados semana actual */}
+                          {/* Días trabajados semana actual */}
                           <div className="flex flex-col">
-                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Días marcados</span>
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Días trabajados</span>
                             <span className={cn('text-sm font-bold mt-0.5', diasSemAct > 0 ? 'text-slate-700' : 'text-slate-300')}>
                               {diasSemAct} día{diasSemAct !== 1 ? 's' : ''}
                             </span>

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
+import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
@@ -527,7 +528,7 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
 // resumen y movimientos vienen del padre (CajaPage.cargar) para que el refresh
 // del header o cualquier cambio externo (gastos, ventas) los refleje siempre.
 function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, puedeAbrir = true, resumen, movimientos, onAbrir, onCerrar, onActualizar, sinCabezal = false }) {
-  const { perfil } = useApp()
+  const { perfil, empresa, tz } = useApp()
   const [monto,       setMonto]      = useState('')
   const [abriendo,    setAbriendo]   = useState(false)
   const [mostrarForm, setMostrarForm]= useState(false)
@@ -563,6 +564,15 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
       })
       toast.success(`Turno abierto en ${sucursal.nombre}`)
       setMostrarForm(false); setMonto('')
+      // Auto-registrar asistencia en programacion
+      if (perfil?.id && empresa?.id) {
+        registrarAsistencia({
+          perfilId:   perfil.id,
+          empresaId:  empresa.id,
+          sucursalId: sucursal.id,
+          tz,
+        }).catch(() => { /* silencioso */ })
+      }
     } else {
       toast.error('No se pudo abrir el turno')
     }

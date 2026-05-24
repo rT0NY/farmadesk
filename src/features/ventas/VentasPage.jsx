@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
+import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, generarFolio } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
@@ -1075,74 +1076,14 @@ export default function VentasPage() {
       }
 
       // ── Auto-registrar asistencia en programacion ─────────
-      // Tres casos al abrir caja:
-      // A) Sin registro hoy → registrar con sucursal/turno actual
-      // B) Con registro pero en otra sucursal → actualizar sucursal (emergencia)
-      // C) Con registro, misma sucursal, pero llegó +1h tarde → cancelar el
-      //    turno programado (marcar como no-presentado) y registrar el nuevo
       if (perfil?.id) {
         try {
-          const hoyAuto = fechaEnZona(tz)
-          const horaActual = new Intl.DateTimeFormat('en-GB', {
-            timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
-          }).format(new Date())
-
-          // Buscar programación del usuario hoy con detalles del turno.
-          // .limit(1) en lugar de maybeSingle() porque el constraint permite
-          // múltiples entradas por día (distinto turno_id) y maybeSingle() fallaría.
-          const { data: progsHoy } = await supabase
-            .from('programacion')
-            .select('id, sucursal_id, turno_id, turnos_empresa(hora_inicio, hora_fin)')
-            .eq('empresa_id', empresa.id)
-            .eq('usuario_id', perfil.id)
-            .eq('fecha', hoyAuto)
-            .limit(1)
-          const progHoy = progsHoy?.[0] ?? null
-
-          const registrarConTurnoActual = async () => {
-            const { data: turnosEmp } = await supabase
-              .from('turnos_empresa').select('id, hora_inicio, hora_fin')
-              .eq('empresa_id', empresa.id).order('hora_inicio')
-            if (!turnosEmp?.length) return
-            const turnoEmpresa = turnosEmp.find(
-              t => t.hora_inicio.slice(0, 5) <= horaActual && horaActual < t.hora_fin.slice(0, 5)
-            ) ?? turnosEmp[0]
-            await supabase.from('programacion').insert({
-              empresa_id: empresa.id,
-              usuario_id: perfil.id,
-              sucursal_id: sucId,
-              turno_id:    turnoEmpresa.id,
-              fecha:       hoyAuto,
-            })
-          }
-
-          if (!progHoy) {
-            // Caso A: sin registro → registrar automáticamente
-            await registrarConTurnoActual()
-          } else {
-            const horaInicio = (progHoy.turnos_empresa?.hora_inicio || '').slice(0, 5)
-            // Minutos transcurridos desde que empezó su turno programado
-            const [hI, mI] = horaInicio ? horaInicio.split(':').map(Number) : [0, 0]
-            const [hA, mA] = horaActual.split(':').map(Number)
-            const minutosLlegada = horaInicio ? (hA * 60 + mA) - (hI * 60 + mI) : 0
-
-            const otraSucursal  = progHoy.sucursal_id !== sucId
-            const llegoMuyTarde = horaInicio && minutosLlegada > 60
-
-            if (llegoMuyTarde) {
-              // Caso C: llegó +1h después de su turno programado →
-              // se borra el registro (no-show) y se crea uno nuevo con el turno actual
-              await supabase.from('programacion').delete().eq('id', progHoy.id)
-              await registrarConTurnoActual()
-            } else if (otraSucursal) {
-              // Caso B: emergencia, lo mandaron a otra sucursal →
-              // actualizar el sucursal_id para que salarios/asistencia reflejen dónde trabajó
-              await supabase.from('programacion')
-                .update({ sucursal_id: sucId })
-                .eq('id', progHoy.id)
-            }
-            // Si llegó a tiempo y en la misma sucursal → ya está bien registrado
-          }
+          await registrarAsistencia({
+            perfilId:    perfil.id,
+            empresaId:   empresa.id,
+            sucursalId:  sucId,
+            tz,
+          })
         } catch { /* silencioso — nunca bloquear apertura de turno */ }
       }
       // Recargar datos de la sucursal
