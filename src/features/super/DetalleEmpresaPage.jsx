@@ -634,11 +634,43 @@ export default function DetalleEmpresaPage() {
                 placeholder="55 1234 5678"
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 bg-white" />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-500">Día de pago mensual (1–28)</label>
-              <input type="number" min="1" max="28" value={billing.dia_pago} onChange={e => setBilling(p => ({ ...p, dia_pago: e.target.value }))}
-                placeholder="Ej. 15"
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 bg-white" />
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-500">Día de pago mensual</label>
+                {billing.dia_pago && (
+                  <button
+                    type="button"
+                    onClick={() => setBilling(p => ({ ...p, dia_pago: '' }))}
+                    className="text-[10px] font-semibold text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setBilling(p => ({ ...p, dia_pago: String(d) }))}
+                    className={cn(
+                      'h-9 rounded-xl text-sm font-semibold transition-all',
+                      billing.dia_pago === String(d)
+                        ? 'bg-violet-600 text-white shadow-sm shadow-violet-200'
+                        : 'bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700 border border-slate-200'
+                    )}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+              {billing.dia_pago ? (
+                <p className="text-xs text-violet-700 font-medium">
+                  Se cobra el día <strong>{billing.dia_pago}</strong> de cada mes
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">Selecciona el día del mes en que se cobra</p>
+              )}
             </div>
             <button
               onClick={guardarBilling} disabled={billingGuardando}
