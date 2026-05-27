@@ -43,13 +43,14 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
       if (errVenta) throw errVenta
 
       const { data: detalles } = await supabase
-        .from('detalle_ventas').select('lote_id, cantidad').eq('venta_id', ventaId)
+        .from('detalle_ventas').select('lote_id, cantidad, producto_id').eq('venta_id', ventaId)
 
       for (const det of detalles ?? []) {
         if (!det.lote_id) continue
         const { data: inv } = await supabase
           .from('inventario').select('id, cantidad')
           .eq('lote_id', det.lote_id).eq('sucursal_id', venta.sucursal_id).maybeSingle()
+        const cantAnterior = inv?.cantidad ?? 0
         if (inv) {
           await supabase.from('inventario')
             .update({ cantidad: inv.cantidad + det.cantidad }).eq('id', inv.id)
@@ -62,6 +63,17 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
             cantidad:    det.cantidad,
           })
         }
+        await supabase.from('registros_stock').insert({
+          empresa_id:        venta.empresa_id,
+          lote_id:           det.lote_id,
+          producto_id:       det.producto_id,
+          sucursal_id:       venta.sucursal_id,
+          usuario_id:        perfil.id,
+          cantidad_anterior: cantAnterior,
+          cantidad_nueva:    cantAnterior + det.cantidad,
+          motivo:            'cancelacion',
+          referencia_id:     String(ventaId),
+        })
       }
 
       if (venta.turno_id) {

@@ -155,14 +155,27 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
       // Descontar origen
       const invOrigen = inventario.find((i) => i.lote_id === loteId && i.sucursal_id === origenId)
       await supabase.from('inventario').update({ cantidad: invOrigen.cantidad - cant }).eq('id', invOrigen.id)
+      await supabase.from('registros_stock').insert({
+        empresa_id: empresa.id, lote_id: loteId, producto_id: productoId,
+        sucursal_id: origenId, usuario_id: perfil?.id ?? null,
+        cantidad_anterior: invOrigen.cantidad, cantidad_nueva: invOrigen.cantidad - cant,
+        motivo: 'transferencia', referencia_id: String(loteId),
+      })
 
       // Sumar destino
       const invDestino = inventario.find((i) => i.lote_id === loteId && i.sucursal_id === destinoId)
+      const cantAnteriorDestino = invDestino?.cantidad ?? 0
       if (invDestino) {
         await supabase.from('inventario').update({ cantidad: invDestino.cantidad + cant }).eq('id', invDestino.id)
       } else {
         await supabase.from('inventario').insert({ empresa_id: empresa.id, lote_id: loteId, sucursal_id: destinoId, cantidad: cant })
       }
+      await supabase.from('registros_stock').insert({
+        empresa_id: empresa.id, lote_id: loteId, producto_id: productoId,
+        sucursal_id: destinoId, usuario_id: perfil?.id ?? null,
+        cantidad_anterior: cantAnteriorDestino, cantidad_nueva: cantAnteriorDestino + cant,
+        motivo: 'transferencia', referencia_id: String(loteId),
+      })
 
       // Registrar transferencia
       await supabase.from('transferencias').insert({
