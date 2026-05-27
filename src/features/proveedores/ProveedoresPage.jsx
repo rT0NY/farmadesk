@@ -1118,8 +1118,10 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
 
         // Auto-detectar: si la fecha coincide con un lote existente, sumar stock ahí
         const loteExistente = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
+        let loteIdUsado = null
 
         if (loteExistente) {
+          loteIdUsado = loteExistente.id
           // Sumar al lote existente en cada sucursal de destino
           for (const { sId, qty } of entradas) {
             const { data: invActual } = await supabase
@@ -1148,6 +1150,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
           if (errPrimero) throw errPrimero
 
           const loteId = resultado?.lote_id
+          loteIdUsado = loteId
           for (const { sId, qty } of resto) {
             const { data: invActual } = await supabase
               .from('inventario').select('cantidad')
@@ -1167,6 +1170,18 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
         if (precio > 0) {
           await supabase.from('productos')
             .update({ precio_compra: precio }).eq('id', it.producto_id)
+        }
+
+        if (loteIdUsado && cant > 0) {
+          await supabase.from('compras').insert({
+            empresa_id:      empresa?.id ?? pedido.empresa_id,
+            proveedor_id:    pedido.proveedor_id ?? null,
+            producto_id:     it.producto_id,
+            lote_id:         loteIdUsado,
+            cantidad:        cant,
+            precio_unitario: precio || 0,
+            nota:            `Recepción pedido #${pedido.id.slice(-6).toUpperCase()}`,
+          })
         }
 
         await supabase.from('pedido_items').update({
