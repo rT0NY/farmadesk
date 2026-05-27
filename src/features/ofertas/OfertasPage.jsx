@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   Plus, Tag, Search, X, Edit2, Trash2, Calendar,
@@ -867,7 +867,7 @@ export default function OfertasPage() {
   const [ofertaEditar, setOfertaEditar] = useState(null)
   const [confirmarEliminar, setConfirmarEliminar] = useState(null)
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     try {
       const { data, error } = await supabase.from('ofertas')
@@ -877,9 +877,13 @@ export default function OfertasPage() {
       setOfertas(data || [])
     } catch (err) { console.error(err) }
     finally { setCargando(false) }
-  }
+  }, [])
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const conteos = useMemo(() => ({
     activas:    ofertas.filter(o => estadoOferta(o).label === 'Activa').length,

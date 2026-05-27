@@ -174,6 +174,10 @@ export default function CaducidadesPage() {
   }, [empresa?.id, diasAlerta, tz])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   // Cajero sin turno activo → pedir que abra turno
   if (esCajero && !turnoActivo) {

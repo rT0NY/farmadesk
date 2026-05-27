@@ -197,6 +197,10 @@ export default function GastosPage() {
   }, [empresa?.id, filtroCategoria, periodo, fechaDesde, fechaHasta, tz])
 
   useEffect(() => { cargarGastos() }, [cargarGastos])
+  useEffect(() => {
+    window.addEventListener('focus', cargarGastos)
+    return () => window.removeEventListener('focus', cargarGastos)
+  }, [cargarGastos])
 
   const totalGeneral = gastos.reduce((s, g) => s + Number(g.monto), 0)
 

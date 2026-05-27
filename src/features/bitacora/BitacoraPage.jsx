@@ -154,6 +154,11 @@ export default function BitacoraPage() {
   }, [empresa, busquedaDB, fechaFiltro, tipoFiltro, sucFiltro])
 
   useEffect(() => { cargar(0) }, [cargar])
+  useEffect(() => {
+    const onFocus = () => cargar(0)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [cargar])
 
   const hayFiltros = busqueda.trim() || fechaFiltro || tipoFiltro || sucFiltro
 

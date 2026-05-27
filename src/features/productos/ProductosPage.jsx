@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import {
   Plus, Search, Package, Filter, RefreshCw, Archive,
   AlertTriangle, ChevronDown, X, Check, CircleCheck,
@@ -74,7 +74,7 @@ export default function ProductosPage() {
   const [modalAbierto, setModalAbierto] = useState(false)
   const [productoEditar, setProductoEditar] = useState(null)
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     try {
       const { data, error } = await supabase.rpc('listar_productos_completo', {
@@ -87,9 +87,13 @@ export default function ProductosPage() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const categorias = useMemo(() => {
     const conteos = new Map()

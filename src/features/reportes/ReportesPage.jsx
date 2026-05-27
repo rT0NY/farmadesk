@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   TrendingUp, TrendingDown, Users, Receipt, ShoppingCart, Package, Download, Calendar,
@@ -115,6 +115,13 @@ export default function ReportesPage() {
   const [fechaFin,    setFechaFin]    = useState('')
   const [datos,       setDatos]       = useState(null)
   const [cargando,    setCargando]    = useState(true)
+  const [refreshKey,  setRefreshKey]  = useState(0)
+
+  useEffect(() => {
+    const onFocus = () => setRefreshKey(k => k + 1)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   // Ref para evitar que sucursales (array inestable) cause race conditions
   const sucursalesRef = useRef(sucursales)
@@ -399,7 +406,7 @@ export default function ReportesPage() {
     }
     run() // eslint-disable-line
     return () => { activo = false }
-  }, [empresa?.id, periodo, fechaInicio, fechaFin])
+  }, [empresa?.id, periodo, fechaInicio, fechaFin, refreshKey])
 
   const { inicio, fin } = calcRango(periodo, fechaInicio, fechaFin)
 

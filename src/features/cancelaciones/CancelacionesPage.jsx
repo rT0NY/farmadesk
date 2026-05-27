@@ -376,6 +376,10 @@ export default function CancelacionesPage() {
   }, [periodo, tz])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   // Conteos siempre de TODAS las cancelaciones del periodo
   const conteos = {

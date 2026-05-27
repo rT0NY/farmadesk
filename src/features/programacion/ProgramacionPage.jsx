@@ -695,6 +695,10 @@ export default function ProgramacionPage() {
   }, [empresa, semanaInicio])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const fechas   = semanaFechas(semanaInicio)
   const esActual = semanaInicio === lunesActual()

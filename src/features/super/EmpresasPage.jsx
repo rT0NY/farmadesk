@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, RefreshCw, Building2, Users, Store, TrendingUp, ChevronRight,
   Bell, Phone, CheckCircle2, CalendarClock } from 'lucide-react'
@@ -45,7 +45,7 @@ export default function EmpresasPage() {
   const [filtro, setFiltro] = useState('todas')
   const [modalAbierto, setModalAbierto] = useState(false)
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     try {
       const [{ data, error }, { data: billing }] = await Promise.all([
@@ -61,7 +61,7 @@ export default function EmpresasPage() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [])
 
   const marcarPagado = async (empresaId, e) => {
     e.stopPropagation()
@@ -73,7 +73,11 @@ export default function EmpresasPage() {
     ))
   }
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const filtradas = empresas
     .filter(e => filtro === 'todas' || e.estado === filtro)

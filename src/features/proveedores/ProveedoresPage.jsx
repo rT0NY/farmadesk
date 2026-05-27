@@ -2275,6 +2275,10 @@ export default function ProveedoresPage() {
   }, [empresa, filtroEstadoPed, filtroProv, fechaDesde, fechaHasta])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const proveedoresFiltrados = busquedaProv.trim()
     ? proveedores.filter(p =>

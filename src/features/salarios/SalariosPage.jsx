@@ -165,6 +165,10 @@ function ModalSalario({ empleado, onClose }) {
   }, [empleado.id, empresa?.id, tz])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const guardarSalario = async () => {
     const valor = parseFloat(salarioDia)
@@ -432,6 +436,10 @@ export default function SalariosPage() {
   }, [empresa])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
   useEffect(() => { setDiaPago(empresa?.dia_pago ?? 5) }, [empresa])
 
   const marcarPagadoRapido = async (emp) => {

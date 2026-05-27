@@ -211,7 +211,7 @@ export default function InventarioPage() {
     return Number((p.stock_por_sucursal || {})[sucursalPropia.id] || 0)
   }, [sucursalPropia])
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     setErrorCarga(null)
     try {
@@ -227,7 +227,7 @@ export default function InventarioPage() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [])
 
   const cargarCaducidad = useCallback(async () => {
     setCargandoCad(true)
@@ -257,7 +257,11 @@ export default function InventarioPage() {
     }
   }, [])
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
   useEffect(() => { if (filtroEstado === 'por_caducar') cargarCaducidad() }, [filtroEstado, cargarCaducidad])
 
   const categorias = useMemo(() => {

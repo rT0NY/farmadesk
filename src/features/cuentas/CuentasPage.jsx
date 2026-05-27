@@ -369,6 +369,10 @@ export default function CuentasPage() {
   }, [filtroEstado, esAdmin, sucursalActiva, periodo, fechaDesde, fechaHasta])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const cuentasFiltradas = useMemo(() => {
     let r = cuentas

@@ -562,6 +562,10 @@ export default function TransferenciasPage() {
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   return (
     <div className="flex flex-col gap-6">

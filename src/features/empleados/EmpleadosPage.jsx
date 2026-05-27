@@ -409,6 +409,10 @@ export default function EmpleadosPage() {
   }, [empresa, filtroActivo])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const toggleActivo = async (emp) => {
     const nuevo = !emp.activo

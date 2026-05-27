@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -233,7 +233,7 @@ export default function DetalleEmpresaPage() {
   const [billingEdit, setBillingEdit] = useState(false)
   const [billingGuardando, setBillingGuardando] = useState(false)
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     try {
       // Empresa via RPC (SECURITY DEFINER — bypasses RLS para super_admin)
@@ -348,15 +348,19 @@ export default function DetalleEmpresaPage() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [id])
 
-  useEffect(() => { cargar() }, [id])
+  useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   // Refresco automático cada 60 segundos para mantener ventas actualizadas
   useEffect(() => {
     const interval = setInterval(() => { cargar() }, 60000)
     return () => clearInterval(interval)
-  }, [id])
+  }, [cargar])
 
   const toggleSucursal = async (sucursal) => {
     const nuevaActiva = !sucursal.activa
