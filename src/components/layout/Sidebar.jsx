@@ -104,23 +104,24 @@ function ItemIcono({ item }) {
   )
 }
 
-function Reloj() {
+function Reloj(tz = 'America/Mexico_City') {
   const [hora, setHora] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setHora(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
-  const hh = String(hora.getHours()).padStart(2, '0')
-  const mm = String(hora.getMinutes()).padStart(2, '0')
-  const ss = String(hora.getSeconds()).padStart(2, '0')
-  return { hh, mm, ss }
+  const partes = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(hora)
+  const get = (tipo) => partes.find(p => p.type === tipo)?.value ?? '00'
+  return { hh: get('hour'), mm: get('minute'), ss: get('second') }
 }
 
 export default function Sidebar({ abierto, onToggle }) {
   const { perfil, empresa } = useApp()
   const { cerrarSesion } = useAuth()
   const rol = perfil?.rol
-  const { hh, mm, ss } = Reloj()
+  const { hh, mm, ss } = Reloj(empresa?.zona_horaria || 'America/Mexico_City')
   const alertaTotal = useAlertaConteo()
   const [notifAbierto, setNotifAbierto] = useState(false)
 
