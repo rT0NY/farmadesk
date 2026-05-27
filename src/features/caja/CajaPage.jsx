@@ -885,7 +885,7 @@ function SeccionSucursal({ sucursal, conteoTurnos, children }) {
 
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function CajaPage() {
-  const { perfil, sucursales, sucursalActiva, recargarTurno, tz, usuariosEnLinea } = useApp()
+  const { perfil, sucursales, sucursalActiva, recargarTurno, cambiarSucursal, tz, usuariosEnLinea, esRotativo, resetSucursal } = useApp()
   const esCajero    = perfil?.rol === 'cajero'
   const esEncargado = perfil?.rol === 'encargado'
   const sucActId    = sucursalActiva?.id ?? perfil?.sucursal_id ?? null
@@ -994,6 +994,10 @@ export default function CajaPage() {
         .limit(20)
       if (sucIdsVisibles.length > 0) {
         histQuery = histQuery.in('sucursal_id', sucIdsVisibles)
+      }
+      // Cajero/encargado: solo sus propios turnos cerrados
+      if (esCajero || esEncargado) {
+        histQuery = histQuery.eq('usuario_id', perfil?.id)
       }
       const { data: hist } = await histQuery
       setHistorial(hist || [])
@@ -1206,7 +1210,14 @@ export default function CajaPage() {
           sucursalNombre={modalCerrar.sucursalNombre}
           resumen={modalCerrar.resumen}
           onCerrar={() => setModalCerrar(null)}
-          onExito={() => { setModalCerrar(null); cargar() }}
+          onExito={() => {
+            setModalCerrar(null)
+            if (esRotativo) {
+              resetSucursal()
+            } else {
+              cargar()
+            }
+          }}
         />
       )}
     </div>

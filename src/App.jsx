@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Store, Check } from 'lucide-react'
 import { useAuth } from '@/context/AuthProvider'
 import { useApp } from '@/context/AppCtx'
 import LoginPage from '@/features/auth/LoginPage'
@@ -40,9 +42,49 @@ function PantallaCarga() {
   )
 }
 
+function SelectorSucursalGlobal() {
+  const { sucursales, confirmarSucursal } = useApp()
+  const [sucursalTemp, setSucursalTemp] = useState(null)
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md space-y-5">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-slate-900">¿En qué farmacia trabajas hoy?</h1>
+          <p className="text-sm text-slate-500 mt-1">Selecciona la sucursal donde abrirás tu turno</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          {sucursales.map(s => {
+            const sel = s.id === sucursalTemp
+            return (
+              <button key={s.id} onClick={() => setSucursalTemp(s.id)}
+                className={`flex items-center gap-4 p-4 rounded-3xl border-2 transition-all text-left ${sel ? 'bg-primary-50 border-primary-500 shadow-sm' : 'bg-white border-slate-200 hover:border-primary-300'}`}>
+                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${sel ? 'bg-primary-100' : 'bg-slate-100'}`}>
+                  <Store className={`w-5 h-5 ${sel ? 'text-primary-600' : 'text-slate-400'}`} />
+                </div>
+                <p className={`flex-1 text-base font-bold ${sel ? 'text-primary-800' : 'text-slate-800'}`}>{s.nombre}</p>
+                {sel && <Check className="w-5 h-5 text-primary-600 flex-shrink-0" strokeWidth={3} />}
+              </button>
+            )
+          })}
+        </div>
+        <button
+          disabled={!sucursalTemp}
+          onClick={() => {
+            const suc = sucursales.find(s => s.id === sucursalTemp)
+            if (suc) confirmarSucursal(suc)
+          }}
+          className="w-full py-3 rounded-2xl bg-primary-600 text-white font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-700 transition-colors">
+          {sucursalTemp ? `Confirmar — ${sucursales.find(s => s.id === sucursalTemp)?.nombre}` : 'Selecciona una sucursal'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function RutaNormal({ children, roles }) {
   const { autenticado, cargando: cargandoAuth } = useAuth()
-  const { cargando: cargandoApp, esSuperAdmin, perfil } = useApp()
+  const { cargando: cargandoApp, esSuperAdmin, perfil, esRotativo, sucursalConfirmada } = useApp()
 
   if (cargandoAuth || cargandoApp) return <PantallaCarga />
   if (!autenticado) return <Navigate to="/login" replace />
@@ -50,6 +92,7 @@ function RutaNormal({ children, roles }) {
   if (roles && perfil && !roles.includes(perfil.rol)) {
     return <Navigate to="/" replace />
   }
+  if (esRotativo && !sucursalConfirmada) return <SelectorSucursalGlobal />
   return <AppLayout>{children}</AppLayout>
 }
 

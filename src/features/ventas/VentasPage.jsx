@@ -454,7 +454,7 @@ function ModalCierreTurno({ turnoActual, resumenTurno, sucursalNombre, onImprimi
 
 // ─── Página principal de Ventas ─────────────────────────────
 export default function VentasPage() {
-  const { perfil, empresa, sucursales, sucursalActiva, turnoActivo, cambiarSucursal, recargarTurno, tz } = useApp()
+  const { perfil, empresa, sucursales, sucursalActiva, turnoActivo, cambiarSucursal, recargarTurno, tz, esRotativo, resetSucursal } = useApp()
   const esAdmin   = perfil?.rol === 'admin'
   const esCajero  = perfil?.rol === 'cajero'
 
@@ -510,16 +510,6 @@ export default function VentasPage() {
   // Abrir turno
   const [montoApertura, setMontoApertura] = useState('')
   const [abriendoTurno, setAbriendoTurno] = useState(false)
-  // Rotativo: empleado sin sucursal fija en su perfil
-  const esRotativo = !esAdmin && !perfil?.sucursal_id && sucursales.length > 1
-  // Confirmada si: tiene sucursal fija, es admin, o ya vino con sucursalActiva restaurada (turno previo)
-  const [sucursalConfirmada, setSucursalConfirmada] = useState(!!perfil?.sucursal_id || esAdmin || !!sucursalActiva?.id)
-  const [sucursalSugerida,  setSucursalSugerida]  = useState(null)
-  // sucursalTemp: selección explícita en el picker (null = sin seleccionar aún)
-  const [sucursalTemp, setSucursalTemp]  = useState(null)
-  // pasoSelector: 1=elegir sucursal, 2=ingresar monto de apertura
-  const [pasoSelector, setPasoSelector] = useState(1)
-
   // Cerrar turno
   const [modalCierre,    setModalCierre]    = useState(false)
   const [resumenTurno,   setResumenTurno]   = useState(null)
@@ -535,7 +525,7 @@ export default function VentasPage() {
     setLoading(true)
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }, { data: progHoy }] = await Promise.all([
+      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
         supabase.from('lotes').select('*').eq('activo', true),
         supabase.from('inventario').select('*'),
@@ -550,19 +540,7 @@ export default function VentasPage() {
         esCajero
           ? Promise.resolve({ data: [] })
           : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
-        // Para empleados rotativos: ver dónde están programados hoy
-        perfilId && !perfil?.sucursal_id
-          ? supabase.from('programacion').select('sucursal_id').eq('usuario_id', perfilId).eq('fecha', hoy).maybeSingle()
-          : Promise.resolve({ data: null }),
       ])
-      // Auto-confirmar sucursal desde programacion (Caso A: empleado con horario hoy)
-      if (progHoy?.sucursal_id && !sucursalConfirmada) {
-        setSucursalSugerida(progHoy.sucursal_id)
-        setSucursalId(progHoy.sucursal_id)
-        setSucursalConfirmada(true)
-        const suc = sucursales.find(s => s.id === progHoy.sucursal_id)
-        if (suc) cambiarSucursal(suc)
-      }
       const disabledSet = new Set((prodSuc || []).map(ps => ps.producto_id))
       setDeshabilitados(disabledSet)
       setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
@@ -605,8 +583,8 @@ export default function VentasPage() {
   // el tiempo que tarda fetchData, o permanentemente si sucursalId queda vacío.
   useEffect(() => {
     if (turnoActual || !turnoActivo) return
-    // Solo aplicar si el turno del contexto es para la sucursal activa actual
-    if (sucursalId && turnoActivo.sucursal_id !== sucursalId) return
+    // Solo aplicar si hay sucursal activa y el turno del contexto es para ella
+    if (!sucursalId || turnoActivo.sucursal_id !== sucursalId) return
     setTurnoActual(turnoActivo)
   }, [turnoActivo?.id, sucursalId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1005,10 +983,8 @@ export default function VentasPage() {
   }
 
   // ── Abrir turno ───────────────────────────────────────────
-  // sid: sólo para rotativos en el paso 2 del selector; si no se pasa usa sucursalId del estado
-  async function abrirTurno(sid) {
-    // sid debe ser un string UUID; si llega un evento del DOM lo ignoramos
-    const sucId = (typeof sid === 'string' && sid) ? sid : sucursalId
+  async function abrirTurno() {
+    const sucId = sucursalId
     setAbriendoTurno(true)
 
     // Anti-duplicado: buscar el turno abierto del USUARIO en esta sucursal.
@@ -1051,11 +1027,6 @@ export default function VentasPage() {
       .maybeSingle()
 
     if (turno) {
-      // Si el rotativo acaba de elegir sucursal en el paso 2, confirmarla ahora
-      if (sid) {
-        cambiarSuc(sid)
-        setSucursalConfirmada(true)
-      }
       setTurnoActual(turno)
       setMontoApertura('')
       toast.success(turnoExistente ? 'Turno ya estaba abierto' : 'Turno activo')
@@ -1273,89 +1244,6 @@ export default function VentasPage() {
   // SI NO HAY TURNO ABIERTO → Pantalla de apertura
   // ══════════════════════════════════════════════════════════
   if (!turnoActual) {
-    // Caso B: rotativo sin horario programado → selector de 2 pasos
-    if (esRotativo && !sucursalConfirmada) {
-      // ── Paso 1: Elegir sucursal ────────────────────────────
-      if (pasoSelector === 1) {
-        return (
-          <div className="space-y-5 max-w-md mx-auto mt-8">
-            <div className="text-center">
-              <h1 className="text-2xl font-bold text-slate-900">¿En qué farmacia trabajas hoy?</h1>
-              <p className="text-sm text-slate-500 mt-1">Toca la sucursal donde abrirás tu turno</p>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {sucursales.map(s => {
-                const esSeleccionada = s.id === sucursalTemp
-                return (
-                  <button key={s.id}
-                    onClick={() => setSucursalTemp(s.id)}
-                    className={cn(
-                      'flex items-center gap-4 p-4 rounded-3xl border-2 transition-all text-left',
-                      esSeleccionada
-                        ? 'bg-primary-50 border-primary-500 shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-primary-300'
-                    )}>
-                    <div className={cn('w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0',
-                      esSeleccionada ? 'bg-primary-100' : 'bg-slate-100')}>
-                      <Store className={cn('w-5 h-5', esSeleccionada ? 'text-primary-600' : 'text-slate-400')} />
-                    </div>
-                    <p className={cn('flex-1 text-base font-bold', esSeleccionada ? 'text-primary-800' : 'text-slate-800')}>
-                      {s.nombre}
-                    </p>
-                    {esSeleccionada && (
-                      <Check className="w-5 h-5 text-primary-600 flex-shrink-0" strokeWidth={3} />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-
-            <Button className="w-full" tamano="lg"
-              disabled={!sucursalTemp}
-              onClick={() => setPasoSelector(2)}>
-              {sucursalTemp
-                ? `Continuar con ${sucursales.find(s => s.id === sucursalTemp)?.nombre}`
-                : 'Selecciona una sucursal'}
-            </Button>
-          </div>
-        )
-      }
-
-      // ── Paso 2: Monto de apertura ──────────────────────────
-      const sucNombreTemp = sucursales.find(s => s.id === sucursalTemp)?.nombre ?? ''
-      return (
-        <div className="max-w-md mx-auto mt-8 space-y-5">
-          <button onClick={() => setPasoSelector(1)}
-            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 font-medium">
-            <Store className="w-4 h-4" /> {sucNombreTemp} · <span className="text-primary-600">Cambiar</span>
-          </button>
-
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-4">
-              <Wallet className="w-8 h-8 text-primary-600" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 mb-1">Abrir turno</h2>
-            <p className="text-sm text-slate-500 mb-1">{sucNombreTemp}</p>
-            <p className="text-sm text-slate-400 mb-6">¿Con cuánto efectivo inicia la caja?</p>
-            <div className="flex items-center gap-2 mb-3">
-              <Input
-                type="number" step="0.01" min="0"
-                iconoIzq={<DollarSign className="w-5 h-5" />}
-                value={montoApertura}
-                onChange={e => setMontoApertura(e.target.value)}
-                placeholder="300.00"
-                onKeyDown={e => e.key === 'Enter' && abrirTurno(sucursalTemp)}
-              />
-            </div>
-            <Button onClick={() => abrirTurno(sucursalTemp)} cargando={abriendoTurno} className="w-full" iconoIzq={<Plus className="w-4 h-4" />}>
-              Abrir turno en {sucNombreTemp}
-            </Button>
-          </div>
-        </div>
-      )
-    }
-
     return (
       <div className="space-y-5">
         <div className="flex items-start justify-between gap-3">
@@ -1364,12 +1252,6 @@ export default function VentasPage() {
             <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5">
               <Store className="w-3.5 h-3.5" />
               {sucursalActual?.nombre}
-              {esRotativo && (
-                <button onClick={() => { setSucursalConfirmada(false); setSucursalTemp(null) }}
-                  className="text-primary-600 hover:text-primary-700 font-semibold ml-1 text-xs">
-                  Cambiar
-                </button>
-              )}
             </p>
           </div>
           {esAdmin && sucursales.length > 1 && (
@@ -2077,7 +1959,16 @@ export default function VentasPage() {
           sucursalNombre={sucursalActual?.nombre ?? ''}
           onImprimir={imprimirCorte}
           onClose={() => { setModalCierre(false); setResumenTurno(null) }}
-          onCerrado={() => { setModalCierre(false); setResumenTurno(null); setTab('caja'); recargarTurno(); fetchData() }}
+          onCerrado={() => {
+            setModalCierre(false); setResumenTurno(null); setTab('caja')
+            setTurnoActual(null)
+            if (esRotativo) {
+              resetSucursal()
+            } else {
+              fetchData()
+            }
+            recargarTurno()
+          }}
         />
       )}
     </div>

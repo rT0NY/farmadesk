@@ -16,6 +16,7 @@ export function AppProvider({ children }) {
   const [sucursales, setSucursales] = useState([])
   const [sucursalActiva, setSucursalActiva] = useState(null)
   const [turnoActivo, setTurnoActivo] = useState(null)
+  const [sucursalConfirmada, setSucursalConfirmada] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [usuariosEnLinea, setUsuariosEnLinea] = useState(new Set())
   // Evita pantalla en blanco en recargas posteriores a la primera
@@ -126,22 +127,7 @@ export function AppProvider({ children }) {
           sucIdActivo = turnosAbiertos?.[0]?.sucursal_id ?? null
         }
 
-        // 2) Programacion de hoy en la zona horaria de la empresa
-        if (!sucIdActivo) {
-          const tzEmpresa = empresaData?.zona_horaria || 'America/Mexico_City'
-          const hoyLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tzEmpresa }).format(new Date())
-          const { data: prog } = await supabase
-            .from('programacion')
-            .select('sucursal_id')
-            .eq('usuario_id', usuarioId)
-            .eq('empresa_id', perfilData.empresa_id)
-            .eq('fecha', hoyLocal)
-            .order('id', { ascending: false })
-            .limit(1)
-          sucIdActivo = prog?.[0]?.sucursal_id ?? null
-        }
-
-        // 3) sessionStorage — sobrevive F5 dentro de la misma sesión del navegador
+        // 2) sessionStorage — sobrevive F5 dentro de la misma sesión del navegador
         if (!sucIdActivo) {
           sucIdActivo = sessionStorage.getItem('farmadesk_sucursal_rotativo') ?? null
           // Validar que la sucursal guardada siga existiendo
@@ -153,8 +139,16 @@ export function AppProvider({ children }) {
         if (sucIdActivo) {
           sucursalInicial = sucursalesData?.find(s => s.id === sucIdActivo) ?? null
         }
+
+        // Empresa con una sola sucursal: asignarla aunque no haya turno ni sesión
+        if (!sucursalInicial && (sucursalesData?.length ?? 0) === 1) {
+          sucursalInicial = sucursalesData[0]
+        }
       }
       setSucursalActiva(sucursalInicial)
+      // Rotativo: confirmada solo si el cascade encontró sucursal (turno abierto o sessionStorage)
+      const esRot = perfilData.rol !== 'admin' && !perfilData.sucursal_id && (sucursalesData?.length ?? 0) > 1
+      setSucursalConfirmada(!esRot || !!sucursalInicial)
       inicializado.current = true
     } catch (error) {
       console.error('Error cargando datos del usuario:', error)
@@ -182,6 +176,25 @@ export function AppProvider({ children }) {
       } catch { /* silencioso */ }
     }
     limpiar()
+  }, [empresa?.id, empresa?.zona_horaria])
+
+  // Auto-registro turno 2: cuando el foco vuelve a la ventana, registra en
+  // programacion a los empleados que siguen con caja abierta 1h+ después de
+  // que empezó el segundo turno, sin que el usuario haga nada.
+  useEffect(() => {
+    if (!empresa?.id) return
+    const tzEmp = empresa.zona_horaria || 'America/Mexico_City'
+    const registrar = async () => {
+      try {
+        await supabase.rpc('registrar_activos_turno2', {
+          p_empresa_id: empresa.id,
+          p_tz: tzEmp,
+        })
+      } catch { /* silencioso */ }
+    }
+    registrar()
+    window.addEventListener('focus', registrar)
+    return () => window.removeEventListener('focus', registrar)
   }, [empresa?.id, empresa?.zona_horaria])
 
   // Cargar turno activo — el turno es PERSONAL al usuario.
@@ -216,14 +229,26 @@ export function AppProvider({ children }) {
 
   const cambiarSucursal = useCallback((sucursal) => {
     setSucursalActiva(sucursal)
-    if (!sucursal?.id) return
     if (perfil?.rol === 'admin') {
-      localStorage.setItem('farmadesk_sucursal_id', sucursal.id)
+      if (sucursal?.id) localStorage.setItem('farmadesk_sucursal_id', sucursal.id)
     } else {
-      // Rotativos: sessionStorage persiste en F5 pero no entre sesiones del navegador
-      sessionStorage.setItem('farmadesk_sucursal_rotativo', sucursal.id)
+      if (sucursal?.id) {
+        sessionStorage.setItem('farmadesk_sucursal_rotativo', sucursal.id)
+      } else {
+        sessionStorage.removeItem('farmadesk_sucursal_rotativo')
+      }
     }
   }, [perfil?.rol])
+
+  const confirmarSucursal = useCallback((sucursal) => {
+    cambiarSucursal(sucursal)
+    setSucursalConfirmada(true)
+  }, [cambiarSucursal])
+
+  const resetSucursal = useCallback(() => {
+    cambiarSucursal(null)
+    setSucursalConfirmada(false)
+  }, [cambiarSucursal])
 
   const recargarTurno = useCallback(async () => {
     if (!sucursalActivaId || !perfilId) return
@@ -301,9 +326,13 @@ export function AppProvider({ children }) {
     esAdmin: perfil?.rol === 'admin',
     esEncargado: perfil?.rol === 'encargado',
     esCajero: perfil?.rol === 'cajero',
+    esRotativo: !!(perfil && perfil.rol !== 'admin' && perfil.rol !== 'super_admin' && !perfil.sucursal_id && sucursales.length > 1),
     tz: empresa?.zona_horaria || 'America/Mexico_City',
     usuariosEnLinea,
-  }), [perfil, empresa, sucursales, sucursalActiva, turnoActivo, cargando, cambiarSucursal, recargarTurno, cargarDatosUsuario, usuariosEnLinea])
+    sucursalConfirmada,
+    confirmarSucursal,
+    resetSucursal,
+  }), [perfil, empresa, sucursales, sucursalActiva, turnoActivo, cargando, cambiarSucursal, recargarTurno, cargarDatosUsuario, usuariosEnLinea, sucursalConfirmada, confirmarSucursal, resetSucursal])
 
   return (
     <AppContext.Provider value={valor}>
