@@ -766,24 +766,45 @@ export default function VentasPage() {
 
   function setCantidadItem(prodId, val) {
     const num = Math.max(1, parseInt(val) || 1)
-    setCarrito(prev => prev.map(i => {
-      if (i.producto.id !== prodId) return i
-      const nuevaCant = Math.min(num, i.stockMax)
+    const item = carrito.find(i => i.producto.id === prodId)
+    if (!item) return
+    const nuevaCant = Math.min(num, item.stockMax)
+    const nuevosPrecios = { ...precios }
 
-      // Auto-mayoreo por cantidad mínima configurada
+    let nuevoCarrito = carrito.map(i => {
+      if (i.producto.id !== prodId) return i
       const pm = Number(i.producto.precio_mayoreo) || 0
       const cm = Number(i.producto.cantidad_mayoreo) || 0
       if (pm > 0 && cm > 0) {
         const activar = nuevaCant >= cm
         setModosMayoreo(m => ({ ...m, [prodId]: activar }))
-        setPrecios(p => ({ ...p, [prodId]: activar ? String(pm) : String(i.producto.precio_venta) }))
+        nuevosPrecios[prodId] = activar ? String(pm) : String(i.producto.precio_venta)
       } else if (i.oferta?.tipo === 'nxm') {
         const { precioFinal, esNxM } = precioConOferta(i.producto.precio_venta, i.oferta, nuevaCant)
-        if (esNxM) setPrecios(p => ({ ...p, [prodId]: precioFinal.toFixed(2) }))
-        else setPrecios(p => ({ ...p, [prodId]: String(i.producto.precio_venta) }))
+        nuevosPrecios[prodId] = esNxM ? precioFinal.toFixed(2) : String(i.producto.precio_venta)
       }
       return { ...i, cantidad: nuevaCant }
-    }))
+    })
+
+    // Re-evaluar ofertas cruzadas donde este item es el trigger
+    ofertasVigentes.filter(o => o.producto_trigger_id === prodId).forEach(o => {
+      const benefitIdx = nuevoCarrito.findIndex(i => i.producto.id === o.producto_id)
+      if (benefitIdx < 0) return
+      const benefit = nuevoCarrito[benefitIdx]
+      if (nuevaCant >= (o.cantidad_minima || 1)) {
+        if (benefit.oferta?.id !== o.id) {
+          const { precioFinal } = precioConOferta(benefit.producto.precio_venta, o)
+          nuevosPrecios[benefit.producto.id] = precioFinal.toFixed(2)
+          nuevoCarrito = nuevoCarrito.map((it, idx) => idx === benefitIdx ? { ...it, oferta: o } : it)
+        }
+      } else if (benefit.oferta?.id === o.id) {
+        nuevosPrecios[benefit.producto.id] = String(benefit.producto.precio_venta)
+        nuevoCarrito = nuevoCarrito.map((it, idx) => idx === benefitIdx ? { ...it, oferta: null } : it)
+      }
+    })
+
+    setCarrito(nuevoCarrito)
+    setPrecios(nuevosPrecios)
   }
 
   function setPrecioItem(prodId, val) {
