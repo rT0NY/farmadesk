@@ -46,12 +46,21 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
         .from('detalle_ventas').select('lote_id, cantidad').eq('venta_id', ventaId)
 
       for (const det of detalles ?? []) {
+        if (!det.lote_id) continue
         const { data: inv } = await supabase
           .from('inventario').select('id, cantidad')
           .eq('lote_id', det.lote_id).eq('sucursal_id', venta.sucursal_id).maybeSingle()
         if (inv) {
           await supabase.from('inventario')
             .update({ cantidad: inv.cantidad + det.cantidad }).eq('id', inv.id)
+        } else {
+          // El registro fue eliminado (lote vaciado exacto) — recrear
+          await supabase.from('inventario').insert({
+            empresa_id:  venta.empresa_id,
+            lote_id:     det.lote_id,
+            sucursal_id: venta.sucursal_id,
+            cantidad:    det.cantidad,
+          })
         }
       }
 
