@@ -152,52 +152,28 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
     try {
       const cant = parseInt(cantidad, 10)
 
-      // Descontar origen
-      const invOrigen = inventario.find((i) => i.lote_id === loteId && i.sucursal_id === origenId)
-      await supabase.from('inventario').update({ cantidad: invOrigen.cantidad - cant }).eq('id', invOrigen.id)
-      await supabase.from('registros_stock').insert({
-        empresa_id: empresa.id, lote_id: loteId, producto_id: productoId,
-        sucursal_id: origenId, usuario_id: perfil?.id ?? null,
-        cantidad_anterior: invOrigen.cantidad, cantidad_nueva: invOrigen.cantidad - cant,
-        motivo: 'transferencia', referencia_id: String(loteId),
+      const { error } = await supabase.rpc('registrar_transferencia', {
+        p_lote_id:     loteId,
+        p_producto_id: productoId,
+        p_origen_id:   origenId,
+        p_destino_id:  destinoId,
+        p_empresa_id:  empresa.id,
+        p_usuario_id:  perfil?.id ?? null,
+        p_cantidad:    cant,
+        p_nota:        nota.trim() || null,
       })
 
-      // Sumar destino
-      const invDestino = inventario.find((i) => i.lote_id === loteId && i.sucursal_id === destinoId)
-      const cantAnteriorDestino = invDestino?.cantidad ?? 0
-      if (invDestino) {
-        await supabase.from('inventario').update({ cantidad: invDestino.cantidad + cant }).eq('id', invDestino.id)
-      } else {
-        await supabase.from('inventario').insert({ empresa_id: empresa.id, lote_id: loteId, sucursal_id: destinoId, cantidad: cant })
-      }
-      await supabase.from('registros_stock').insert({
-        empresa_id: empresa.id, lote_id: loteId, producto_id: productoId,
-        sucursal_id: destinoId, usuario_id: perfil?.id ?? null,
-        cantidad_anterior: cantAnteriorDestino, cantidad_nueva: cantAnteriorDestino + cant,
-        motivo: 'transferencia', referencia_id: String(loteId),
-      })
+      if (error) throw error
 
-      // Registrar transferencia
-      await supabase.from('transferencias').insert({
-        empresa_id:  empresa.id,
-        lote_id:     loteId,
-        producto_id: productoId,
-        origen_id:   origenId,
-        destino_id:  destinoId,
-        cantidad:    cant,
-        nota:        nota.trim() || null,
-        usuario_id:  perfil?.id ?? null,
-      })
-
-      // Bitácora
+      // Bitácora (no crítico)
       const sucOrigen  = sucursales.find((s) => s.id === origenId)
       const sucDestino = sucursales.find((s) => s.id === destinoId)
-      await supabase.from('bitacora').insert({
-        empresa_id:  empresa.id,
-        tipo:        'transferencia',
-        descripcion: `${producto?.nombre} · ${sucOrigen?.nombre} → ${sucDestino?.nombre} · ${cant} uds`,
-        usuario_id:  perfil?.id ?? null,
-        sucursal_id: origenId,
+      supabase.from('bitacora').insert({
+        empresa_id:    empresa.id,
+        tipo:          'transferencia',
+        descripcion:   `${producto?.nombre} · ${sucOrigen?.nombre} → ${sucDestino?.nombre} · ${cant} uds`,
+        usuario_id:    perfil?.id ?? null,
+        sucursal_id:   origenId,
         referencia_id: String(productoId),
         metadatos: { producto: producto?.nombre, lote: loteObj?.codigo_lote, origen: sucOrigen?.nombre, destino: sucDestino?.nombre, cantidad: cant, nota: nota.trim() || null },
       })

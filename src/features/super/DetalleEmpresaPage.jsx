@@ -5,7 +5,7 @@ import {
   ArrowLeft, Building2, Store, Plus, Users,
   MapPin, Trash2, Edit2, Pause, Play, AlertTriangle,
   TrendingUp, DollarSign, Save, X, Check, RefreshCw,
-  CreditCard, Phone, CalendarClock, CheckCircle2,
+  CreditCard, Phone, CalendarClock, CheckCircle2, ChevronDown,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { sanitizar } from '@/lib/sanitizar'
@@ -217,6 +217,142 @@ function ModalNuevaSucursal({ empresaId, onCerrar, onExito }) {
   )
 }
 
+// ─── Calendario de historial de pagos ────────────────────────────────────────
+function CalendarioHistorial({ pagos, diaPago, creadoEn }) {
+  const hoy = new Date()
+  const anoActual = hoy.getFullYear()
+  const [anosAbiertos, setAnosAbiertos] = useState({ [anoActual]: true })
+
+  if (!diaPago && pagos.length === 0) return null
+
+  const dp = parseInt(diaPago || 0)
+  const DIAS = ['D','L','M','X','J','V','S']
+
+  // Primer mes a mostrar: desde cuando fue creada la empresa (o hace 12 meses como fallback)
+  const fechaInicio = creadoEn
+    ? new Date(new Date(creadoEn).getFullYear(), new Date(creadoEn).getMonth(), 1)
+    : new Date(hoy.getFullYear() - 1, hoy.getMonth(), 1)
+  const mesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+
+  // Generar todos los meses desde el inicio hasta hoy
+  const todosMeses = []
+  let cursor = new Date(fechaInicio)
+  while (cursor <= mesActual) {
+    todosMeses.push({ y: cursor.getFullYear(), m: cursor.getMonth() })
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+  }
+
+  // Agrupar por año
+  const porAno = {}
+  todosMeses.forEach(({ y, m }) => {
+    if (!porAno[y]) porAno[y] = []
+    porAno[y].push(m)
+  })
+  const anos = Object.keys(porAno).map(Number).sort((a, b) => b - a)
+
+  const pagoMap = {}
+  pagos.forEach(p => { pagoMap[p.fecha_pago.slice(0, 7)] = p })
+
+  const toggleAno = (ano) => setAnosAbiertos(v => ({ ...v, [ano]: !v[ano] }))
+
+  const renderMes = (y, m) => {
+    const key = `${y}-${String(m + 1).padStart(2, '0')}`
+    const pago = pagoMap[key]
+    const diasEnMes = new Date(y, m + 1, 0).getDate()
+    const primerDia = new Date(y, m, 1).getDay()
+    const esPasado = y < hoy.getFullYear() || (y === hoy.getFullYear() && m < hoy.getMonth())
+    const esActual = y === hoy.getFullYear() && m === hoy.getMonth()
+    const dpMes = parseInt(pago?.dia_pago_programado ?? dp)
+    const pagadoEl = pago ? parseInt(pago.fecha_pago.slice(8, 10)) : null
+    const tardio = pagadoEl && dpMes && pagadoEl > dpMes
+    const sinPago = !pago && dpMes && esPasado
+    const nombre = new Date(y, m, 1).toLocaleDateString('es-MX', { month: 'short' })
+    const cells = []
+    for (let i = 0; i < primerDia; i++) cells.push(null)
+    for (let d = 1; d <= diasEnMes; d++) cells.push(d)
+
+    return (
+      <div key={key} className={cn(
+        'rounded-xl border p-2',
+        pago && !tardio ? 'bg-emerald-50/50 border-emerald-200' :
+        pago && tardio  ? 'bg-amber-50/50 border-amber-200' :
+        sinPago         ? 'bg-red-50/30 border-red-100' :
+                          'bg-white border-slate-100'
+      )}>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[10px] font-bold text-slate-600 capitalize">{nombre}</p>
+          {pago && !tardio && <span className="text-[9px] font-bold text-emerald-600">✓</span>}
+          {pago && tardio  && <span className="text-[9px] font-bold text-amber-600">+{pagadoEl - dpMes}d</span>}
+          {sinPago         && <span className="text-[9px] text-red-400">—</span>}
+        </div>
+        <div className="grid grid-cols-7 gap-0">
+          {DIAS.map(d => (
+            <div key={d} className="text-center text-[7px] text-slate-300 font-semibold leading-none mb-0.5">{d}</div>
+          ))}
+          {cells.map((d, i) => {
+            if (!d) return <div key={`e${i}`} className="h-[16px]" />
+            const esDp     = d === dpMes
+            const esPagado = d === pagadoEl
+            const esHoyD   = esActual && d === hoy.getDate()
+            let cls = 'h-[16px] w-[16px] mx-auto rounded-full flex items-center justify-center text-[7px] leading-none '
+            if (esPagado && !tardio)     cls += 'bg-emerald-500 text-white font-bold'
+            else if (esPagado && tardio) cls += 'bg-amber-400 text-white font-bold'
+            else if (esDp && sinPago)    cls += 'ring-1 ring-red-400 text-red-500'
+            else if (esDp && esActual)   cls += 'ring-1 ring-violet-400 text-violet-700 font-semibold'
+            else if (esDp)               cls += 'text-slate-500 font-semibold'
+            else if (esHoyD)             cls += 'bg-slate-200 text-slate-600'
+            else                         cls += 'text-slate-200'
+            return (
+              <div key={`${d}_${i}`} className="flex justify-center">
+                <div className={cls}>{d}</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {anos.map(ano => {
+        const mesesDelAno = porAno[ano]
+        const pagosEnAno  = mesesDelAno.filter(m => pagoMap[`${ano}-${String(m + 1).padStart(2, '0')}`]).length
+        const abierto     = !!anosAbiertos[ano]
+        const alCorriente = pagosEnAno === mesesDelAno.length && mesesDelAno.length > 0
+
+        return (
+          <div key={ano} className="border border-slate-200 rounded-2xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggleAno(ano)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/60 hover:bg-slate-100/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-bold text-slate-700">{ano}</p>
+                <span className="text-xs text-slate-400">
+                  {pagosEnAno}/{mesesDelAno.length} mes{mesesDelAno.length !== 1 ? 'es' : ''}
+                </span>
+                {alCorriente && (
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                    Al corriente
+                  </span>
+                )}
+              </div>
+              <ChevronDown className={cn('w-4 h-4 text-slate-400 transition-transform flex-shrink-0', abierto && 'rotate-180')} />
+            </button>
+            {abierto && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 border-t border-slate-100">
+                {[...mesesDelAno].reverse().map(m => renderMes(ano, m))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function DetalleEmpresaPage() {
   const { id } = useParams()
@@ -229,9 +365,11 @@ export default function DetalleEmpresaPage() {
   const [modalNueva, setModalNueva] = useState(false)
   const [editarSucursal, setEditarSucursal] = useState(null)
   const [confirmar, setConfirmar] = useState(null)
-  const [billing, setBilling] = useState({ cliente_nombre: '', cliente_telefono: '', dia_pago: '' })
+  const [billing, setBilling] = useState({ cliente_nombre: '', cliente_telefono: '', dia_pago: '', ultimo_pago: null, precio_mensual: '', creado_en: null })
   const [billingEdit, setBillingEdit] = useState(false)
   const [billingGuardando, setBillingGuardando] = useState(false)
+  const [pagosHistorial, setPagosHistorial] = useState([])
+  const [historialAbierto, setHistorialAbierto] = useState(false)
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -249,7 +387,7 @@ export default function DetalleEmpresaPage() {
 
       // Datos de cobranza privados
       const { data: bil } = await supabase.from('empresas')
-        .select('cliente_nombre, cliente_telefono, dia_pago, ultimo_pago')
+        .select('cliente_nombre, cliente_telefono, dia_pago, ultimo_pago, precio_mensual, creado_en')
         .eq('id', id).single()
       if (bil) {
         setBilling({
@@ -257,8 +395,15 @@ export default function DetalleEmpresaPage() {
           cliente_telefono: bil.cliente_telefono ?? '',
           dia_pago:         bil.dia_pago != null ? String(bil.dia_pago) : '',
           ultimo_pago:      bil.ultimo_pago ?? null,
+          precio_mensual:   bil.precio_mensual != null ? String(bil.precio_mensual) : '',
+          creado_en:        bil.creado_en ?? null,
         })
       }
+
+      // Historial de pagos (RPC con SECURITY DEFINER para bypasear RLS de perfiles)
+      const { data: historial } = await supabase
+        .rpc('obtener_historial_pagos', { p_empresa_id: id })
+      setPagosHistorial(historial || [])
 
       // Sucursales: intentar RPC primero, luego calcular client-side
       const { data: sucsResumen, error: errResumen } = await supabase
@@ -422,12 +567,14 @@ export default function DetalleEmpresaPage() {
 
   const guardarBilling = async () => {
     setBillingGuardando(true)
-    const payload = {
-      cliente_nombre:   billing.cliente_nombre.trim() || null,
-      cliente_telefono: billing.cliente_telefono.trim() || null,
-      dia_pago:         billing.dia_pago ? parseInt(billing.dia_pago) : null,
-    }
-    const { error } = await supabase.from('empresas').update(payload).eq('id', id)
+    const { error } = await supabase.rpc('actualizar_billing_empresa', {
+      p_empresa_id:       id,
+      p_cliente_nombre:   billing.cliente_nombre.trim() || null,
+      p_cliente_telefono: billing.cliente_telefono.trim() || null,
+      p_dia_pago:         billing.dia_pago ? parseInt(billing.dia_pago) : null,
+      p_ultimo_pago:      billing.ultimo_pago || null,
+      p_precio_mensual:   billing.precio_mensual ? parseFloat(billing.precio_mensual) : null,
+    })
     setBillingGuardando(false)
     if (error) { toast.error(error.message); return }
     toast.success('Datos de cobranza guardados')
@@ -436,9 +583,14 @@ export default function DetalleEmpresaPage() {
 
   const marcarPagadoDetalle = async () => {
     const hoy = new Date().toISOString().slice(0, 10)
-    const { error } = await supabase.from('empresas').update({ ultimo_pago: hoy }).eq('id', id)
+    const { error } = await supabase.rpc('marcar_empresa_pagada', { p_empresa_id: id })
     if (error) { toast.error(error.message); return }
     setBilling(prev => ({ ...prev, ultimo_pago: hoy }))
+    const dpNum = billing.dia_pago ? parseInt(billing.dia_pago) : null
+    setPagosHistorial(prev => [
+      { fecha_pago: hoy, dia_pago_programado: dpNum },
+      ...prev.filter(p => p.fecha_pago.slice(0, 7) !== hoy.slice(0, 7)),
+    ])
     toast.success('Pago registrado')
   }
 
@@ -672,6 +824,44 @@ export default function DetalleEmpresaPage() {
                 <p className="text-xs text-slate-400">Selecciona el día del mes en que se cobra</p>
               )}
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                Precio mensual (MXN)
+              </label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-medium">$</span>
+                <input type="number" min="0" step="0.01"
+                  value={billing.precio_mensual}
+                  onChange={e => setBilling(p => ({ ...p, precio_mensual: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full pl-8 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 bg-white"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-500">Último pago recibido (opcional)</label>
+              <input
+                type="date"
+                value={billing.ultimo_pago || ''}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={e => {
+                  const val = e.target.value
+                  const dia = val ? new Date(val + 'T12:00:00').getDate() : null
+                  setBilling(p => ({
+                    ...p,
+                    ultimo_pago: val || null,
+                    dia_pago: dia ? String(dia) : p.dia_pago,
+                  }))
+                }}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 bg-white"
+              />
+              {billing.ultimo_pago && (
+                <p className="text-[10px] text-slate-400">
+                  Pago registrado el {new Date(billing.ultimo_pago + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+              )}
+            </div>
             <button
               onClick={guardarBilling} disabled={billingGuardando}
               className="flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-60"
@@ -681,8 +871,8 @@ export default function DetalleEmpresaPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {(billing.cliente_nombre || billing.cliente_telefono || billing.dia_pago) ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {(billing.cliente_nombre || billing.cliente_telefono || billing.dia_pago || billing.precio_mensual) ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {billing.cliente_nombre && (
                   <div className="bg-slate-50 rounded-2xl px-4 py-3">
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Contacto</p>
@@ -698,16 +888,22 @@ export default function DetalleEmpresaPage() {
                     </a>
                   </div>
                 )}
+                {billing.precio_mensual && Number(billing.precio_mensual) > 0 && (
+                  <div className="bg-slate-50 rounded-2xl px-4 py-3">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Precio mensual</p>
+                    <p className="text-sm font-bold text-emerald-700 tabular-nums">{formatoMoneda(billing.precio_mensual)}</p>
+                  </div>
+                )}
                 {billing.dia_pago && (
                   <div className="bg-slate-50 rounded-2xl px-4 py-3">
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Día de pago</p>
                     <div className="flex items-center gap-1.5">
                       <CalendarClock className="w-3.5 h-3.5 text-slate-400" />
-                      <p className="text-sm font-semibold text-slate-900">Día {billing.dia_pago} de cada mes</p>
+                      <p className="text-sm font-semibold text-slate-900">Día {billing.dia_pago}</p>
                     </div>
                     {billing.ultimo_pago && (
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Último pago: {new Date(billing.ultimo_pago + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        Último: {new Date(billing.ultimo_pago + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </p>
                     )}
                   </div>
@@ -727,6 +923,37 @@ export default function DetalleEmpresaPage() {
           </div>
         )}
       </div>
+
+      {/* Historial de pagos */}
+      {(pagosHistorial.length > 0 || billing.dia_pago) && (
+        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+          <button
+            onClick={() => setHistorialAbierto(v => !v)}
+            className="w-full flex items-center gap-3 px-5 py-4 hover:bg-slate-50/60 transition-colors"
+          >
+            <div className="w-8 h-8 rounded-2xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+              <CalendarClock className="w-4 h-4 text-slate-500" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-bold text-slate-900">Historial de pagos</p>
+              <p className="text-xs text-slate-400">
+                {pagosHistorial.length > 0
+                  ? `${pagosHistorial.length} pago${pagosHistorial.length !== 1 ? 's' : ''} registrado${pagosHistorial.length !== 1 ? 's' : ''}`
+                  : 'Sin pagos registrados aún'}
+              </p>
+            </div>
+            <ChevronDown className={cn('w-4 h-4 text-slate-400 transition-transform', historialAbierto && 'rotate-180')} />
+          </button>
+          {historialAbierto && (
+            <div className="px-5 pb-5 border-t border-slate-100">
+              <p className="text-[10px] text-slate-400 pt-3 pb-3">
+                Verde = a tiempo · Amarillo = tarde · Sin pago = mes no registrado
+              </p>
+              <CalendarioHistorial pagos={pagosHistorial} diaPago={billing.dia_pago} creadoEn={billing.creado_en} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notas internas */}
       {empresa.notas_internas && (

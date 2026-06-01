@@ -9,7 +9,7 @@ import { cn } from '@/lib/clases'
 import { useApp } from '@/context/AppCtx'
 import { useAuth } from '@/context/AuthProvider'
 import { ETIQUETAS_ROL } from '@/lib/constantes'
-import { useAlertaConteo, NotificacionesDrawer } from '@/components/ui/NotificacionesPanel'
+import { useAlertaConteo, NotificacionesDrawer, useBadgesMenu } from '@/components/ui/NotificacionesPanel'
 
 // Ítems fijos del bottom nav según rol
 const BOTTOM_ADMIN = [
@@ -39,8 +39,8 @@ const MAS_SECCIONES = [
     titulo: 'Finanzas',
     items: [
       { ruta: '/gastos',        nombre: 'Gastos',             icono: Receipt,    roles: ['admin', 'encargado'] },
-      { ruta: '/cuentas',       nombre: 'Cuentas pendientes', icono: CreditCard, roles: ['admin', 'encargado'] },
-      { ruta: '/cancelaciones', nombre: 'Cancelaciones',      icono: Ban,        roles: ['admin', 'encargado'] },
+      { ruta: '/cuentas',       nombre: 'Cuentas pendientes', icono: CreditCard, roles: ['admin', 'encargado'], badge: 'cuentas' },
+      { ruta: '/cancelaciones', nombre: 'Cancelaciones',      icono: Ban,        roles: ['admin', 'encargado'], badge: 'cancelaciones' },
     ],
   },
   {
@@ -70,6 +70,7 @@ export default function MobileNav() {
   const { cerrarSesion } = useAuth()
   const rol         = perfil?.rol
   const alertaTotal = useAlertaConteo()
+  const badges      = useBadgesMenu()
 
   const esCajero    = rol === 'cajero'
   const bottomItems = esCajero ? BOTTOM_CAJERO : BOTTOM_ADMIN
@@ -191,6 +192,7 @@ export default function MobileNav() {
                   <div className="grid grid-cols-2 gap-2">
                     {sec.items.map(item => {
                       const Icono = item.icono
+                      const badgeCount = item.badge ? (badges[item.badge] ?? 0) : 0
                       return (
                         <NavLink
                           key={item.ruta}
@@ -205,8 +207,20 @@ export default function MobileNav() {
                             )
                           }
                         >
-                          <Icono className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">{item.nombre}</span>
+                          <div className="relative flex-shrink-0">
+                            <Icono className="w-4 h-4" />
+                            {badgeCount > 0 && (
+                              <span className="absolute -top-1.5 -right-1.5 min-w-[13px] h-[13px] bg-red-500 text-white text-[7px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+                                {badgeCount > 9 ? '9+' : badgeCount}
+                              </span>
+                            )}
+                          </div>
+                          <span className="truncate flex-1">{item.nombre}</span>
+                          {badgeCount > 0 && (
+                            <span className="flex-shrink-0 min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                              {badgeCount > 99 ? '99+' : badgeCount}
+                            </span>
+                          )}
                         </NavLink>
                       )
                     })}

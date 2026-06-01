@@ -263,15 +263,16 @@ export default function FilaProducto({ producto, onEditar, onCambio }) {
         document.body
       )}
 
-      {/* Modal de confirmación */}
-      {confirmar && (
+      {/* Modal de confirmación — portal para evitar <div> dentro de <tbody> */}
+      {confirmar && createPortal(
         <ModalConfirmar
           titulo={confirmar.titulo}
           mensaje={confirmar.mensaje}
           variante={confirmar.variante}
           onConfirmar={confirmar.onConfirmar}
           onCancelar={() => setConfirmar(null)}
-        />
+        />,
+        document.body
       )}
     </>
   )

@@ -257,14 +257,7 @@ export default function DashboardCajero() {
           .order('creado_en', { ascending: false })
         ventasTurno = vts ?? []
       } else {
-        const { data: vts } = await supabase
-          .from('ventas')
-          .select('id, total, creado_en, metodo_pago')
-          .eq('usuario_id', perfil.id)
-          .gte('creado_en', `${hoy}T00:00:00`)
-          .neq('estado', 'cancelada')
-          .order('creado_en', { ascending: false })
-        ventasTurno = vts ?? []
+        ventasTurno = []
       }
 
       // Movimientos del turno para calcular efectivo en caja

@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   CreditCard, Phone, CalendarClock, CheckCircle2,
   Bell, Clock, AlertCircle, RefreshCw, ChevronRight,
   Building2, Search, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { toast } from 'sonner'
 
@@ -42,17 +43,18 @@ const HOY_STR = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: '
 
 export default function CobranzaPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [empresas, setEmpresas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [filtro, setFiltro] = useState('urgentes')
   const [busqueda, setBusqueda] = useState('')
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     try {
       const { data, error } = await supabase
         .from('empresas')
-        .select('id, nombre, estado, cliente_nombre, cliente_telefono, dia_pago, ultimo_pago')
+        .select('id, nombre, estado, cliente_nombre, cliente_telefono, dia_pago, ultimo_pago, precio_mensual')
         .neq('estado', 'eliminada')
         .order('nombre')
       if (error) throw error
@@ -62,14 +64,19 @@ export default function CobranzaPage() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { cargar() }, [])
+  // Recarga al navegar aquí (location.key cambia en cada navegación) y al enfocar ventana
+  useEffect(() => { cargar() }, [cargar, location.key])
+  useEffect(() => {
+    window.addEventListener('focus', cargar)
+    return () => window.removeEventListener('focus', cargar)
+  }, [cargar])
 
   const marcarPagado = async (empresaId, e) => {
     e.stopPropagation()
     const hoy = new Date().toISOString().slice(0, 10)
-    const { error } = await supabase.from('empresas').update({ ultimo_pago: hoy }).eq('id', empresaId)
+    const { error } = await supabase.rpc('marcar_empresa_pagada', { p_empresa_id: empresaId })
     if (error) { toast.error(error.message); return }
     setEmpresas(prev => prev.map(emp => emp.id === empresaId ? { ...emp, ultimo_pago: hoy } : emp))
     toast.success('Pago registrado')
@@ -264,6 +271,11 @@ export default function CobranzaPage() {
                         <span className="flex items-center gap-1 text-xs text-slate-400">
                           <CalendarClock className="w-3 h-3" />
                           Día {empresa.dia_pago}
+                        </span>
+                      )}
+                      {Number(empresa.precio_mensual) > 0 && (
+                        <span className="text-xs font-bold text-emerald-700 tabular-nums">
+                          {formatoMoneda(empresa.precio_mensual)}
                         </span>
                       )}
                       {empresa.ultimo_pago && (

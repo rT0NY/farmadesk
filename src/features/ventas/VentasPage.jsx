@@ -59,6 +59,7 @@ function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }
 
 // ─── Modal Cancelar Venta ───────────────────────────────────
 function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
+  const { empresa } = useApp()
   const [motivo, setMotivo] = useState('')
   const [enviando, setEnviando] = useState(false)
 
@@ -67,7 +68,7 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
     setEnviando(true)
     try {
       const { error } = await supabase.from('cancelaciones').insert([{
-        empresa_id: venta.empresa_id,
+        empresa_id: empresa.id,
         venta_id: venta.id,
         solicitado_por: (await supabase.auth.getUser()).data.user.id,
         motivo: motivo.trim(),
@@ -577,6 +578,19 @@ export default function VentasPage() {
     return () => window.removeEventListener('focus', onFocus)
   }, [fetchData])
 
+  // Actualizar ofertas en tiempo real cuando un admin crea, edita o elimina una oferta
+  // desde otro dispositivo, sin necesidad de recargar la página.
+  useEffect(() => {
+    const channel = supabase
+      .channel('ofertas-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ofertas' }, async () => {
+        const { data } = await supabase.rpc('ofertas_vigentes')
+        setOfertasVigentes(data || [])
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
+
   // Sincronizar turnoActual desde el contexto cuando el componente regresa por navegación.
   // turnoActivo en el contexto sobrevive a navegación entre páginas; turnoActual (local)
   // se pierde al desmontar. Sin esto, al volver a Ventas se muestra "abrir caja" durante
@@ -1005,6 +1019,9 @@ export default function VentasPage() {
 
   // ── Abrir turno ───────────────────────────────────────────
   async function abrirTurno() {
+    // Limpiar estado de cierre por si quedó algo pendiente de la sesión anterior
+    setModalCierre(false)
+    setResumenTurno(null)
     const sucId = sucursalId
     setAbriendoTurno(true)
 
@@ -1389,20 +1406,20 @@ export default function VentasPage() {
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-semibold text-slate-900 truncate">{p.nombre}</p>
                             {tieneMayoreo && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700 flex-shrink-0">
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 flex-shrink-0">
                                 MAY {p.cantidad_mayoreo ? `×${p.cantidad_mayoreo}` : ''}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-slate-400">
                             {p.categoria} · {(() => {
                               const of = ofertaDeProducto(p.id, p.categoria)
                               if (of) {
                                 const { precioFinal, desc } = precioConOferta(p.precio_venta, of)
-                                return <><span className="line-through text-slate-400">{formatoMoneda(p.precio_venta)}</span> <span className="text-emerald-700 font-bold">{formatoMoneda(precioFinal)}</span> <span className="text-purple-600 font-bold">({desc})</span></>
+                                return <><span className="line-through">{formatoMoneda(p.precio_venta)}</span> <span className="text-emerald-600 font-bold text-sm">{formatoMoneda(precioFinal)}</span> <span className="bg-emerald-100 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5 rounded-md">{desc}</span></>
                               }
-                              if (tieneMayoreo) return <>{formatoMoneda(p.precio_venta)} <span className="text-purple-600">· may {formatoMoneda(p.precio_mayoreo)}</span></>
-                              return formatoMoneda(p.precio_venta)
+                              if (tieneMayoreo) return <><span className="text-slate-700 font-semibold">{formatoMoneda(p.precio_venta)}</span> <span className="text-amber-600">· may {formatoMoneda(p.precio_mayoreo)}</span></>
+                              return <span className="text-slate-700 font-semibold">{formatoMoneda(p.precio_venta)}</span>
                             })()}
                           </p>
                         </div>
@@ -1982,11 +1999,9 @@ export default function VentasPage() {
           onClose={() => { setModalCierre(false); setResumenTurno(null) }}
           onCerrado={() => {
             setModalCierre(false); setResumenTurno(null); setTab('caja')
-            setTurnoActual(null)
+            setTurnoActual(null); setVentasTurno([])
             if (esRotativo) {
               resetSucursal()
-            } else {
-              fetchData()
             }
             recargarTurno()
           }}

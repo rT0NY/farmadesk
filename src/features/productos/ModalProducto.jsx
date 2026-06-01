@@ -513,8 +513,8 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
               'flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
               paso === 1 ? 'bg-primary-100 text-primary-700' : 'bg-emerald-50 text-emerald-700'
             )}>
-              {paso === 1 ? '1' : <Check className="w-3 h-3" />}
-              Datos
+              <span>{paso === 1 ? '1' : <Check className="w-3 h-3" />}</span>
+              <span>Datos</span>
             </div>
             <div className="flex-1 h-0.5 bg-slate-200 rounded-full">
               <div className={cn(
@@ -526,8 +526,8 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
               'flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
               paso === 2 ? 'bg-primary-100 text-primary-700' : 'bg-slate-100 text-slate-500'
             )}>
-              2
-              Stock inicial
+              <span>2</span>
+              <span>Stock inicial</span>
             </div>
           </div>
         )}

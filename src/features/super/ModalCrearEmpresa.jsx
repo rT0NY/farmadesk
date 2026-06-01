@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { sanitizar } from '@/lib/sanitizar'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { cn } from '@/lib/clases'
 
 const sucursalVacia = () => ({
   id: Math.random().toString(36).slice(2, 9),
@@ -46,6 +47,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
     cliente_nombre:   '',
     cliente_telefono: '',
     dia_pago:         '',
+    precio_mensual:   '',
   })
   const [sucursales, setSucursales] = useState([
     { ...sucursalVacia(), nombre: 'Matriz' }
@@ -77,7 +79,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
 
   const resetForm = () => {
     setForm({ nombre_empresa: '', nombre_admin: '', correo_admin: '', password_admin: '' })
-    setBilling({ cliente_nombre: '', cliente_telefono: '', dia_pago: '' })
+    setBilling({ cliente_nombre: '', cliente_telefono: '', dia_pago: '', precio_mensual: '' })
     setSucursales([{ ...sucursalVacia(), nombre: 'Matriz' }])
   }
 
@@ -120,6 +122,15 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
       nombresSet.add(n)
     }
 
+    if (!sanitizar(billing.cliente_nombre))
+      return toast.error('Nombre del contacto de pago requerido')
+    if (!billing.cliente_telefono.trim())
+      return toast.error('Teléfono del contacto requerido')
+    if (!billing.dia_pago)
+      return toast.error('Selecciona el día de pago mensual')
+    if (!billing.precio_mensual || parseFloat(billing.precio_mensual) <= 0)
+      return toast.error('Precio mensual requerido')
+
     setCargando(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -151,15 +162,15 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
 
       const empresaId = data.empresa.id
 
-      // Guardar datos de cobranza privados si se capturaron
-      const billingPayload = {
-        cliente_nombre:   sanitizar(billing.cliente_nombre) || null,
-        cliente_telefono: sanitizar(billing.cliente_telefono) || null,
-        dia_pago:         billing.dia_pago ? parseInt(billing.dia_pago) : null,
-      }
-      if (billingPayload.cliente_nombre || billingPayload.cliente_telefono || billingPayload.dia_pago) {
-        await supabase.from('empresas').update(billingPayload).eq('id', empresaId)
-      }
+      // Guardar datos de cobranza
+      await supabase.rpc('actualizar_billing_empresa', {
+        p_empresa_id:       empresaId,
+        p_cliente_nombre:   sanitizar(billing.cliente_nombre),
+        p_cliente_telefono: billing.cliente_telefono.trim(),
+        p_dia_pago:         parseInt(billing.dia_pago),
+        p_ultimo_pago:      null,
+        p_precio_mensual:   parseFloat(billing.precio_mensual),
+      })
 
       if (sucursalesValidas.length > 1) {
         const restantes = sucursalesValidas.slice(1).map(s => ({
@@ -180,7 +191,6 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
       onExito?.()
       onCerrar()
     } catch (err) {
-      console.error(err)
       toast.error('Error de red al crear empresa')
     } finally {
       setTimeout(() => { window.__creandoUsuario = false }, 500)
@@ -249,7 +259,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
                 type="email"
                 iconoIzq={<Mail className="w-5 h-5" />}
                 value={form.correo_admin}
-                onChange={cambiar('correo_admin')}
+                onChange={e => setForm(v => ({ ...v, correo_admin: e.target.value.toLowerCase() }))}
                 placeholder="juan@farmacia.com"
                 autoComplete="off"
                 required
@@ -401,18 +411,43 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
                 placeholder="55 1234 5678"
               />
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-slate-500">Día de pago mensual</label>
+                <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+                  <CalendarClock className="w-3.5 h-3.5 text-slate-400" />
+                  Día de pago mensual
+                </label>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                    <button key={d} type="button"
+                      onClick={() => setBilling(v => ({ ...v, dia_pago: String(d) }))}
+                      className={cn(
+                        'h-9 rounded-xl text-sm font-semibold transition-all',
+                        billing.dia_pago === String(d)
+                          ? 'bg-violet-600 text-white shadow-sm shadow-violet-200'
+                          : 'bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700 border border-slate-200'
+                      )}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+                {billing.dia_pago
+                  ? <p className="text-[10px] text-violet-600 font-medium">Se cobra el día {billing.dia_pago} de cada mes</p>
+                  : <p className="text-[10px] text-slate-400">Selecciona el día del mes en que se cobra (1–28)</p>
+                }
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                  Precio mensual (MXN)
+                </label>
                 <div className="relative">
-                  <CalendarClock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    type="number" min="1" max="28"
-                    value={billing.dia_pago}
-                    onChange={cambiarBilling('dia_pago')}
-                    placeholder="Ej. 15"
-                    className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-medium">$</span>
+                  <input type="number" min="0" step="0.01"
+                    value={billing.precio_mensual}
+                    onChange={e => setBilling(v => ({ ...v, precio_mensual: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full pl-8 pr-4 py-2.5 border border-slate-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                 </div>
-                <p className="text-[10px] text-slate-400">Día del mes en que te pagan (1–28). Se usará para recordatorios.</p>
               </div>
             </div>
           </div>

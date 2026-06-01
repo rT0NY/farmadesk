@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthProvider'
 import Logo from '@/components/ui/Logo'
 import IndicadorConexion, { PuntoConexion } from '@/components/ui/IndicadorConexion'
 import { ETIQUETAS_ROL } from '@/lib/constantes'
-import { useAlertaConteo, NotificacionesDrawer } from '@/components/ui/NotificacionesPanel'
+import { useAlertaConteo, NotificacionesDrawer, useBadgesMenu } from '@/components/ui/NotificacionesPanel'
 
 const SECCIONES = [
   {
@@ -38,8 +38,8 @@ const SECCIONES = [
     titulo: 'Finanzas',
     items: [
       { ruta: '/gastos', nombre: 'Gastos', icono: Receipt, roles: ['admin', 'encargado'] },
-      { ruta: '/cuentas', nombre: 'Cuentas pendientes', icono: CreditCard, roles: ['admin', 'encargado'] },
-      { ruta: '/cancelaciones', nombre: 'Cancelaciones', icono: Ban, roles: ['admin', 'encargado'] },
+      { ruta: '/cuentas', nombre: 'Cuentas pendientes', icono: CreditCard, roles: ['admin', 'encargado'], badge: 'cuentas' },
+      { ruta: '/cancelaciones', nombre: 'Cancelaciones', icono: Ban, roles: ['admin', 'encargado'], badge: 'cancelaciones' },
     ],
   },
   {
@@ -62,7 +62,7 @@ const SECCIONES = [
   },
 ]
 
-function ItemMenu({ item }) {
+function ItemMenu({ item, badgeCount = 0 }) {
   const Icono = item.icono
   return (
     <NavLink
@@ -78,12 +78,17 @@ function ItemMenu({ item }) {
       }
     >
       <Icono className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
-      <span className="truncate">{item.nombre}</span>
+      <span className="truncate flex-1">{item.nombre}</span>
+      {badgeCount > 0 && (
+        <span className="flex-shrink-0 min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </span>
+      )}
     </NavLink>
   )
 }
 
-function ItemIcono({ item }) {
+function ItemIcono({ item, badgeCount = 0 }) {
   const Icono = item.icono
   return (
     <NavLink
@@ -92,7 +97,7 @@ function ItemIcono({ item }) {
       title={item.nombre}
       className={({ isActive }) =>
         cn(
-          'flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-200',
+          'relative flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-200',
           isActive
             ? 'bg-primary-600 text-white shadow-md shadow-primary-500/25'
             : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
@@ -100,6 +105,11 @@ function ItemIcono({ item }) {
       }
     >
       <Icono className="w-4 h-4" strokeWidth={2} />
+      {badgeCount > 0 && (
+        <span className="absolute top-0.5 right-0.5 min-w-[13px] h-[13px] bg-red-500 text-white text-[7px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none pointer-events-none">
+          {badgeCount > 9 ? '9+' : badgeCount}
+        </span>
+      )}
     </NavLink>
   )
 }
@@ -123,6 +133,7 @@ export default function Sidebar({ abierto, onToggle }) {
   const rol = perfil?.rol
   const { hh, mm, ss } = Reloj(empresa?.zona_horaria || 'America/Mexico_City')
   const alertaTotal = useAlertaConteo()
+  const badges      = useBadgesMenu()
   const [notifAbierto, setNotifAbierto] = useState(false)
 
   const seccionesFiltradas = SECCIONES
@@ -169,7 +180,7 @@ export default function Sidebar({ abierto, onToggle }) {
                   {sec.titulo}
                 </p>
                 <div className="space-y-0.5">
-                  {sec.items.map(item => <ItemMenu key={item.ruta} item={item} />)}
+                  {sec.items.map(item => <ItemMenu key={item.ruta} item={item} badgeCount={item.badge ? (badges[item.badge] ?? 0) : 0} />)}
                 </div>
               </div>
             ))}
@@ -179,7 +190,7 @@ export default function Sidebar({ abierto, onToggle }) {
             {seccionesFiltradas.map(sec => (
               <div key={sec.titulo} className="flex flex-col items-center gap-0.5 w-full">
                 <div className="h-px bg-slate-100 w-full my-1" />
-                {sec.items.map(item => <ItemIcono key={item.ruta} item={item} />)}
+                {sec.items.map(item => <ItemIcono key={item.ruta} item={item} badgeCount={item.badge ? (badges[item.badge] ?? 0) : 0} />)}
               </div>
             ))}
           </nav>

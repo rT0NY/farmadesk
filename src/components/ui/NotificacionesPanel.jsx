@@ -12,24 +12,29 @@ import { Link } from 'react-router-dom'
 
 // ─── Hook de conteo (ligero, para el badge) ───────────────────────────────────
 export function useAlertaConteo() {
-  const { empresa, tz, esAdmin } = useApp()
+  const { empresa, tz, esAdmin, esEncargado } = useApp()
   const [total, setTotal] = useState(0)
 
   const calcular = useCallback(async () => {
     if (!empresa?.id) return
     try {
       const en90S = addDias(fechaEnZona(tz), 90)
+      const tieneAcceso = esAdmin || esEncargado
       const queries = [
         supabase.from('lotes').select('id').eq('activo', true).not('fecha_caducidad', 'is', null).lte('fecha_caducidad', en90S),
         supabase.from('inventario').select('lote_id, cantidad, lotes!inner(producto_id)'),
         supabase.from('productos').select('id, stock_minimo').eq('empresa_id', empresa.id).eq('activo', true),
       ]
-      if (esAdmin) queries.push(
-        supabase.from('cancelaciones').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id).eq('estado', 'pendiente')
-      )
+      if (tieneAcceso) {
+        queries.push(
+          supabase.from('cancelaciones').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id).eq('estado', 'pendiente'),
+          supabase.from('cuentas_pendientes').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id).eq('pagada', false),
+        )
+      }
       const results = await Promise.all(queries)
       const [{ data: lotes }, { data: inv }, { data: prods }] = results
-      const cancelCount = esAdmin ? (results[3]?.count ?? 0) : 0
+      const cancelCount  = tieneAcceso ? (results[3]?.count ?? 0) : 0
+      const cuentasCount = tieneAcceso ? (results[4]?.count ?? 0) : 0
 
       const stockMap  = {}
       const loteMap   = {}
@@ -38,20 +43,18 @@ export function useAlertaConteo() {
         if (pid) stockMap[pid] = (stockMap[pid] || 0) + Number(i.cantidad || 0)
         loteMap[i.lote_id] = (loteMap[i.lote_id] || 0) + Number(i.cantidad || 0)
       })
-      // Solo contar lotes con stock > 0 en el badge
       const lotesConStock = (lotes || []).filter(l => (loteMap[l.id] || 0) > 0).length
       const agotados  = (prods || []).filter(p => p.id in stockMap && stockMap[p.id] === 0).length
       const stockBajo = (prods || []).filter(p => {
         const s = stockMap[p.id]; return s !== undefined && s > 0 && s < (p.stock_minimo ?? 10)
       }).length
-      setTotal(lotesConStock + agotados + stockBajo + cancelCount)
+      setTotal(lotesConStock + agotados + stockBajo + cancelCount + cuentasCount)
     } catch { /* silencioso */ }
-  }, [empresa?.id, esAdmin])
+  }, [empresa?.id, esAdmin, esEncargado, tz])
 
   useEffect(() => {
     calcular()
     const t = setInterval(calcular, 60_000)
-    // Recalcular inmediatamente cuando cualquier canal realtime dispara un evento
     window.addEventListener('farmadesk:alerta', calcular)
     return () => {
       clearInterval(t)
@@ -62,6 +65,38 @@ export function useAlertaConteo() {
   return total
 }
 
+// ─── Hook de badges por item del menú ────────────────────────────────────────
+export function useBadgesMenu() {
+  const { empresa, esAdmin, esEncargado } = useApp()
+  const tieneAcceso = esAdmin || esEncargado
+  const [badges, setBadges] = useState({ cancelaciones: 0, cuentas: 0 })
+
+  const calcular = useCallback(async () => {
+    if (!empresa?.id || !tieneAcceso) { setBadges({ cancelaciones: 0, cuentas: 0 }); return }
+    try {
+      const [{ count: cancelCount }, { count: cuentasCount }] = await Promise.all([
+        supabase.from('cancelaciones').select('id', { count: 'exact', head: true })
+          .eq('empresa_id', empresa.id).eq('estado', 'pendiente'),
+        supabase.from('cuentas_pendientes').select('id', { count: 'exact', head: true })
+          .eq('empresa_id', empresa.id).eq('pagada', false),
+      ])
+      setBadges({ cancelaciones: cancelCount ?? 0, cuentas: cuentasCount ?? 0 })
+    } catch { /* silencioso */ }
+  }, [empresa?.id, tieneAcceso])
+
+  useEffect(() => {
+    calcular()
+    const t = setInterval(calcular, 60_000)
+    window.addEventListener('farmadesk:alerta', calcular)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('farmadesk:alerta', calcular)
+    }
+  }, [calcular])
+
+  return badges
+}
+
 // Emite el evento global que fuerza recalcular el badge
 function emitirAlerta() {
   window.dispatchEvent(new CustomEvent('farmadesk:alerta'))
@@ -69,7 +104,7 @@ function emitirAlerta() {
 
 // ─── Hook de realtime (toasts automáticos) ────────────────────────────────────
 export function useRealtimeAlertas(onCambio) {
-  const { empresa, esAdmin, perfil, sucursales } = useApp()
+  const { empresa, esAdmin, esEncargado, perfil, sucursales } = useApp()
   const onCambioRef = useRef(onCambio)
   onCambioRef.current = onCambio
 
@@ -100,8 +135,8 @@ export function useRealtimeAlertas(onCambio) {
       )
     }
 
-    // ── Admin: cuenta pendiente nueva ───────────────────────────────────────
-    if (esAdmin) {
+    // ── Admin/Encargado: cuenta pendiente nueva o pagada ───────────────────────
+    if (esAdmin || esEncargado) {
       channels.push(
         supabase.channel(`rt-cuentas-${empresa.id}`)
           .on('postgres_changes', {
@@ -117,6 +152,10 @@ export function useRealtimeAlertas(onCambio) {
             })
             notificar()
           })
+          .on('postgres_changes', {
+            event: 'UPDATE', schema: 'public', table: 'cuentas_pendientes',
+            filter: `empresa_id=eq.${empresa.id}`,
+          }, notificar)
           .subscribe()
       )
     }
@@ -191,7 +230,7 @@ export function useRealtimeAlertas(onCambio) {
     )
 
     return () => { channels.forEach(ch => supabase.removeChannel(ch)) }
-  }, [empresa?.id, esAdmin, perfil?.id, sucursales])
+  }, [empresa?.id, esAdmin, esEncargado, perfil?.id, sucursales])
 }
 
 // ─── Fila de alerta ───────────────────────────────────────────────────────────
@@ -234,7 +273,7 @@ function Seccion({ titulo, children }) {
 
 // ─── Drawer de notificaciones (controlado externamente) ───────────────────────
 export function NotificacionesDrawer({ abierto, onClose }) {
-  const { empresa, tz, esAdmin } = useApp()
+  const { empresa, tz, esAdmin, esEncargado } = useApp()
   const [datos,    setDatos]    = useState(null)
   const [cargando, setCargando] = useState(false)
 
@@ -256,18 +295,28 @@ export function NotificacionesDrawer({ abierto, onClose }) {
         supabase.from('inventario').select('lote_id, cantidad, lotes!inner(producto_id)'),
         supabase.from('productos').select('id, nombre, stock_minimo').eq('empresa_id', empresa.id).eq('activo', true),
       ]
-      if (esAdmin) baseQueries.push(
-        supabase.from('cancelaciones')
-          .select('id, motivo, creado_en, ventas(id, total)')
-          .eq('empresa_id', empresa.id)
-          .eq('estado', 'pendiente')
-          .order('creado_en', { ascending: false })
-          .limit(5)
-      )
+      const tieneAcceso = esAdmin || esEncargado
+      if (tieneAcceso) {
+        baseQueries.push(
+          supabase.from('cancelaciones')
+            .select('id, motivo, creado_en, ventas(id, total)')
+            .eq('empresa_id', empresa.id)
+            .eq('estado', 'pendiente')
+            .order('creado_en', { ascending: false })
+            .limit(5),
+          supabase.from('cuentas_pendientes')
+            .select('id, nombre_cliente, total, abonado, creado_en')
+            .eq('empresa_id', empresa.id)
+            .eq('pagada', false)
+            .order('creado_en', { ascending: false })
+            .limit(5),
+        )
+      }
 
       const results = await Promise.all(baseQueries)
       const [{ data: lotes }, { data: inv }, { data: prods }] = results
-      const cancelaciones = esAdmin ? (results[3]?.data ?? []) : []
+      const cancelaciones = tieneAcceso ? (results[3]?.data ?? []) : []
+      const cuentasPend   = tieneAcceso ? (results[4]?.data ?? []) : []
 
       const stockMap = {}
       ;(inv || []).forEach(i => {
@@ -304,7 +353,7 @@ export function NotificacionesDrawer({ abierto, onClose }) {
         horario = (asig ?? 0) === 0
       }
 
-      setDatos({ caducados, criticos, proximos, agotados, bajStock, salarios, horario, cancelaciones })
+      setDatos({ caducados, criticos, proximos, agotados, bajStock, salarios, horario, cancelaciones, cuentasPend })
     } catch (e) {
       console.error(e)
     } finally {
@@ -320,7 +369,7 @@ export function NotificacionesDrawer({ abierto, onClose }) {
   const hayAlgo = datos && (
     datos.caducados.length || datos.criticos.length || datos.proximos.length ||
     datos.agotados.length  || datos.bajStock.length || datos.salarios || datos.horario ||
-    datos.cancelaciones?.length
+    datos.cancelaciones?.length || datos.cuentasPend?.length
   )
 
   if (!abierto) return null
@@ -371,6 +420,17 @@ export function NotificacionesDrawer({ abierto, onClose }) {
                       sub={c.motivo ? c.motivo.slice(0, 60) : 'Sin motivo'}
                       badge={c.ventas?.total ? formatoMoneda(c.ventas.total) : undefined}
                       to="/cancelaciones" />
+                  ))}
+                </Seccion>
+              )}
+              {datos.cuentasPend?.length > 0 && (
+                <Seccion titulo={`Cuentas pendientes (${datos.cuentasPend.length})`}>
+                  {datos.cuentasPend.map(c => (
+                    <FilaAlerta key={c.id} Icono={CreditCard} color="amber"
+                      label={c.nombre_cliente}
+                      sub={`Pendiente: ${formatoMoneda((c.total ?? 0) - (c.abonado ?? 0))} de ${formatoMoneda(c.total ?? 0)}`}
+                      badge={formatoMoneda((c.total ?? 0) - (c.abonado ?? 0))}
+                      to="/cuentas" />
                   ))}
                 </Seccion>
               )}

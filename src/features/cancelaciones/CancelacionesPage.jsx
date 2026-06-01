@@ -11,7 +11,7 @@ import { cn } from '@/lib/clases'
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
 const BADGE = {
-  pendiente: 'bg-amber-100 text-amber-700 border-amber-200',
+  pendiente: 'bg-red-100 text-red-700 border-red-200',
   aprobada:  'bg-emerald-100 text-emerald-700 border-emerald-200',
   rechazada: 'bg-red-100 text-red-700 border-red-200',
 }
@@ -73,18 +73,6 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
           cantidad_nueva:    cantAnterior + det.cantidad,
           motivo:            'cancelacion',
           referencia_id:     String(ventaId),
-        })
-      }
-
-      if (venta.turno_id) {
-        await supabase.from('movimientos_caja').insert({
-          empresa_id:  venta.empresa_id,
-          sucursal_id: venta.sucursal_id,
-          tipo:        'entrada',
-          monto:       venta.total,
-          descripcion: `Devolución cancelación venta #${ventaId}`,
-          fecha:       fechaEnZona(tz),
-          turno_id:    venta.turno_id,
         })
       }
 

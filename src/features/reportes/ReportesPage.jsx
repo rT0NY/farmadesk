@@ -211,6 +211,7 @@ export default function ReportesPage() {
       for (const s of sucursalesRef.current) {
         sucMap[s.id] = { nombre: s.nombre, ventas: 0, cogs: 0, gastos: 0, salarios: 0 }
       }
+      sucMap['__general__'] = { nombre: 'General (empresa)', ventas: 0, cogs: 0, gastos: 0, salarios: 0 }
       for (const v of (ventas ?? [])) {
         if (sucMap[v.sucursal_id]) sucMap[v.sucursal_id].ventas += v.total ?? 0
       }
@@ -221,7 +222,8 @@ export default function ReportesPage() {
         }
       }
       for (const g of (gastos ?? [])) {
-        if (sucMap[g.sucursal_id]) sucMap[g.sucursal_id].gastos += g.monto ?? 0
+        const key = (g.sucursal_id && sucMap[g.sucursal_id]) ? g.sucursal_id : '__general__'
+        sucMap[key].gastos += g.monto ?? 0
       }
       for (const s of semanasFiltradas) {
         const sid = perfilMap[s.usuario_id]?.sucursal_id

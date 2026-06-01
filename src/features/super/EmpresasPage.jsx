@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import ModalCrearEmpresa from './ModalCrearEmpresa'
 import { cn } from '@/lib/clases'
+import { toast } from 'sonner'
 
 // Verifica si una empresa tiene pago pendiente este mes
 function estadoPago(empresa) {
@@ -50,14 +51,14 @@ export default function EmpresasPage() {
     try {
       const [{ data, error }, { data: billing }] = await Promise.all([
         supabase.rpc('resumen_empresas_super'),
-        supabase.from('empresas').select('id, cliente_nombre, cliente_telefono, dia_pago, ultimo_pago').neq('estado', 'eliminada'),
+        supabase.from('empresas').select('id, cliente_nombre, cliente_telefono, dia_pago, ultimo_pago, precio_mensual').neq('estado', 'eliminada'),
       ])
       if (error) throw error
       const bMap = {}
       ;(billing || []).forEach(e => { bMap[e.id] = e })
       setEmpresas((data || []).map(e => ({ ...e, ...bMap[e.id] })))
     } catch (err) {
-      console.error(err)
+      toast.error(err.message || 'Error al cargar empresas')
     } finally {
       setCargando(false)
     }
@@ -66,11 +67,12 @@ export default function EmpresasPage() {
   const marcarPagado = async (empresaId, e) => {
     e.stopPropagation()
     const hoy = new Date().toISOString().slice(0, 10)
-    const { error } = await supabase.from('empresas').update({ ultimo_pago: hoy }).eq('id', empresaId)
-    if (error) { console.error(error); return }
+    const { error } = await supabase.rpc('marcar_empresa_pagada', { p_empresa_id: empresaId })
+    if (error) { toast.error('Error al registrar pago: ' + error.message); return }
     setEmpresas(prev => prev.map(emp =>
       emp.id === empresaId ? { ...emp, ultimo_pago: hoy } : emp
     ))
+    toast.success('Pago registrado')
   }
 
   useEffect(() => { cargar() }, [cargar])
@@ -153,14 +155,16 @@ export default function EmpresasPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate">{e.nombre}</p>
                       <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                        {e.cliente_nombre && (
-                          <span className="text-xs text-slate-500">{e.cliente_nombre}</span>
-                        )}
-                        {e.cliente_telefono && (
+                        <span className="text-xs text-slate-500">{e.cliente_nombre || '—'}</span>
+                        {e.cliente_telefono ? (
                           <a href={`tel:${e.cliente_telefono}`} onClick={ev => ev.stopPropagation()}
                             className="flex items-center gap-1 text-xs text-primary-600 hover:underline">
                             <Phone className="w-3 h-3" />{e.cliente_telefono}
                           </a>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-slate-400">
+                            <Phone className="w-3 h-3" />—
+                          </span>
                         )}
                         <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full',
                           ep === 'hoy' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}>

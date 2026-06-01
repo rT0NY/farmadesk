@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Select'
 import { CATEGORIAS_GASTO } from '@/lib/constantes'
 import { formatoMoneda, formatoFechaHora, fechaEnZona } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
@@ -81,26 +82,13 @@ function ModalNuevoGasto({ onClose, onGuardado, empresa, perfil }) {
           Gastos generales de la empresa. Las salidas de caja de sucursal se registran en Caja.
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700">Categoría</label>
-          <div className="relative">
-            <select
-              value={forma.categoria}
-              onChange={(e) => cambiar('categoria', e.target.value)}
-              className={cn(
-                'w-full appearance-none bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 pr-10 text-sm',
-                'focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400',
-                forma.categoria ? 'text-slate-900' : 'text-slate-400'
-              )}
-            >
-              <option value="">Selecciona una categoría</option>
-              {CATEGORIAS_GASTO.map((c) => (
-                <option key={c.valor} value={c.valor}>{c.etiqueta}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          </div>
-        </div>
+        <Select
+          label="Categoría"
+          valor={forma.categoria}
+          onChange={(v) => cambiar('categoria', v ?? '')}
+          opciones={CATEGORIAS_GASTO}
+          placeholder="Selecciona una categoría..."
+        />
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-slate-700">Descripción</label>
@@ -166,9 +154,9 @@ export default function GastosPage() {
     try {
       let q = supabase
         .from('gastos')
-        .select('*, perfiles(nombre)')
+        .select('*, usuario:perfiles!usuario_id(nombre)')
         .eq('empresa_id', empresa.id)
-        .order('creado_en', { ascending: false })
+        .order('fecha', { ascending: false })
 
       if (periodo === 'hoy') {
         q = q.eq('fecha', fechaEnZona(tz))
@@ -330,9 +318,9 @@ export default function GastosPage() {
                   <p className="text-sm font-semibold text-slate-900 truncate">{g.descripcion}</p>
                   <p className="text-xs text-slate-400 truncate">
                     {etiquetaCategoria(g.categoria)}
-                    {g.perfiles?.nombre ? ` · ${g.perfiles.nombre}` : ''}
+                    {g.usuario?.nombre ? ` · ${g.usuario.nombre}` : ''}
                     {' · '}
-                    {formatoFechaHora(g.creado_en)}
+                    {formatoFechaHora(g.fecha)}
                   </p>
                 </div>
                 <p className="text-sm font-bold text-red-600 flex-shrink-0">

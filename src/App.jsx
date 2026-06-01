@@ -8,6 +8,8 @@ import AppLayout from '@/components/layout/AppLayout'
 import EmpresasPage from '@/features/super/EmpresasPage'
 import DetalleEmpresaPage from '@/features/super/DetalleEmpresaPage'
 import CobranzaPage from '@/features/super/CobranzaPage'
+import DashboardSuperPage from '@/features/super/DashboardSuperPage'
+import GastosSuperPage from '@/features/super/GastosPage'
 import DashboardAdmin from '@/features/dashboard/DashboardAdmin'
 import DashboardCajero from '@/features/dashboard/DashboardCajero'
 import SuperLayout from '@/features/super/SuperLayout'
@@ -127,10 +129,12 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
 
       {/* Super admin */}
-      <Route path="/super" element={<RutaSuper><EmpresasPage /></RutaSuper>} />
+      <Route path="/super" element={<RutaSuper><DashboardSuperPage /></RutaSuper>} />
+      <Route path="/super/dashboard" element={<RutaSuper><DashboardSuperPage /></RutaSuper>} />
       <Route path="/super/empresas" element={<RutaSuper><EmpresasPage /></RutaSuper>} />
       <Route path="/super/empresas/:id" element={<RutaSuper><DetalleEmpresaPage /></RutaSuper>} />
       <Route path="/super/cobranza" element={<RutaSuper><CobranzaPage /></RutaSuper>} />
+      <Route path="/super/gastos" element={<RutaSuper><GastosSuperPage /></RutaSuper>} />
 
       {/* App normal */}
       <Route path="/" element={<RutaNormal><DashboardRol /></RutaNormal>} />

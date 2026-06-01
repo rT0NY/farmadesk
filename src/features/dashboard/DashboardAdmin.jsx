@@ -398,10 +398,26 @@ export default function DashboardAdmin() {
   }, [empresa?.id, sucursales])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Polling cada 30s como fallback
   useEffect(() => {
-    intervaloRef.current = setInterval(cargar, 60_000)
+    intervaloRef.current = setInterval(cargar, 30_000)
     return () => clearInterval(intervaloRef.current)
   }, [cargar])
+
+  // Realtime: actualizar al instante cuando llegan ventas o cancelaciones nuevas
+  useEffect(() => {
+    if (!empresa?.id) return
+    const channel = supabase
+      .channel('dashboard-sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ventas' }, cargar)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ventas' }, cargar)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cancelaciones' }, cargar)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cancelaciones' }, cargar)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gastos' }, cargar)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [empresa?.id, cargar])
 
   const nombreCorto = perfil?.nombre?.split(' ')[0] || 'usuario'
   const hora        = parseInt(new Intl.DateTimeFormat('es-MX', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date()))
@@ -471,7 +487,7 @@ export default function DashboardAdmin() {
                 {d.criticos   > 0 && <AlertaFila Icono={CalendarX}     label={`${d.criticos} lote${d.criticos > 1 ? 's' : ''} caducan en menos de 30 días`}                 count={d.criticos}   color="orange" to="/caducidades" />}
                 {d.agotados   > 0 && <AlertaFila Icono={Package}       label={`${d.agotados} producto${d.agotados > 1 ? 's' : ''} agotado${d.agotados > 1 ? 's' : ''}`}     count={d.agotados}   color="red"    to="/inventario" />}
                 {d.stockBajo  > 0 && <AlertaFila Icono={AlertTriangle} label={`${d.stockBajo} producto${d.stockBajo > 1 ? 's' : ''} con stock bajo`}                        count={d.stockBajo}  color="amber"  to="/inventario" />}
-                {d.cancelacionesPend > 0 && <AlertaFila Icono={XCircle} label={`${d.cancelacionesPend} cancelación${d.cancelacionesPend > 1 ? 'es' : ''} pendiente${d.cancelacionesPend > 1 ? 's' : ''} de aprobar`} count={d.cancelacionesPend} color="violet" to="/cancelaciones" />}
+                {d.cancelacionesPend > 0 && <AlertaFila Icono={XCircle} label={`${d.cancelacionesPend} cancelación${d.cancelacionesPend > 1 ? 'es' : ''} pendiente${d.cancelacionesPend > 1 ? 's' : ''} de aprobar`} count={d.cancelacionesPend} color="red" to="/cancelaciones" />}
                 {d.alertaSalarios  && <AlertaFila Icono={Bell}          label={`Salarios — ${d.alertaSalarios.pend} empleado${d.alertaSalarios.pend > 1 ? 's' : ''} pendiente${d.alertaSalarios.pend > 1 ? 's' : ''}`} color="amber" to="/salarios"  />}
                 {d.alertaHorario   && <AlertaFila Icono={Clock}         label="Horario de próxima semana sin programar"                                                                          color="violet" to="/horarios" />}
               </div>

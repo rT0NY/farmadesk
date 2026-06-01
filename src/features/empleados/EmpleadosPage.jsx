@@ -18,7 +18,7 @@ const COLORES_ROL = {
 // ─── Modal invitar empleado ───────────────────────────────────────────────────
 
 function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
-  const [forma, setForma] = useState({ nombre: '', correo: '', contrasena: '', rol: 'cajero', telefono: '', sucursal_id: '' })
+  const [forma, setForma] = useState({ nombre: '', correo: '', contrasena: '', rol: 'cajero', telefono: '', sucursal_id: '', salario: '' })
   const [verPass, setVerPass] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -37,7 +37,7 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
 
     setGuardando(true)
     try {
-      const { error } = await supabase.functions.invoke('invitar-empleado', {
+      const { data, error } = await supabase.functions.invoke('invitar-empleado', {
         body: {
           email:       forma.correo.trim().toLowerCase(),
           nombre:      forma.nombre.trim(),
@@ -49,11 +49,17 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
         },
       })
       if (error) throw error
-      toast.success(
-        forma.contrasena
-          ? `Empleado creado: ${forma.correo}`
-          : `Invitación enviada a ${forma.correo}`
-      )
+
+      const salarioVal = parseFloat(forma.salario)
+      if (data?.userId && !isNaN(salarioVal) && salarioVal > 0) {
+        await supabase.from('salarios').insert({
+          usuario_id:     data.userId,
+          empresa_id:     empresa.id,
+          salario_diario: salarioVal,
+        })
+      }
+
+      toast.success(`Empleado creado: ${forma.correo}`)
       onGuardado()
     } catch (e) {
       const msg = e.message ?? ''
@@ -75,21 +81,10 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Invitar empleado</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Crear usuario</h2>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
             <X className="w-4 h-4" />
           </button>
-        </div>
-
-        <div className={cn(
-          'rounded-2xl px-4 py-3 text-xs',
-          forma.contrasena
-            ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
-            : 'bg-primary-50 border border-primary-200 text-primary-700'
-        )}>
-          {forma.contrasena
-            ? 'Se creará la cuenta con la contraseña que escribiste — el empleado podrá entrar de inmediato.'
-            : 'Si dejas la contraseña vacía, el empleado recibirá un correo de invitación para crearla.'}
         </div>
 
         {/* Dummy inputs ocultos para engañar al autocompletado del navegador */}
@@ -110,7 +105,7 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-slate-700">Correo electrónico</label>
           <input
-            type="email" value={forma.correo} onChange={(e) => cambiar('correo', e.target.value)}
+            type="email" value={forma.correo} onChange={(e) => cambiar('correo', e.target.value.toLowerCase())}
             placeholder="empleado@correo.com" autoComplete="off"
             className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 placeholder:text-slate-400"
           />
@@ -193,10 +188,28 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
           </div>
         </div>
 
+        {/* Salario diario */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+            <DollarSign className="w-4 h-4 text-slate-400" />
+            Salario diario <span className="text-slate-400 font-normal">opcional</span>
+          </label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-medium">$</span>
+            <input
+              type="number" min="0" step="0.01"
+              value={forma.salario}
+              onChange={e => cambiar('salario', e.target.value)}
+              placeholder="0.00"
+              className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 placeholder:text-slate-400"
+            />
+          </div>
+        </div>
+
         <div className="flex gap-3 pt-1">
           <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button variante="primario" tamano="md" className="flex-1" cargando={guardando} onClick={guardar}>
-            Enviar invitación
+            Crear
           </Button>
         </div>
       </div>
@@ -422,7 +435,7 @@ export default function EmpleadosPage() {
         body: { user_id: emp.id, activo: nuevo },
       })
       if (error) throw error
-      toast.success(nuevo ? `${emp.nombre} activado` : `${emp.nombre} desactivado`)
+      toast.success(nuevo ? `${emp.nombre} activado` : `${emp.nombre} eliminado`)
       cargar()
     } catch (e) {
       toast.error(e.message ?? 'Error al actualizar empleado')
@@ -447,7 +460,7 @@ export default function EmpleadosPage() {
           iconoIzq={<Plus className="w-4 h-4" />}
           onClick={() => setModalInvitar(true)}
         >
-          Invitar empleado
+          Crear usuario
         </Button>
       </div>
 
@@ -550,7 +563,7 @@ export default function EmpleadosPage() {
                               ? 'text-slate-400 hover:text-red-600 hover:bg-red-50'
                               : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
                           )}
-                          title={emp.activo ? 'Desactivar' : 'Activar'}
+                          title={emp.activo ? 'Eliminar' : 'Activar'}
                         >
                           {emp.activo ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                         </button>
@@ -592,12 +605,12 @@ export default function EmpleadosPage() {
               <AlertTriangle className={cn('w-6 h-6', confirmarToggle.nuevo ? 'text-emerald-600' : 'text-red-600')} />
             </div>
             <p className="text-center text-sm font-semibold text-slate-900 mb-1">
-              {confirmarToggle.nuevo ? 'Activar empleado' : 'Desactivar empleado'}
+              {confirmarToggle.nuevo ? 'Activar empleado' : 'Eliminar empleado'}
             </p>
             <p className="text-center text-sm text-slate-500 mb-5">
               {confirmarToggle.nuevo
                 ? `¿Activar la cuenta de ${confirmarToggle.emp.nombre}? Podrá iniciar sesión de nuevo.`
-                : `¿Desactivar la cuenta de ${confirmarToggle.emp.nombre}? No podrá iniciar sesión.`}
+                : `¿Eliminar a ${confirmarToggle.emp.nombre}? Ya no podrá acceder al sistema.`}
             </p>
             <div className="flex gap-2">
               <Button variante="secundario" className="flex-1" disabled={procesandoToggle} onClick={() => setConfirmarToggle(null)}>
@@ -608,7 +621,7 @@ export default function EmpleadosPage() {
                 cargando={procesandoToggle}
                 onClick={() => { toggleActivo(confirmarToggle.emp); setConfirmarToggle(null) }}
               >
-                {confirmarToggle.nuevo ? 'Activar' : 'Desactivar'}
+                {confirmarToggle.nuevo ? 'Activar' : 'Eliminar'}
               </Button>
             </div>
           </div>
