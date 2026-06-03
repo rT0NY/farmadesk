@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeftRight, Plus, X, Search, ArrowRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { formatoFecha } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
   const [nota,       setNota]       = useState('')
   const [errores,    setErrores]    = useState({})
   const [guardando,  setGuardando]  = useState(false)
+  const guardandoRef = useRef(false)
 
   // Map: producto_id → Set de sucursal_ids donde está DESHABILITADO
   const [deshabMap, setDeshabMap] = useState({})
@@ -148,6 +150,8 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
 
   const guardar = async () => {
     if (!validar(4)) return
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const cant = parseInt(cantidad, 10)
@@ -183,6 +187,7 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al transferir')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -551,10 +556,7 @@ export default function TransferenciasPage() {
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   return (
     <div className="flex flex-col gap-6">

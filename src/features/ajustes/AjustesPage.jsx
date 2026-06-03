@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef} from 'react'
 import { Building2, Phone, Mail, FileText, Save, Check, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -60,6 +60,7 @@ export default function AjustesPage() {
   })
   const [guardando, setGuardando] = useState(false)
   const [guardado,  setGuardado]  = useState(false)
+  const guardandoRef = useRef(false)
 
   useEffect(() => {
     if (!empresa) return
@@ -80,6 +81,8 @@ export default function AjustesPage() {
 
   const guardar = async () => {
     if (!forma.nombre.trim()) return toast.error('El nombre de la empresa es obligatorio')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const payload = { nombre: forma.nombre.trim() }
@@ -111,6 +114,7 @@ export default function AjustesPage() {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }

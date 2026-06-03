@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+
 import { toast } from 'sonner'
 import {
   X, Package, Tag, DollarSign, Hash, ShoppingBag,
@@ -89,6 +90,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
   const [categorias, setCategorias] = useState([])
   const [sugerencias, setSugerencias] = useState([])
   const [cargando, setCargando] = useState(false)
+  const cargandoRef = useRef(false)
   // Para saber cuál campo fue editado por el usuario y no sobreescribirlo en el efecto
   const [ultimoCampoEditado, setUltimoCampoEditado] = useState(null)
 
@@ -320,7 +322,8 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
 
   const guardar = async () => {
     if (!validarPaso1()) return
-
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       if (esEdicion) {
@@ -460,6 +463,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
     } catch (err) {
       toast.error(err.message || 'Error al guardar producto')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }

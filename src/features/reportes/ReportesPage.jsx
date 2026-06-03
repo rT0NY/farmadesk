@@ -117,11 +117,7 @@ export default function ReportesPage() {
   const [cargando,    setCargando]    = useState(true)
   const [refreshKey,  setRefreshKey]  = useState(0)
 
-  useEffect(() => {
-    const onFocus = () => setRefreshKey(k => k + 1)
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [])
+  useFocusRefresh(() => setRefreshKey(k => k + 1))
 
   // Ref para evitar que sucursales (array inestable) cause race conditions
   const sucursalesRef = useRef(sucursales)

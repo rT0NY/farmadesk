@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { X, BadgeCheck, RefreshCw, Users, Bell, Settings, Check, ChevronRight, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { formatoMoneda, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
 
 const DIAS_ORD   = [1, 2, 3, 4, 5, 6, 0]
@@ -66,8 +67,11 @@ async function diasDesdeTurnos(usuarioId, semanaInicio, empresaId, tz = 'America
 function ModalDiaPago({ empresa, onClose, onGuardado }) {
   const [dia, setDia]             = useState(empresa?.dia_pago ?? 5)
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const guardar = async () => {
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { error } = await supabase.from('empresas')
@@ -78,6 +82,7 @@ function ModalDiaPago({ empresa, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -128,6 +133,7 @@ function ModalSalario({ empleado, onClose }) {
   const [diasEnHorario,   setDiasEnHorario]   = useState(0)
   const [cargando,        setCargando]        = useState(true)
   const [guardandoSal,    setGuardandoSal]    = useState(false)
+  const guardandoSalRef = useRef(false)
   const [sincronizando,   setSincronizando]   = useState(null)
 
   const cargar = useCallback(async () => {
@@ -165,14 +171,13 @@ function ModalSalario({ empleado, onClose }) {
   }, [empleado.id, empresa?.id, tz])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const guardarSalario = async () => {
     const valor = parseFloat(salarioDia)
     if (isNaN(valor) || valor < 0) return toast.error('Ingresa un salario válido')
+    if (guardandoSalRef.current) return
+    guardandoSalRef.current = true
     setGuardandoSal(true)
     try {
       if (salarioId) {
@@ -191,6 +196,7 @@ function ModalSalario({ empleado, onClose }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoSalRef.current = false
       setGuardandoSal(false)
     }
   }
@@ -232,10 +238,19 @@ function ModalSalario({ empleado, onClose }) {
       .update({ dias_marcados: nuevos, dias_trabajados: nuevos.length, total_calculado: total }).eq('id', semana.id)
   }
 
+  const togglePagadoRef = useRef(false)
   const togglePagado = async (semana) => {
+    if (togglePagadoRef.current) return
+    togglePagadoRef.current = true
     const pagado = !semana.pagado
     setSemanas((prev) => prev.map((s) => s.id === semana.id ? { ...s, pagado } : s))
-    await supabase.from('semanas_salario').update({ pagado }).eq('id', semana.id)
+    try {
+      await supabase.from('semanas_salario').update({ pagado }).eq('id', semana.id)
+    } catch { /* revert on error */
+      setSemanas((prev) => prev.map((s) => s.id === semana.id ? { ...s, pagado: !pagado } : s))
+    } finally {
+      togglePagadoRef.current = false
+    }
   }
 
   const totalPendiente    = semanas.filter((s) => !s.pagado)
@@ -436,13 +451,13 @@ export default function SalariosPage() {
   }, [empresa])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
   useEffect(() => { setDiaPago(empresa?.dia_pago ?? 5) }, [empresa])
 
+  const pagandoRapidoRef = useRef(false)
   const marcarPagadoRapido = async (emp) => {
+    if (pagandoRapidoRef.current) return
+    pagandoRapidoRef.current = true
     try {
       const { error } = await supabase.from('semanas_salario')
         .update({ pagado: true }).eq('usuario_id', emp.id).eq('pagado', false)
@@ -453,6 +468,8 @@ export default function SalariosPage() {
       toast.success(`${emp.nombre.split(' ')[0]} marcado como pagado`)
     } catch (e) {
       toast.error(e.message ?? 'Error')
+    } finally {
+      pagandoRapidoRef.current = false
     }
   }
 

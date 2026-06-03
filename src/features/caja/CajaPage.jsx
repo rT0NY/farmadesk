@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -70,6 +70,7 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
   const [concepto, setConcepto]   = useState('')
   const [monto,    setMonto]      = useState('')
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const esEntrada = tipo === 'entrada'
   const montoNum  = parseFloat(monto) || 0
@@ -77,6 +78,8 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
   async function guardar() {
     if (!concepto.trim()) return toast.error('Escribe el concepto')
     if (montoNum <= 0)    return toast.error('El monto debe ser mayor a cero')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { error } = await supabase.from('movimientos_caja').insert({
@@ -103,6 +106,7 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -1012,11 +1016,7 @@ export default function CajaPage() {
   useEffect(() => { cargar() }, [cargar, location.key])
 
   // También recargar al volver a la pestaña del navegador
-  useEffect(() => {
-    const onFocus = () => cargar()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [cargar])  // cargar solo cambia cuando sucursalesVisibles o tz cambian
+  useFocusRefresh(cargar, 3 * 60_000)
 
   const totalAbiertos = Object.values(turnosPorSucursal).reduce((s, arr) => s + arr.length, 0)
 

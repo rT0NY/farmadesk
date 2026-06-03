@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef} from 'react'
 import { toast } from 'sonner'
 import {
   X, Building2, User, Mail, Lock, MapPin,
@@ -54,6 +54,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
   ])
   const [verPass, setVerPass] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const cargandoRef = useRef(false)
 
   const cambiar = (campo) => (e) =>
     setForm(v => ({ ...v, [campo]: e.target.value }))
@@ -131,6 +132,8 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
     if (!billing.precio_mensual || parseFloat(billing.precio_mensual) <= 0)
       return toast.error('Precio mensual requerido')
 
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -194,6 +197,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
       toast.error('Error de red al crear empresa')
     } finally {
       setTimeout(() => { window.__creandoUsuario = false }, 500)
+      cargandoRef.current = false
       setCargando(false)
     }
   }

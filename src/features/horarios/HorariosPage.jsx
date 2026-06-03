@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef} from 'react'
 import { X, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -36,6 +36,7 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
   const [dias, setDias]               = useState(estadoInicial)
   const [horaDefault, setHoraDefault] = useState({ entrada: '08:00', salida: '17:00' })
   const [guardando, setGuardando]     = useState(false)
+  const guardandoRef = useRef(false)
 
   const toggleDia = (d) =>
     setDias((prev) => ({
@@ -70,6 +71,8 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
       }
     }
 
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       for (const d of DIAS) {
@@ -100,6 +103,7 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }

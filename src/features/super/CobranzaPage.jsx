@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef} from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   CreditCard, Phone, CalendarClock, CheckCircle2,
@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { toast } from 'sonner'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -46,10 +47,13 @@ export default function CobranzaPage() {
   const location = useLocation()
   const [empresas, setEmpresas] = useState([])
   const [cargando, setCargando] = useState(true)
+  const cargandoRef = useRef(false)
   const [filtro, setFiltro] = useState('urgentes')
   const [busqueda, setBusqueda] = useState('')
 
   const cargar = useCallback(async () => {
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const { data, error } = await supabase
@@ -62,16 +66,14 @@ export default function CobranzaPage() {
     } catch (err) {
       toast.error(err.message || 'Error al cargar')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }, [])
 
   // Recarga al navegar aquí (location.key cambia en cada navegación) y al enfocar ventana
   useEffect(() => { cargar() }, [cargar, location.key])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const marcarPagado = async (empresaId, e) => {
     e.stopPropagation()

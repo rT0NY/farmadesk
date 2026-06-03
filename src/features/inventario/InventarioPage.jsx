@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, Archive, RefreshCw, AlertTriangle,
   X, Clock, Filter, ChevronDown, Check, Package, Eye,
@@ -192,11 +193,9 @@ export default function InventarioPage() {
   const esGlobal  = perfil?.rol === 'admin' || perfil?.id === empresa?.propietario
   // Sucursal propia del usuario (cajeros/encargados tienen una asignada)
   const sucursalPropia = esGlobal ? null : (sucursalActiva ?? sucursales.find(s => s.id === perfil?.sucursal_id) ?? null)
-  const [datos, setDatos] = useState([])
+  const queryClient = useQueryClient()
   const [lotesCaducidad, setLotesCaducidad] = useState([])
-  const [cargando, setCargando] = useState(true)
   const [cargandoCad, setCargandoCad] = useState(false)
-  const [errorCarga, setErrorCarga] = useState(null)
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroOtrasSuc, setFiltroOtrasSuc] = useState(false)
@@ -211,23 +210,22 @@ export default function InventarioPage() {
     return Number((p.stock_por_sucursal || {})[sucursalPropia.id] || 0)
   }, [sucursalPropia])
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    setErrorCarga(null)
-    try {
+  const { data: datos = [], isLoading: cargando, error: errorCarga, refetch: cargar } = useQuery({
+    queryKey:  ['inventario_completo', empresa?.id],
+    queryFn:   async () => {
       const { data, error } = await supabase.rpc('inventario_completo', {
-        p_solo_con_stock: false,
+        p_solo_con_stock:  false,
         p_solo_bajo_stock: false,
       })
       if (error) throw error
-      setDatos(data || [])
-    } catch (err) {
-      setErrorCarga(err.message ?? 'Error al cargar inventario')
-      toast.error('No se pudo cargar el inventario. Verifica la conexión.')
-    } finally {
-      setCargando(false)
-    }
-  }, [])
+      return data || []
+    },
+    staleTime: 5 * 60_000,   // inventario cambia con cada venta — 5 min es razonable
+    enabled:   !!empresa?.id,
+  })
+
+  const invalidarInventario = () =>
+    queryClient.invalidateQueries({ queryKey: ['inventario_completo', empresa?.id] })
 
   const cargarCaducidad = useCallback(async () => {
     setCargandoCad(true)
@@ -257,11 +255,6 @@ export default function InventarioPage() {
     }
   }, [])
 
-  useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
   useEffect(() => { if (filtroEstado === 'por_caducar') cargarCaducidad() }, [filtroEstado, cargarCaducidad])
 
   const categorias = useMemo(() => {
@@ -665,8 +658,8 @@ export default function InventarioPage() {
         </div>
       ))}
 
-      <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={cargar} />
-      <ModalLotes producto={productoLotes} onCerrar={() => setProductoLotes(null)} onCambio={cargar} />
+      <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={invalidarInventario} />
+      <ModalLotes producto={productoLotes} onCerrar={() => setProductoLotes(null)} onCambio={invalidarInventario} />
       {modalExistencias && <ModalExistenciasInv onCerrar={() => setModalExistencias(false)} />}
     </div>
   )

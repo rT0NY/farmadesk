@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef} from 'react'
 import {
   Receipt, Plus, Trash2, Edit2, CheckCircle2, RefreshCw,
   AlertCircle, X, Save, CalendarClock, DollarSign,
@@ -38,6 +38,7 @@ function ModalGasto({ gasto, onCerrar, onExito }) {
     notas:         gasto?.notas         ?? '',
   })
   const [cargando, setCargando] = useState(false)
+  const cargandoRef = useRef(false)
 
   const guardar = async (e) => {
     e.preventDefault()
@@ -45,6 +46,8 @@ function ModalGasto({ gasto, onCerrar, onExito }) {
     const monto = parseFloat(form.monto_mensual)
     if (isNaN(monto) || monto < 0) return toast.error('Monto inválido')
 
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const payload = {
@@ -67,6 +70,7 @@ function ModalGasto({ gasto, onCerrar, onExito }) {
     } catch (err) {
       toast.error(err.message || 'Error al guardar')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }
@@ -163,9 +167,12 @@ const HOY_STR = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: '
 export default function GastosPage() {
   const [gastos, setGastos] = useState([])
   const [cargando, setCargando] = useState(true)
+  const cargandoRef = useRef(false)
   const [modalGasto, setModalGasto] = useState(null)
 
   const cargar = useCallback(async () => {
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const { data, error } = await supabase.rpc('obtener_gastos_super')
@@ -174,6 +181,7 @@ export default function GastosPage() {
     } catch (err) {
       toast.error(err.message || 'Error al cargar gastos')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }, [])

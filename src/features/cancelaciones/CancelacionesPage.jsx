@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Ban, Check, X, AlertTriangle, Building2, Package } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -7,6 +7,7 @@ import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { formatoMoneda, formatoFechaHora, fechaEnZona, generarFolio } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
@@ -31,58 +32,19 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
   const { perfil, tz } = useApp()
   const [nota, setNota] = useState('')
   const [procesando, setProcesando] = useState(false)
+  const procesandoRef = useRef(false)
 
   const aprobar = async () => {
+    if (procesandoRef.current) return
+    procesandoRef.current = true
     setProcesando(true)
     try {
-      const ventaId  = cancelacion.ventas?.id
-      const venta    = cancelacion.ventas
-
-      const { error: errVenta } = await supabase
-        .from('ventas').update({ estado: 'cancelada' }).eq('id', ventaId)
-      if (errVenta) throw errVenta
-
-      const { data: detalles } = await supabase
-        .from('detalle_ventas').select('lote_id, cantidad, producto_id').eq('venta_id', ventaId)
-
-      for (const det of detalles ?? []) {
-        if (!det.lote_id) continue
-        const { data: inv } = await supabase
-          .from('inventario').select('id, cantidad')
-          .eq('lote_id', det.lote_id).eq('sucursal_id', venta.sucursal_id).maybeSingle()
-        const cantAnterior = inv?.cantidad ?? 0
-        if (inv) {
-          await supabase.from('inventario')
-            .update({ cantidad: inv.cantidad + det.cantidad }).eq('id', inv.id)
-        } else {
-          // El registro fue eliminado (lote vaciado exacto) — recrear
-          await supabase.from('inventario').insert({
-            empresa_id:  venta.empresa_id,
-            lote_id:     det.lote_id,
-            sucursal_id: venta.sucursal_id,
-            cantidad:    det.cantidad,
-          })
-        }
-        await supabase.from('registros_stock').insert({
-          empresa_id:        venta.empresa_id,
-          lote_id:           det.lote_id,
-          producto_id:       det.producto_id,
-          sucursal_id:       venta.sucursal_id,
-          usuario_id:        perfil.id,
-          cantidad_anterior: cantAnterior,
-          cantidad_nueva:    cantAnterior + det.cantidad,
-          motivo:            'cancelacion',
-          referencia_id:     String(ventaId),
-        })
-      }
-
-      const { error: errCanc } = await supabase.from('cancelaciones').update({
-        estado:        'aprobada',
-        revisado_por:  perfil.id,
-        nota_revision: nota.trim() || null,
-        revisado_en:   new Date().toISOString(),
-      }).eq('id', cancelacion.id)
-      if (errCanc) throw errCanc
+      const { error } = await supabase.rpc('aprobar_cancelacion', {
+        p_cancelacion_id: cancelacion.id,
+        p_revisado_por:   perfil.id,
+        p_nota:           nota.trim() || null,
+      })
+      if (error) throw error
 
       await logBitacora({
         empresa_id:    cancelacion.ventas?.empresa_id ?? perfil?.empresa_id,
@@ -92,11 +54,12 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
         sucursal_id:   cancelacion.ventas?.sucursal_id ?? null,
         referencia_id: String(cancelacion.id),
       })
-      toast.success(`Cancelación aprobada`)
+      toast.success('Cancelación aprobada')
       onExito()
     } catch (e) {
       toast.error(e.message ?? 'Error al aprobar')
     } finally {
+      procesandoRef.current = false
       setProcesando(false)
     }
   }
@@ -175,8 +138,11 @@ function ModalRechazar({ cancelacion, onClose, onExito }) {
   const [nota, setNota] = useState('')
   const [procesando, setProcesando] = useState(false)
 
+  const rechazandoRef = useRef(false)
   const rechazar = async () => {
     if (!nota.trim()) return toast.error('Escribe el motivo del rechazo')
+    if (rechazandoRef.current) return
+    rechazandoRef.current = true
     setProcesando(true)
     try {
       const { error } = await supabase.from('cancelaciones').update({
@@ -199,6 +165,7 @@ function ModalRechazar({ cancelacion, onClose, onExito }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al rechazar')
     } finally {
+      rechazandoRef.current = false
       setProcesando(false)
     }
   }
@@ -385,10 +352,7 @@ export default function CancelacionesPage() {
   }, [periodo, tz])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   // Conteos siempre de TODAS las cancelaciones del periodo
   const conteos = {

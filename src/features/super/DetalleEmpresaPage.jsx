@@ -12,6 +12,7 @@ import { sanitizar } from '@/lib/sanitizar'
 import { formatoFecha, formatoMoneda } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 function CampoTexto({ label, value, onChange, placeholder, opts = {} }) {
   return (
@@ -75,12 +76,15 @@ function ModalEditarSucursal({ sucursal, onCerrar, onExito }) {
     codigo_postal: sucursal.codigo_postal || '',
   })
   const [cargando, setCargando] = useState(false)
+  const cargandoRef = useRef(false)
   const set = k => v => setForm(f => ({ ...f, [k]: v }))
 
   const guardar = async (e) => {
     e.preventDefault()
     const n = sanitizar(form.nombre)
     if (!n) return toast.error('Nombre requerido')
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const { error } = await supabase.from('sucursales').update({
@@ -97,6 +101,7 @@ function ModalEditarSucursal({ sucursal, onCerrar, onExito }) {
     } catch (err) {
       toast.error(err.message || 'Error al actualizar')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }
@@ -151,12 +156,15 @@ function ModalNuevaSucursal({ empresaId, onCerrar, onExito }) {
     nombre: '', calle: '', colonia: '', ciudad: '', estado: '', codigo_postal: '',
   })
   const [cargando, setCargando] = useState(false)
+  const cargandoRef = useRef(false)
   const set = k => v => setForm(f => ({ ...f, [k]: v }))
 
   const guardar = async (e) => {
     e.preventDefault()
     const n = sanitizar(form.nombre)
     if (!n) return toast.error('Nombre requerido')
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const { error } = await supabase.from('sucursales').insert([{
@@ -174,6 +182,7 @@ function ModalNuevaSucursal({ empresaId, onCerrar, onExito }) {
     } catch (err) {
       toast.error(err.message || 'Error al crear sucursal')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }
@@ -368,6 +377,7 @@ export default function DetalleEmpresaPage() {
   const [billing, setBilling] = useState({ cliente_nombre: '', cliente_telefono: '', dia_pago: '', ultimo_pago: null, precio_mensual: '', creado_en: null })
   const [billingEdit, setBillingEdit] = useState(false)
   const [billingGuardando, setBillingGuardando] = useState(false)
+  const billingGuardandoRef = useRef(false)
   const [pagosHistorial, setPagosHistorial] = useState([])
   const [historialAbierto, setHistorialAbierto] = useState(false)
 
@@ -496,10 +506,7 @@ export default function DetalleEmpresaPage() {
   }, [id])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   // Refresco automático cada 60 segundos para mantener ventas actualizadas
   useEffect(() => {
@@ -566,6 +573,8 @@ export default function DetalleEmpresaPage() {
   }
 
   const guardarBilling = async () => {
+    if (billingGuardandoRef.current) return
+    billingGuardandoRef.current = true
     setBillingGuardando(true)
     const { error } = await supabase.rpc('actualizar_billing_empresa', {
       p_empresa_id:       id,
@@ -575,6 +584,7 @@ export default function DetalleEmpresaPage() {
       p_ultimo_pago:      billing.ultimo_pago || null,
       p_precio_mensual:   billing.precio_mensual ? parseFloat(billing.precio_mensual) : null,
     })
+    billingGuardandoRef.current = false
     setBillingGuardando(false)
     if (error) { toast.error(error.message); return }
     toast.success('Datos de cobranza guardados')

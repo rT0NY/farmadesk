@@ -15,6 +15,7 @@ import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, generarFolio
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Modal Ver Ticket ───────────────────────────────────────
 function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }) {
@@ -62,9 +63,12 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
   const { empresa } = useApp()
   const [motivo, setMotivo] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const enviandoRef = useRef(false)
 
   async function solicitar() {
     if (!motivo.trim()) { toast.error('Escribe un motivo'); return }
+    if (enviandoRef.current) return
+    enviandoRef.current = true
     setEnviando(true)
     try {
       const { error } = await supabase.from('cancelaciones').insert([{
@@ -81,6 +85,7 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
     } catch (err) {
       toast.error(err.message || 'Error')
     } finally {
+      enviandoRef.current = false
       setEnviando(false)
     }
   }
@@ -487,6 +492,8 @@ export default function VentasPage() {
   const [cantidadesInput, setCantidadesInput] = useState({}) // string temporal mientras el user escribe
   const [warnings, setWarnings] = useState({})
   const [procesando, setProcesando] = useState(false)
+  const procesandoRef  = useRef(false)
+  const refreshingRef  = useRef(false)   // guard para refreshDynamic
   const [ofertasVigentes, setOfertasVigentes] = useState([])
 
   // Cobro
@@ -511,6 +518,7 @@ export default function VentasPage() {
   // Abrir turno
   const [montoApertura, setMontoApertura] = useState('')
   const [abriendoTurno, setAbriendoTurno] = useState(false)
+  const abriendoRef = useRef(false)
   // Cerrar turno
   const [modalCierre,    setModalCierre]    = useState(false)
   const [resumenTurno,   setResumenTurno]   = useState(null)
@@ -526,13 +534,12 @@ export default function VentasPage() {
     setLoading(true)
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
+      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
         supabase.from('lotes').select('*').eq('activo', true),
         supabase.from('inventario').select('*'),
         supabase.from('codigos_barras').select('*'),
-        supabase.from('ventas').select('*').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
-        supabase.from('detalle_ventas').select('*'),
+        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         perfilId
           ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
           : Promise.resolve({ data: null, error: null }),
@@ -544,8 +551,10 @@ export default function VentasPage() {
       ])
       const disabledSet = new Set((prodSuc || []).map(ps => ps.producto_id))
       setDeshabilitados(disabledSet)
+      const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
+      const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
       setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
-      setCodigosCat(cod || []); setVentasHoy(vts || []); setDetallesHoy(det || [])
+      setCodigosCat(cod || []); setVentasHoy(vts); setDetallesHoy(det)
       setCuentasHoy(cuentas || [])
       // Solo actualizar turnoActual si la query fue exitosa y tenemos usuario identificado.
       // Si hay error (e.g. PGRST116 por múltiples filas, sesión expirada) o si perfilId
@@ -568,15 +577,44 @@ export default function VentasPage() {
     finally { setLoading(false) }
   }, [sucursalId, tz, perfilId])
 
+  // Recarga ligera post-venta: solo datos que cambian con cada operación.
+  // No recarga catálogo estático (productos, lotes, codigos_barras).
+  const refreshDynamic = useCallback(async () => {
+    if (!sucursalId || !perfilId) return
+    if (refreshingRef.current) return
+    refreshingRef.current = true
+    try {
+      const hoy = fechaEnZona(tz)
+      const [{ data: inv }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
+        supabase.from('inventario').select('*'),
+        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
+        supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
+      ])
+      const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
+      const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
+      setInventario(inv || [])
+      setVentasHoy(vts)
+      setDetallesHoy(det)
+      setCuentasHoy(cuentas || [])
+      if (!errTurnoQ) setTurnoActual(turno)
+      if (turno?.id) {
+        const { data: vtsTurno } = await supabase
+          .from('ventas').select('id, total, metodo_pago, creado_en, monto_recibido, cambio')
+          .eq('turno_id', turno.id).neq('estado', 'cancelada').order('creado_en', { ascending: false })
+        setVentasTurno(vtsTurno || [])
+      } else {
+        setVentasTurno([])
+      }
+    } catch (err) { console.error(err) }
+    finally { refreshingRef.current = false }
+  }, [sucursalId, tz, perfilId])
+
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Recargar al volver a la pestaña (igual que CajaPage) para detectar turnos
-  // abiertos o cerrados desde otra pestaña o dispositivo.
-  useEffect(() => {
-    const onFocus = () => fetchData()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [fetchData])
+  // Recargar al volver a la pestaña para detectar turnos abiertos/cerrados
+  // desde otra pestaña o dispositivo. Cooldown de 3 min para no repetir fetches.
+  useFocusRefresh(fetchData, 3 * 60_000)
 
   // Actualizar ofertas en tiempo real cuando un admin crea, edita o elimina una oferta
   // desde otro dispositivo, sin necesidad de recargar la página.
@@ -919,6 +957,8 @@ export default function VentasPage() {
     if (!esCuentaPendiente && Number(montoRecibido) > 0 && Number(montoRecibido) < total) {
       toast.error('El monto recibido es menor al total'); return
     }
+    if (procesandoRef.current) return
+    procesandoRef.current = true
     setProcesando(true)
     try {
       // Verificar que el turno sigue abierto antes de registrar la venta
@@ -1009,16 +1049,19 @@ export default function VentasPage() {
 
       setCarrito([]); setPrecios({}); setWarnings({}); setModosMayoreo({})
       setMontoRecibido(''); setMetodoPago('efectivo'); setEsCuentaPendiente(false); setClienteNombre('')
-      fetchData()
+      refreshDynamic()
     } catch (err) {
       toast.error(err.message || 'Error al registrar venta')
     } finally {
+      procesandoRef.current = false
       setProcesando(false)
     }
   }
 
   // ── Abrir turno ───────────────────────────────────────────
   async function abrirTurno() {
+    if (abriendoRef.current) return
+    abriendoRef.current = true
     // Limpiar estado de cierre por si quedó algo pendiente de la sesión anterior
     setModalCierre(false)
     setResumenTurno(null)
@@ -1040,6 +1083,7 @@ export default function VentasPage() {
     // Si la sesión expiró, el error llega aquí; cerramos sesión limpiamente
     if (errAntiDup?.status === 401 || errAntiDup?.message?.toLowerCase().includes('jwt') || errAntiDup?.message?.toLowerCase().includes('token')) {
       toast.error('Tu sesión expiró. Inicia sesión de nuevo.')
+      abriendoRef.current = false
       setAbriendoTurno(false)
       await supabase.auth.signOut()
       return
@@ -1097,21 +1141,22 @@ export default function VentasPage() {
       }
       // Recargar datos de la sucursal
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: vts }, { data: det }, { data: ofVig }, { data: ps2 }] = await Promise.all([
+      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: ventasConDet2 }, { data: ofVig }, { data: ps2 }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
         supabase.from('lotes').select('*').eq('activo', true),
         supabase.from('inventario').select('*'),
         supabase.from('codigos_barras').select('*'),
-        supabase.from('ventas').select('*').eq('sucursal_id', sucId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
-        supabase.from('detalle_ventas').select('*'),
+        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
         esCajero
           ? Promise.resolve({ data: [] })
           : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucId).eq('habilitado', false),
       ])
+      const vts2 = (ventasConDet2 ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
+      const det2 = (ventasConDet2 ?? []).flatMap(v => v.detalle_ventas ?? [])
       setDeshabilitados(new Set((ps2 || []).map(p => p.producto_id)))
       setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
-      setCodigosCat(cod || []); setVentasHoy(vts || []); setDetallesHoy(det || [])
+      setCodigosCat(cod || []); setVentasHoy(vts2); setDetallesHoy(det2)
       setOfertasVigentes(ofVig || [])
       recargarTurno()
     } else {
@@ -1123,6 +1168,7 @@ export default function VentasPage() {
         toast.error('No se pudo abrir el turno')
       }
     }
+    abriendoRef.current = false
     setAbriendoTurno(false)
   }
 

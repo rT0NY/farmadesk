@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, Package, Filter, RefreshCw, Archive,
   AlertTriangle, ChevronDown, X, Check, CircleCheck,
@@ -64,36 +65,27 @@ function DropdownFiltro({ label, icono: Icono, activo, contador, children }) {
 }
 
 export default function ProductosPage() {
-  const { perfil } = useApp()
+  const { empresa, perfil } = useApp()
+  const queryClient = useQueryClient()
   const esCajero = perfil?.rol === 'cajero'
-  const [productos, setProductos] = useState([])
-  const [cargando, setCargando] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('activos')
   const [categoriaSel, setCategoriaSel] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [productoEditar, setProductoEditar] = useState(null)
 
-  const cargar = useCallback(async () => {
-    setCargando(true)
-    try {
-      const { data, error } = await supabase.rpc('listar_productos_completo', {
-        p_solo_activos: false,
-      })
+  const { data: productos = [], isLoading: cargando, refetch: cargar } = useQuery({
+    queryKey:  ['productos', empresa?.id],
+    queryFn:   async () => {
+      const { data, error } = await supabase.rpc('listar_productos_completo', { p_solo_activos: false })
       if (error) throw error
-      setProductos(data || [])
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setCargando(false)
-    }
-  }, [])
+      return data || []
+    },
+    staleTime: 10 * 60_000,  // catálogo cambia solo cuando admin edita
+    enabled:   !!empresa?.id,
+  })
 
-  useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  const invalidar = () => queryClient.invalidateQueries({ queryKey: ['productos', empresa?.id] })
 
   const categorias = useMemo(() => {
     const conteos = new Map()
@@ -464,7 +456,7 @@ export default function ProductosPage() {
                 key={p.id}
                 producto={p}
                 onEditar={abrirEditar}
-                onCambio={cargar}
+                onCambio={invalidar}
               />
             ))}
           </Table.Body>
@@ -474,7 +466,7 @@ export default function ProductosPage() {
       <ModalProducto
         abierto={modalAbierto}
         onCerrar={() => { setModalAbierto(false); setProductoEditar(null) }}
-        onExito={cargar}
+        onExito={invalidar}
         productoEditar={productoEditar}
       />
 

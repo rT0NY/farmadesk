@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   CreditCard, User, Check, Building2, X,
   Banknote, CheckCircle2, Clock, Search, ArrowUpDown,
@@ -11,6 +11,7 @@ import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { formatoMoneda, formatoFecha } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Tarjeta resumen ──────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
   const pct   = Math.min(100, Math.round((cuenta.abonado / cuenta.total) * 100))
   const [monto, setMonto]         = useState(liquidarDirecto ? String(saldo.toFixed(2)) : '')
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const abonoNum = parseFloat(monto) || 0
 
@@ -44,7 +46,8 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
     const abono = forzarTotal ? saldo : parseFloat(monto)
     if (!abono || abono <= 0) return toast.error('El monto debe ser mayor a cero')
     if (abono > saldo + 0.001) return toast.error(`El abono no puede superar el saldo (${formatoMoneda(saldo)})`)
-
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       // Redondear a centavos para evitar errores de punto flotante (ej: 99.9 + 0.1 = 100.00000000000001)
@@ -75,6 +78,7 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al registrar abono')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -369,10 +373,7 @@ export default function CuentasPage() {
   }, [filtroEstado, esAdmin, sucursalActiva, periodo, fechaDesde, fechaHasta])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const cuentasFiltradas = useMemo(() => {
     let r = cuentas

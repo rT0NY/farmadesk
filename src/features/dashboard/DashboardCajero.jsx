@@ -287,11 +287,7 @@ export default function DashboardCajero() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  useEffect(() => {
-    const onFocus = () => cargar()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [cargar])
+  useFocusRefresh(cargar, 3 * 60_000)
 
   const nombre = perfil?.nombre?.split(' ')[0] ?? ''
   const hora   = parseInt(new Intl.DateTimeFormat('es-MX', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date()))

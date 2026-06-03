@@ -111,11 +111,7 @@ export default function HistorialInventarioPage() {
   }, [empresa?.id, fechaDesde, fechaHasta, sucFiltro, motivoFiltro])
 
   useEffect(() => { cargar(0) }, [cargar])
-  useEffect(() => {
-    const onFocus = () => cargar(0)
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [cargar])
+  useFocusRefresh(() => cargar(0))
 
   const filtrados = busqueda.trim()
     ? registros.filter(r => {

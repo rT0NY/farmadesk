@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { toast } from 'sonner'
 import {
   X, Package, Calendar, Edit2, Trash2, Scale,
@@ -22,13 +22,16 @@ function ModalEditarLote({ lote, onCerrar, onGuardar }) {
   const [codigoLote, setCodigoLote] = useState(lote.codigo_lote || '')
   const [fechaCad, setFechaCad] = useState(lote.fecha_caducidad || '')
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
   async function guardar() {
     if (!codigoLote.trim()) { toast.error('Código de lote requerido'); return }
     if (!fechaCad) { toast.error('Fecha de caducidad requerida'); return }
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     const { error } = await supabase.from('lotes').update({ codigo_lote: codigoLote.trim(), fecha_caducidad: fechaCad }).eq('id', lote.lote_id)
-    if (error) { toast.error(error.message); setGuardando(false); return }
-    toast.success('Lote actualizado'); setGuardando(false); onGuardar()
+    if (error) { toast.error(error.message); guardandoRef.current = false; setGuardando(false); return }
+    toast.success('Lote actualizado'); guardandoRef.current = false; setGuardando(false); onGuardar()
   }
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -56,6 +59,7 @@ function ModalCuadrar({ lote, sucursales, onCerrar, onGuardar }) {
   const [cantidad, setCantidad] = useState('')
   const [motivo, setMotivo] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const cuadrRefG = useRef(false)
   const stockSuc = lote.stock_por_sucursal || {}
   const stockActual = Number(stockSuc[sucursalId] || 0)
   useEffect(() => { setCantidad(String(Number(stockSuc[sucursalId] || 0))) }, [sucursalId])
@@ -63,12 +67,14 @@ function ModalCuadrar({ lote, sucursales, onCerrar, onGuardar }) {
     const cant = Number(cantidad)
     if (isNaN(cant) || cant < 0) { toast.error('Cantidad no válida'); return }
     if (!motivo.trim()) { toast.error('Indica un motivo'); return }
+    if (cuadrRefG.current) return
+    cuadrRefG.current = true
     setGuardando(true)
     try {
       const { error } = await supabase.rpc('ajustar_inventario', { p_lote_id: lote.lote_id, p_sucursal_id: sucursalId, p_nueva_cantidad: cant, p_motivo: motivo.trim() })
       if (error) throw error
       toast.success('Inventario ajustado'); onGuardar()
-    } catch (err) { toast.error(err.message || 'Error al ajustar') } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'Error al ajustar') } finally { cuadrRefG.current = false; setGuardando(false) }
   }
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

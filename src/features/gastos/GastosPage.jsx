@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Receipt, X, ChevronDown, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select'
 import { CATEGORIAS_GASTO } from '@/lib/constantes'
 import { formatoMoneda, formatoFechaHora, fechaEnZona } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 const etiquetaCategoria = (valor) =>
   CATEGORIAS_GASTO.find((c) => c.valor === valor)?.etiqueta ?? valor
@@ -19,6 +20,7 @@ function ModalNuevoGasto({ onClose, onGuardado, empresa, perfil }) {
   const { tz } = useApp()
   const [forma, setForma] = useState({ categoria: '', descripcion: '', monto: '' })
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const cambiar = (campo, valor) => setForma((f) => ({ ...f, [campo]: valor }))
 
@@ -28,7 +30,8 @@ function ModalNuevoGasto({ onClose, onGuardado, empresa, perfil }) {
     const monto = parseFloat(forma.monto)
     if (!monto || monto <= 0) return toast.error('El monto debe ser mayor a cero')
     if (!empresa?.id) return toast.error('Sin empresa activa')
-
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { data: gasto, error: errGasto } = await supabase
@@ -60,6 +63,7 @@ function ModalNuevoGasto({ onClose, onGuardado, empresa, perfil }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -185,10 +189,7 @@ export default function GastosPage() {
   }, [empresa?.id, filtroCategoria, periodo, fechaDesde, fechaHasta, tz])
 
   useEffect(() => { cargarGastos() }, [cargarGastos])
-  useEffect(() => {
-    window.addEventListener('focus', cargarGastos)
-    return () => window.removeEventListener('focus', cargarGastos)
-  }, [cargarGastos])
+  useFocusRefresh(cargarGastos)
 
   const totalGeneral = gastos.reduce((s, g) => s + Number(g.monto), 0)
 

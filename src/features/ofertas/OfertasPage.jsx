@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import {
   Plus, Tag, Search, X, Edit2, Trash2, Calendar,
@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 const TIPOS_OFERTA = [
   { valor: 'descuento_porcentaje', etiqueta: 'Descuento %', desc: 'Ej: 20% de descuento', icono: Percent },
@@ -232,6 +233,7 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
   const [busquedaProd, setBusquedaProd] = useState('')
   const [busquedaTrigger, setBusquedaTrigger] = useState('')
   const [cargando, setCargando] = useState(false)
+  const cargandoRef = useRef(false)
 
   useEffect(() => {
     if (!abierto) return
@@ -307,6 +309,8 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
       if (existente) { toast.error(`Ya tiene oferta activa: "${existente.nombre}"`); return }
     }
 
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const datos = {
@@ -349,7 +353,7 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
       }
       onExito?.(); onCerrar()
     } catch (err) { toast.error(err.message || 'Error') }
-    finally { setCargando(false) }
+    finally { cargandoRef.current = false; setCargando(false) }
   }
 
   // Validación por paso
@@ -880,10 +884,7 @@ export default function OfertasPage() {
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const conteos = useMemo(() => ({
     activas:    ofertas.filter(o => estadoOferta(o).label === 'Activa').length,

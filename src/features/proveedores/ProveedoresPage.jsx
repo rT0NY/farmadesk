@@ -15,6 +15,7 @@ import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { formatoMoneda, fechaEnZona, addDias } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Modal base ───────────────────────────────────────────────────────────────
 
@@ -233,11 +234,14 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
     notas:    proveedor?.notas    ?? '',
   })
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
 
   const guardar = async () => {
     if (!form.nombre.trim()) return toast.error('Nombre del proveedor requerido')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       if (esEdit) {
@@ -265,6 +269,7 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -351,6 +356,7 @@ function ModalNuevoPedido({ empresa, proveedor, sucursales, onClose, onGuardado 
   const [notas,      setNotas]      = useState('')
   const [cargando,   setCargando]   = useState(true)
   const [guardando,  setGuardando]  = useState(false)
+  const guardandoRef = useRef(false)
   const [sugeridos,  setSugeridos]  = useState({})
 
   useEffect(() => {
@@ -421,6 +427,8 @@ function ModalNuevoPedido({ empresa, proveedor, sucursales, onClose, onGuardado 
 
   const guardar = async (conPDF = false) => {
     if (itemsConCantidad.length === 0) return toast.error('Agrega al menos un producto con cantidad')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { data: pedido, error: e1 } = await supabase
@@ -475,6 +483,7 @@ function ModalNuevoPedido({ empresa, proveedor, sucursales, onClose, onGuardado 
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -650,6 +659,7 @@ function ModalEditarPedido({ pedido, empresa, proveedor, sucursales, onClose, on
   const [notas,      setNotas]      = useState(pedido.notas ?? '')
   const [cargando,   setCargando]   = useState(true)
   const [guardando,  setGuardando]  = useState(false)
+  const guardandoRef = useRef(false)
   const [busqueda,   setBusqueda]   = useState('')
 
   useEffect(() => {
@@ -684,6 +694,8 @@ function ModalEditarPedido({ pedido, empresa, proveedor, sucursales, onClose, on
 
   const guardar = async () => {
     if (conCantidad.length === 0) return toast.error('Agrega al menos un producto')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { error: delErr } = await supabase.from('pedido_items').delete().eq('pedido_id', pedido.id)
@@ -713,6 +725,7 @@ function ModalEditarPedido({ pedido, empresa, proveedor, sucursales, onClose, on
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -842,6 +855,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   const [items,      setItems]     = useState([])
   const [cargando,   setCargando]  = useState(true)
   const [guardando,  setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
   // Map: producto_id → Set de sucursal_ids deshabilitadas
   const [deshabPorProducto, setDeshabPorProducto] = useState({})
   // Map: producto_id → lista de lotes activos existentes
@@ -856,6 +870,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   const [modalVincular,setModalVincular]= useState(null)  // { codigo }
   const [searchVinc,   setSearchVinc]  = useState('')
   const [guardandoVinc,setGuardandoVinc]= useState(false)
+  const guardandoVincRef = useRef(false)
   const [busquedaItem, setBusquedaItem]= useState('')
 
   const hoy      = fechaEnZona(tz)
@@ -1052,6 +1067,8 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   const guardarVincular = async (it) => {
     if (!modalVincular?.codigo) return
     const codigoNorm = normalizarCodigo(modalVincular.codigo)
+    if (guardandoVincRef.current) return
+    guardandoVincRef.current = true
     setGuardandoVinc(true)
     try {
       // Evitar duplicar si el código ya está vinculado a este producto
@@ -1084,6 +1101,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
     } catch (err) {
       toast.error(err.message ?? 'Error al vincular')
     } finally {
+      guardandoVincRef.current = false
       setGuardandoVinc(false)
     }
   }
@@ -1102,100 +1120,53 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
 
   const registrar = async () => {
     if (!sucursalId) return toast.error('Selecciona la sucursal de destino')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
+      // Validar que todos los confirmados tienen fecha de caducidad
       for (const it of items) {
         const l = lineas[it.id] ?? {}
-        // Saltar ítems de entregas previas (bloqueados) y los no confirmados
         if (l.bloqueado || l.estado !== 'confirmado') continue
-
-        const cant = parseInt(l.cantidad_recibida) || 0
         if (!l.fecha_caducidad) throw new Error(`Falta caducidad de "${it.nombre_producto}"`)
-
-        const entradas = l.distribucion
-          ? Object.entries(l.distribucion).filter(([, v]) => (parseInt(v) || 0) > 0).map(([sId, v]) => ({ sId, qty: parseInt(v) }))
-          : [{ sId: sucursalId, qty: cant }]
-
-        // Auto-detectar: si la fecha coincide con un lote existente, sumar stock ahí
-        const loteExistente = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
-        let loteIdUsado = null
-
-        if (loteExistente) {
-          loteIdUsado = loteExistente.id
-          // Sumar al lote existente en cada sucursal de destino
-          for (const { sId, qty } of entradas) {
-            const { data: invActual } = await supabase
-              .from('inventario').select('cantidad')
-              .eq('lote_id', loteExistente.id).eq('sucursal_id', sId).maybeSingle()
-            const actual = invActual?.cantidad || 0
-            const { error: errRpc } = await supabase.rpc('ajustar_inventario', {
-              p_lote_id:        loteExistente.id,
-              p_sucursal_id:    sId,
-              p_nueva_cantidad: actual + qty,
-              p_motivo:         'recepcion_pedido',
-            })
-            if (errRpc) throw errRpc
-          }
-        } else {
-          // Lote nuevo — crear UNO SOLO con el primer destino,
-          // luego añadir inventario en los demás con el mismo lote_id
-          const [primera, ...resto] = entradas
-          const { data: resultado, error: errPrimero } = await supabase.rpc('agregar_inventario', {
-            p_producto_id:     it.producto_id,
-            p_sucursal_id:     primera.sId,
-            p_cantidad:        primera.qty,
-            p_fecha_caducidad: l.fecha_caducidad,
-            p_nota:            'recepcion_pedido',
-          })
-          if (errPrimero) throw errPrimero
-
-          const loteId = resultado?.lote_id
-          loteIdUsado = loteId
-          for (const { sId, qty } of resto) {
-            const { data: invActual } = await supabase
-              .from('inventario').select('cantidad')
-              .eq('lote_id', loteId).eq('sucursal_id', sId).maybeSingle()
-            const actual = invActual?.cantidad || 0
-            const { error: errRpc } = await supabase.rpc('ajustar_inventario', {
-              p_lote_id:        loteId,
-              p_sucursal_id:    sId,
-              p_nueva_cantidad: actual + qty,
-              p_motivo:         'recepcion_pedido',
-            })
-            if (errRpc) throw errRpc
-          }
-        }
-
-        const precio = parseFloat(l.precio_recibido)
-        if (precio > 0) {
-          await supabase.from('productos')
-            .update({ precio_compra: precio }).eq('id', it.producto_id)
-        }
-
-        if (loteIdUsado && cant > 0) {
-          await supabase.from('compras').insert({
-            empresa_id:      empresa?.id ?? pedido.empresa_id,
-            proveedor_id:    pedido.proveedor_id ?? null,
-            producto_id:     it.producto_id,
-            lote_id:         loteIdUsado,
-            cantidad:        cant,
-            precio_unitario: precio || 0,
-            nota:            `Recepción pedido #${pedido.id.slice(-6).toUpperCase()}`,
-          })
-        }
-
-        await supabase.from('pedido_items').update({
-          cantidad_recibida: cant,
-          precio_recibido:   precio || null,
-          fecha_caducidad:   l.fecha_caducidad,
-        }).eq('id', it.id)
       }
+
+      // Construir payload para el RPC atómico
+      const itemsPayload = items
+        .filter(it => {
+          const l = lineas[it.id] ?? {}
+          return !l.bloqueado && l.estado === 'confirmado' && (parseInt(l.cantidad_recibida) || 0) > 0
+        })
+        .map(it => {
+          const l = lineas[it.id]
+          const cant = parseInt(l.cantidad_recibida) || 0
+          const loteExistente = detectarLoteExistente(it.producto_id, l.fecha_caducidad)
+          const entradas = l.distribucion
+            ? Object.entries(l.distribucion).filter(([, v]) => (parseInt(v) || 0) > 0).map(([sId, v]) => ({ sucursal_id: sId, cantidad: parseInt(v) }))
+            : [{ sucursal_id: sucursalId, cantidad: cant }]
+          return {
+            pedido_item_id:    it.id,
+            producto_id:       it.producto_id,
+            lote_id_existente: loteExistente?.id ?? null,
+            fecha_caducidad:   l.fecha_caducidad,
+            cantidad_total:    cant,
+            precio_unitario:   parseFloat(l.precio_recibido) || 0,
+            entradas,
+          }
+        })
 
       const todoRecibido = omitidos === 0 && confirmados === itemsEsta.length
       const nuevoEstado  = todoRecibido ? 'recibido' : 'parcial'
-      await supabase.from('pedidos').update({
-        estado: nuevoEstado, recibido_en: new Date().toISOString(), sucursal_id: sucursalId,
-      }).eq('id', pedido.id)
+
+      const { error } = await supabase.rpc('recibir_pedido', {
+        p_pedido_id:    pedido.id,
+        p_empresa_id:   empresa?.id ?? pedido.empresa_id,
+        p_usuario_id:   perfil?.id ?? null,
+        p_sucursal_id:  sucursalId,
+        p_nuevo_estado: nuevoEstado,
+        p_items:        itemsPayload,
+      })
+      if (error) throw error
 
       // Construir resumen de distribución para guardar en bitácora
       const resumenDistribucion = items
@@ -1248,6 +1219,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al registrar recepción')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -2290,10 +2262,7 @@ export default function ProveedoresPage() {
   }, [empresa, filtroEstadoPed, filtroProv, fechaDesde, fechaHasta])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const proveedoresFiltrados = busquedaProv.trim()
     ? proveedores.filter(p =>

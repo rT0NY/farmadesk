@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, X, Users, UserCheck, UserX, Edit2, Phone, Eye, EyeOff, DollarSign, ShieldAlert, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/Select'
 import { ROLES, ETIQUETAS_ROL } from '@/lib/constantes'
 import { formatoFecha, formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 const COLORES_ROL = {
   admin:     'bg-violet-100 text-violet-700 border-violet-200',
@@ -21,6 +22,7 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
   const [forma, setForma] = useState({ nombre: '', correo: '', contrasena: '', rol: 'cajero', telefono: '', sucursal_id: '', salario: '' })
   const [verPass, setVerPass] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const cambiar = (k, v) => setForma((f) => ({ ...f, [k]: v }))
 
@@ -35,6 +37,8 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
     if (forma.telefono && forma.telefono.length !== 10)
       return toast.error('El teléfono debe tener exactamente 10 dígitos')
 
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { data, error } = await supabase.functions.invoke('invitar-empleado', {
@@ -72,6 +76,7 @@ function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
         toast.error(msg || 'Error al registrar empleado')
       }
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -228,6 +233,7 @@ function ModalEditar({ empleado, empresa, onClose, onGuardado }) {
   })
   const [verPass, setVerPass] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const cambiar = (k, v) => setForma((f) => ({ ...f, [k]: v }))
 
@@ -240,7 +246,8 @@ function ModalEditar({ empleado, empresa, onClose, onGuardado }) {
       return toast.error('La contraseña debe tener al menos 6 caracteres')
     if (forma.telefono && forma.telefono.length !== 10)
       return toast.error('El teléfono debe tener exactamente 10 dígitos')
-
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { error } = await supabase.functions.invoke('super-api', {
@@ -262,6 +269,7 @@ function ModalEditar({ empleado, empresa, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al actualizar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -391,6 +399,7 @@ export default function EmpleadosPage() {
   const [modalEditar,      setModalEditar]      = useState(null)
   const [confirmarToggle,  setConfirmarToggle]  = useState(null) // { emp, nuevo }
   const [procesandoToggle, setProcesandoToggle] = useState(false)
+  const toggleRef = useRef(false)
 
   const cargar = useCallback(async () => {
     if (!empresa?.id) return
@@ -422,12 +431,11 @@ export default function EmpleadosPage() {
   }, [empresa, filtroActivo])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const toggleActivo = async (emp) => {
+    if (toggleRef.current) return
+    toggleRef.current = true
     const nuevo = !emp.activo
     setProcesandoToggle(true)
     try {
@@ -440,6 +448,7 @@ export default function EmpleadosPage() {
     } catch (e) {
       toast.error(e.message ?? 'Error al actualizar empleado')
     } finally {
+      toggleRef.current = false
       setProcesandoToggle(false)
     }
   }

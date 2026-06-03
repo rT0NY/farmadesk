@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react'
@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [password,     setPassword]     = useState('')
   const [verPassword,  setVerPassword]  = useState(false)
   const [cargando,     setCargando]     = useState(false)
+  const cargandoRef = useRef(false)
   const [sugerencias,  setSugerencias]  = useState([])
   const [mostrarSugs,  setMostrarSugs]  = useState(false)
 
@@ -50,6 +51,8 @@ export default function LoginPage() {
       return
     }
 
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
       const { data: dataLogin, error } = await supabase.auth.signInWithPassword({
@@ -137,6 +140,7 @@ export default function LoginPage() {
       console.error(err)
       toast.error('Error al iniciar sesión')
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }

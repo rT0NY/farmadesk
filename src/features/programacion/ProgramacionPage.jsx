@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef} from 'react'
 import { ChevronLeft, ChevronRight, X, Settings2, Clock, Check, Send, Phone, Zap, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
 
 const DIA_LABEL  = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -84,6 +85,7 @@ function ModalTurnos({ empresa, turnos, onClose, onGuardado }) {
       : turnos.map((t) => ({ ...t, hora_inicio: formatHora(t.hora_inicio), hora_fin: formatHora(t.hora_fin) }))
   )
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
   const cantTurnos = config.length
 
   const set = (idx, campo, val) =>
@@ -105,6 +107,8 @@ function ModalTurnos({ empresa, turnos, onClose, onGuardado }) {
       if (!t.nombre.trim()) return toast.error('Escribe un nombre para cada turno')
       if (t.hora_fin <= t.hora_inicio) return toast.error(`${t.nombre}: la salida debe ser después de la entrada`)
     }
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       for (const t of config) {
@@ -139,6 +143,7 @@ function ModalTurnos({ empresa, turnos, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -205,6 +210,7 @@ function ModalSlot({ sucursal, turno, turnoIdx, fecha, empleados, programacion, 
   )
   const [seleccion, setSeleccion] = useState(() => new Set(asigSlot.map((a) => a.usuario_id)))
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const toggle = (empId) =>
     setSeleccion((prev) => {
@@ -214,6 +220,8 @@ function ModalSlot({ sucursal, turno, turnoIdx, fecha, empleados, programacion, 
     })
 
   const guardar = async () => {
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const prevIds  = new Set(asigSlot.map((a) => a.usuario_id))
@@ -238,6 +246,7 @@ function ModalSlot({ sucursal, turno, turnoIdx, fecha, empleados, programacion, 
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -323,6 +332,7 @@ function ModalAsignacionRapida({ empresa, empleados, turnos, sucursales, semanaI
   const [sucursalId, setSucursalId] = useState(sucursales[0]?.id ?? '')
   const [turnoId,    setTurnoId]    = useState(turnos[0]?.id ?? '')
   const [guardando,  setGuardando]  = useState(false)
+  const guardandoRef = useRef(false)
 
   const toggleDia = (i) =>
     setDiasSel((prev) => {
@@ -336,6 +346,8 @@ function ModalAsignacionRapida({ empresa, empleados, turnos, sucursales, semanaI
     if (!diasSel.size) return toast.error('Selecciona al menos un día')
     if (!sucursalId)   return toast.error('Selecciona una sucursal')
     if (!turnoId)      return toast.error('Selecciona un turno')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const fechasSel = fechas.filter((_, i) => diasSel.has(i))
@@ -353,6 +365,7 @@ function ModalAsignacionRapida({ empresa, empleados, turnos, sucursales, semanaI
     } catch (e) {
       toast.error(e.message ?? 'Error al asignar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -593,8 +606,11 @@ function ModalEnviar({ empresa, empleados, programacion, turnos, semanaInicio, o
 function ModalTelefono({ empresa, onClose, onGuardado }) {
   const [tel, setTel]           = useState(empresa?.telefono_whatsapp ?? '')
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const guardar = async () => {
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const { error } = await supabase.from('empresas')
@@ -605,6 +621,7 @@ function ModalTelefono({ empresa, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }
@@ -695,10 +712,7 @@ export default function ProgramacionPage() {
   }, [empresa, semanaInicio])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const fechas   = semanaFechas(semanaInicio)
   const esActual = semanaInicio === lunesActual()

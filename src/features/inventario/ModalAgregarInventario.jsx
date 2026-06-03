@@ -82,6 +82,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   const barcodeRef = useRef(null)
   const searchRef = useRef(false)
   const asociarRef = useRef(false)
+  const cargandoRef = useRef(false)
 
   const PASOS = [
     { num: 1, label: 'Producto' },
@@ -319,62 +320,36 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
 
   async function handleGuardar() {
     if (!validarPaso(3)) return
+    if (cargandoRef.current) return
+    cargandoRef.current = true
     setCargando(true)
     try {
+      const sucursalesPayload = sucursalesHabilitadas
+        .filter(s => Number(cantidades[s.id]) > 0)
+        .map(s => ({ sucursal_id: s.id, cantidad: Number(cantidades[s.id]) }))
+
+      if (sucursalesPayload.length === 0) throw new Error('Ingresa al menos una cantidad')
+
       if (modoLote === 'nuevo') {
-        // Crear UN SOLO lote para todas las sucursales.
-        // agregar_inventario retorna {lote_id} — usarlo en las sucursales restantes
-        // para no crear lotes duplicados con la misma fecha.
-        const sucsConCant = sucursalesHabilitadas.filter(s => Number(cantidades[s.id]) > 0)
-        if (sucsConCant.length === 0) throw new Error('Ingresa al menos una cantidad')
-
-        const [primera, ...resto] = sucsConCant
-
-        const { data: resultado, error: errPrimero } = await supabase.rpc('agregar_inventario', {
+        const { error } = await supabase.rpc('agregar_stock_multi_sucursal', {
+          p_empresa_id:      empresa.id,
           p_producto_id:     productoSel.id,
-          p_sucursal_id:     primera.id,
-          p_cantidad:        Number(cantidades[primera.id]),
+          p_motivo:          'entrada_inventario',
+          p_sucursales:      sucursalesPayload,
+          p_usuario_id:      perfil?.id ?? null,
           p_fecha_caducidad: caducidad,
         })
-        if (errPrimero) throw errPrimero
-
-        const loteId = resultado?.lote_id
-
-        for (const suc of resto) {
-          const cant = Number(cantidades[suc.id])
-          const { data: invActual } = await supabase
-            .from('inventario').select('cantidad')
-            .eq('lote_id', loteId).eq('sucursal_id', suc.id).maybeSingle()
-          const actual = invActual?.cantidad || 0
-          const { error } = await supabase.rpc('ajustar_inventario', {
-            p_lote_id:        loteId,
-            p_sucursal_id:    suc.id,
-            p_nueva_cantidad: actual + cant,
-            p_motivo:         'entrada_inventario',
-          })
-          if (error) throw error
-        }
+        if (error) throw error
       } else {
-        // Lote existente — agregar stock solo a sucursales habilitadas para este producto
-        for (const suc of sucursalesHabilitadas) {
-          const cant = Number(cantidades[suc.id]) || 0
-          if (cant <= 0) continue
-          // Obtener cantidad actual de este lote en esta sucursal
-          const { data: invActual } = await supabase
-            .from('inventario')
-            .select('cantidad')
-            .eq('lote_id', loteSelId)
-            .eq('sucursal_id', suc.id)
-            .maybeSingle()
-          const actual = invActual?.cantidad || 0
-          const { error } = await supabase.rpc('ajustar_inventario', {
-            p_lote_id: loteSelId,
-            p_sucursal_id: suc.id,
-            p_nueva_cantidad: actual + cant,
-            p_motivo: 'entrada_inventario',
-          })
-          if (error) throw error
-        }
+        const { error } = await supabase.rpc('agregar_stock_multi_sucursal', {
+          p_empresa_id:  empresa.id,
+          p_producto_id: productoSel.id,
+          p_motivo:      'entrada_inventario',
+          p_sucursales:  sucursalesPayload,
+          p_usuario_id:  perfil?.id ?? null,
+          p_lote_id:     loteSelId,
+        })
+        if (error) throw error
       }
 
       const sucursalesAfectadas = sucursalesHabilitadas
@@ -397,6 +372,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
       toast.error(err.message || 'Error al guardar')
       setErrors({ submit: err.message })
     } finally {
+      cargandoRef.current = false
       setCargando(false)
     }
   }

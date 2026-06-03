@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef} from 'react'
 import { X, MapPin, Store, Pencil, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -39,12 +39,15 @@ function ModalEditarSucursal({ sucursal, onClose, onGuardado }) {
     codigo_postal: sucursal.codigo_postal ?? '',
   })
   const [guardando, setGuardando] = useState(false)
+  const guardandoRef = useRef(false)
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
 
   const guardar = async () => {
     const nom = form.nombre.trim()
     if (!nom) return toast.error('El nombre no puede estar vacío')
+    if (guardandoRef.current) return
+    guardandoRef.current = true
     setGuardando(true)
     try {
       const payload = {
@@ -63,6 +66,7 @@ function ModalEditarSucursal({ sucursal, onClose, onGuardado }) {
     } catch (e) {
       toast.error(e.message ?? 'Error al guardar')
     } finally {
+      guardandoRef.current = false
       setGuardando(false)
     }
   }

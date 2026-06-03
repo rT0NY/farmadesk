@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { fechaEnZona, addDias } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Fila individual de lote ──────────────────────────────────────────────────
 function FilaLote({ lote, sucursales, hoy }) {
@@ -174,10 +175,7 @@ export default function CaducidadesPage() {
   }, [empresa?.id, diasAlerta, tz])
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   // Cajero sin turno activo → pedir que abra turno
   if (esCajero && !turnoActivo) {

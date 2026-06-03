@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import ModalCrearEmpresa from './ModalCrearEmpresa'
 import { cn } from '@/lib/clases'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { toast } from 'sonner'
 
 // Verifica si una empresa tiene pago pendiente este mes
@@ -76,10 +77,7 @@ export default function EmpresasPage() {
   }
 
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => {
-    window.addEventListener('focus', cargar)
-    return () => window.removeEventListener('focus', cargar)
-  }, [cargar])
+  useFocusRefresh(cargar)
 
   const filtradas = empresas
     .filter(e => filtro === 'todas' || e.estado === filtro)
