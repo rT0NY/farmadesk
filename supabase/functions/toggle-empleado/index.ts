@@ -23,10 +23,19 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    const { error: authError } = await admin.auth.admin.updateUserById(user_id, {
-      ban_duration: activo ? 'none' : '876600h',
-    })
-    if (authError) throw authError
+    if (activo) {
+      // Reactivar: quitar ban
+      const { error } = await admin.auth.admin.updateUserById(user_id, { ban_duration: 'none' })
+      if (error) throw error
+    } else {
+      // Eliminar: liberar el email para que pueda reutilizarse
+      const placeholder = `eliminado_${user_id}@eliminado.local`
+      const { error } = await admin.auth.admin.updateUserById(user_id, {
+        email: placeholder,
+        ban_duration: '876600h',
+      })
+      if (error) throw error
+    }
 
     const { error: perfilError } = await admin
       .from('perfiles')
