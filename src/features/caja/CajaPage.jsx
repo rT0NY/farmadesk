@@ -8,6 +8,7 @@ import {
   User, ChevronDown, CreditCard, Banknote, Printer,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp } from '@/context/AppCtx'

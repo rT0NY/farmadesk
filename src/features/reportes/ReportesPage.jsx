@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { formatoMoneda, isoEnZona, fechaEnZona, addDias } from '@/lib/formatos'
 import { CATEGORIAS_GASTO } from '@/lib/constantes'
 import { cn } from '@/lib/clases'

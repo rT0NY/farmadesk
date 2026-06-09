@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Tipos con colores ────────────────────────────────────────────────────────
 
