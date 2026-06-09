@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import {
   TrendingUp, TrendingDown, Users, Receipt, ShoppingCart, Package, Download, Calendar,
@@ -397,7 +397,7 @@ export default function ReportesPage() {
         salarios:  Object.values(salEmp).sort((a, b) => b.total - a.total),
         numVentas: (ventas ?? []).length,
       })
-    } catch (e) {
+    } catch {
       toast.error('Error inesperado al generar el reporte.')
     } finally {
       if (activo) setCargando(false)

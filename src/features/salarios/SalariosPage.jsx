@@ -417,7 +417,7 @@ export default function SalariosPage() {
       const fechas = semanaFechas(lunes)
 
       const [{ data: emps, error: e1 }, { data: sals, error: e2 },
-             { data: sems, error: e3 }, { data: prog, error: e4 }] = await Promise.all([
+             { data: sems, error: e3 }, { data: prog }] = await Promise.all([
         supabase.from('perfiles').select('id, nombre, rol')
           .eq('empresa_id', empresa.id).eq('activo', true)
           .neq('rol', 'super_admin').neq('id', empresa.propietario).order('nombre'),
@@ -569,7 +569,7 @@ export default function SalariosPage() {
             const diasHoy    = diasSemana[emp.id] ?? 0
             const semAct     = semanaActual(emp.id)
             const diasSemAct = semAct?.dias_trabajados ?? 0
-            const totalSemAct = semAct?.total_calculado ?? 0
+            const _totalSemAct = semAct?.total_calculado ?? 0
             return (
               <div key={emp.id}
                 className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm hover:shadow-md transition-all">

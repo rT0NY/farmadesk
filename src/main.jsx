@@ -20,6 +20,7 @@ import './index.css'
 // Electron carga desde file:// — BrowserRouter no funciona ahí.
 // HashRouter usa /#/ruta que sí es compatible con file://.
 // En web (Vercel) sigue usando BrowserRouter normal.
+// eslint-disable-next-line react-refresh/only-export-components
 const Router = navigator.userAgent.includes('Electron') ? HashRouter : BrowserRouter
 
 createRoot(document.getElementById('root')).render(

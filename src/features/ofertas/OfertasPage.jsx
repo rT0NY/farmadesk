@@ -906,7 +906,7 @@ export default function OfertasPage() {
     return r
   }, [ofertas, filtro, busqueda])
 
-  async function toggleActiva(oferta) {
+  async function _toggleActiva(oferta) {
     const { error } = await supabase.from('ofertas').update({ activa: !oferta.activa }).eq('id', oferta.id)
     if (error) { toast.error(error.message); return }
     await logBitacora({

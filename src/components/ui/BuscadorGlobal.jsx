@@ -10,7 +10,7 @@ import { formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 
 // ─── Fila de resultado ────────────────────────────────────────────────────────
-function FilaResultado({ Icono, color, titulo, sub, to, onClick }) {
+function FilaResultado({ Icono, color, titulo, sub, onClick }) {
   const cls = {
     primary: 'bg-primary-100 text-primary-600',
     emerald: 'bg-emerald-100 text-emerald-600',
@@ -44,6 +44,7 @@ function Seccion({ label, children }) {
 }
 
 // ─── Hook de atajo Ctrl+K ─────────────────────────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 export function useBuscadorGlobal() {
   const [abierto, setAbierto] = useState(false)
 

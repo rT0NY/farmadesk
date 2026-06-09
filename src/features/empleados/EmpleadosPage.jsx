@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { ROLES, ETIQUETAS_ROL } from '@/lib/constantes'
-import { formatoFecha, formatoMoneda } from '@/lib/formatos'
+import { formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
@@ -18,7 +18,7 @@ const COLORES_ROL = {
 
 // ─── Modal invitar empleado ───────────────────────────────────────────────────
 
-function ModalInvitar({ empresa, sucursales, onClose, onGuardado }) {
+function ModalInvitar({ empresa, onClose, onGuardado }) {
   const [forma, setForma] = useState({ nombre: '', correo: '', contrasena: '', rol: 'cajero', telefono: '', sucursal_id: '', salario: '' })
   const [verPass, setVerPass] = useState(false)
   const [guardando, setGuardando] = useState(false)

@@ -204,7 +204,7 @@ function ModalTurnos({ empresa, turnos, onClose, onGuardado }) {
 
 // ─── Modal: asignar empleados a un slot ───────────────────────────────────────
 
-function ModalSlot({ sucursal, turno, turnoIdx, fecha, empleados, programacion, empresa, onClose, onGuardado }) {
+function ModalSlot({ sucursal, turno, fecha, empleados, programacion, empresa, onClose, onGuardado }) {
   const asigSlot = programacion.filter(
     (p) => p.sucursal_id === sucursal.id && p.turno_id === turno.id && p.fecha === fecha
   )
@@ -726,7 +726,7 @@ export default function ProgramacionPage() {
     programacion.filter((p) => p.sucursal_id === sucId && p.turno_id === turnoId && p.fecha === fecha)
 
   // ── Vista móvil: cards por día seleccionado ─────────────────────────────────
-  const VistaMovil = () => (
+  const vistaMovil = (
     <div className="sm:hidden flex flex-col gap-4">
       {/* Selector de días */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
@@ -836,7 +836,7 @@ export default function ProgramacionPage() {
   )
 
   // ── Vista desktop: tabla ────────────────────────────────────────────────────
-  const VistaDesktop = () => (
+  const vistaDesktop = (
     <div className="hidden sm:block bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -1011,8 +1011,8 @@ export default function ProgramacionPage() {
       {/* Vistas */}
       {!cargando && turnos.length > 0 && (
         <>
-          <VistaMovil />
-          <VistaDesktop />
+          {vistaMovil}
+          {vistaDesktop}
         </>
       )}
 

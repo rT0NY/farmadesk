@@ -167,7 +167,7 @@ async function abrirImpresion(html) {
 }
 
 // ─── Helper: construir HTML del ticket ───────────────────────────────────────
-function buildTicketHtml({ folio, items, total, montoRecibido, cambio, metodoPago, cajeroNombre, sucursalNombre, sucursal, empresaNombre, fecha }) {
+function buildTicketHtml({ folio, items, total, montoRecibido, cambio, sucursalNombre, sucursal, empresaNombre, fecha }) {
   const suc    = sucursal || {}
   const partes = [suc.calle, suc.colonia, suc.ciudad, suc.estado].filter(Boolean)
   const dir    = partes.length
@@ -922,7 +922,8 @@ export default function VentasPage() {
   }
 
   // Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y convierte a mayúsculas
-  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F\x7F]/g, '').trim().toUpperCase()
+  // eslint-disable-next-line no-control-regex
+  const normalizarCodigo = (s) => (s || '').replace(/[ -]/g, '').trim().toUpperCase()
 
   function procesarBarcode(val) {
     val = normalizarCodigo(val)
@@ -1170,26 +1171,6 @@ export default function VentasPage() {
     }
     abriendoRef.current = false
     setAbriendoTurno(false)
-  }
-
-  // ── Cerrar turno ──────────────────────────────────────────
-  async function cerrarTurno() {
-    const contado = Number(montoCierre)
-    if (isNaN(contado) || contado < 0) { toast.error('Ingresa el monto contado'); return }
-    setCerrandoTurno(true)
-    try {
-      const { data, error } = await supabase.rpc('cerrar_turno_caja', {
-        p_turno_id: turnoActual.id,
-        p_monto_contado: contado,
-      })
-      if (error) throw error
-      setResultadoCierre(data)
-      // recargarTurno se llama al presionar "Entendido" para no ocultar el resultado
-    } catch (err) {
-      toast.error(err.message || 'Error al cerrar turno')
-    } finally {
-      setCerrandoTurno(false)
-    }
   }
 
   // ── Preparar cierre: cargar resumen antes de mostrar form ─

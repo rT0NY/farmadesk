@@ -586,8 +586,6 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
 
   // ── Turno abierto ────────────────────────────────────────────────────────────
   if (turno) {
-    const totalVentas = (resumen?.ventasEfectivo ?? 0) + (resumen?.ventasTarjeta ?? 0)
-
     return (
       <>
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden border-l-4 border-l-emerald-500 shadow-sm">
@@ -890,7 +888,7 @@ function SeccionSucursal({ sucursal, conteoTurnos, children }) {
 
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function CajaPage() {
-  const { perfil, sucursales, sucursalActiva, recargarTurno, cambiarSucursal, tz, usuariosEnLinea, esRotativo, resetSucursal } = useApp()
+  const { perfil, sucursales, sucursalActiva, tz, usuariosEnLinea, esRotativo, resetSucursal } = useApp()
   const esCajero    = perfil?.rol === 'cajero'
   const esEncargado = perfil?.rol === 'encargado'
   const sucActId    = sucursalActiva?.id ?? perfil?.sucursal_id ?? null

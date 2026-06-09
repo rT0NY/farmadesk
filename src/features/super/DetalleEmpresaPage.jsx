@@ -628,7 +628,7 @@ export default function DetalleEmpresaPage() {
   if (!empresa) return null
 
   const sucursalesActivas = sucursales.filter(s => s.activa).length
-  const esSuspendida = empresa.estado === 'suspendida'
+  const _esSuspendida = empresa.estado === 'suspendida'
 
   return (
     <div className="space-y-5">

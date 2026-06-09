@@ -193,7 +193,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
       resetForm()
       onExito?.()
       onCerrar()
-    } catch (err) {
+    } catch {
       toast.error('Error de red al crear empresa')
     } finally {
       setTimeout(() => { window.__creandoUsuario = false }, 500)

@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/clases'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
-import { isoEnZona, fechaEnZona, addDias } from '@/lib/formatos'
+import { fechaEnZona, addDias } from '@/lib/formatos'
 import ModalAgregarInventario from './ModalAgregarInventario'
 import ModalLotes from './ModalLotes'
 
@@ -81,6 +81,62 @@ function TarjetaResumen({ titulo, valor, icono: Icono, color, activa, onClick })
   )
 }
 
+// ─── Grupo de caducidad ───────────────────────────────────────────────────────
+
+function GrupoCaducidad({ titulo, items, color, hoy }) {
+  if (!items.length) return null
+  const cls = {
+    red:    { header: 'bg-red-50 border-red-200',    badge: 'bg-red-100 text-red-700',    dot: 'bg-red-500'    },
+    orange: { header: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
+    amber:  { header: 'bg-amber-50 border-amber-200',  badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
+  }[color]
+  return (
+    <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+      <div className={`flex items-center justify-between px-4 py-3 border-b ${cls.header}`}>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${cls.dot}`} />
+          <p className="text-sm font-bold text-slate-800">{titulo}</p>
+        </div>
+        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${cls.badge}`}>{items.length} lote{items.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="divide-y divide-slate-50">
+        {items.map(l => {
+          const dias = Math.ceil((new Date(l.fecha_caducidad) - new Date(hoy)) / 86400000)
+          return (
+            <div key={l.id} className="flex items-center justify-between px-4 py-3 gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{l.productos?.nombre ?? '—'}</p>
+                {l.productos?.categoria && <p className="text-xs text-slate-400">{l.productos.categoria}</p>}
+              </div>
+              <div className="flex items-center gap-4 flex-shrink-0 text-right">
+                <div>
+                  <p className="text-xs text-slate-400">Stock</p>
+                  <p className="text-sm font-bold text-slate-700">{l.cantidad}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Caduca</p>
+                  <p className={`text-sm font-bold ${dias < 0 ? 'text-red-600' : dias <= 30 ? 'text-orange-600' : 'text-amber-600'}`}>
+                    {dias < 0
+                      ? `hace ${Math.abs(dias)}d`
+                      : dias === 0 ? 'Hoy'
+                      : `en ${dias}d`}
+                  </p>
+                </div>
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs text-slate-400">Fecha</p>
+                  <p className="text-xs font-medium text-slate-600">
+                    {new Date(l.fecha_caducidad + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Vista de caducidad agrupada por urgencia ─────────────────────────────────
 
 function VistaCaducidad({ lotes, cargando }) {
@@ -106,65 +162,11 @@ function VistaCaducidad({ lotes, cargando }) {
     </div>
   )
 
-  const Grupo = ({ titulo, items, color }) => {
-    if (!items.length) return null
-    const cls = {
-      red:    { header: 'bg-red-50 border-red-200',    badge: 'bg-red-100 text-red-700',    dot: 'bg-red-500'    },
-      orange: { header: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
-      amber:  { header: 'bg-amber-50 border-amber-200',  badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
-    }[color]
-    return (
-      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-        <div className={`flex items-center justify-between px-4 py-3 border-b ${cls.header}`}>
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${cls.dot}`} />
-            <p className="text-sm font-bold text-slate-800">{titulo}</p>
-          </div>
-          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${cls.badge}`}>{items.length} lote{items.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div className="divide-y divide-slate-50">
-          {items.map(l => {
-            const dias = Math.ceil((new Date(l.fecha_caducidad) - new Date(hoy)) / 86400000)
-            return (
-              <div key={l.id} className="flex items-center justify-between px-4 py-3 gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{l.productos?.nombre ?? '—'}</p>
-                  {l.productos?.categoria && <p className="text-xs text-slate-400">{l.productos.categoria}</p>}
-                </div>
-                <div className="flex items-center gap-4 flex-shrink-0 text-right">
-                  <div>
-                    <p className="text-xs text-slate-400">Stock</p>
-                    <p className="text-sm font-bold text-slate-700">{l.cantidad}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Caduca</p>
-                    <p className={`text-sm font-bold ${dias < 0 ? 'text-red-600' : dias <= 30 ? 'text-orange-600' : 'text-amber-600'}`}>
-                      {dias < 0
-                        ? `hace ${Math.abs(dias)}d`
-                        : dias === 0 ? 'Hoy'
-                        : `en ${dias}d`}
-                    </p>
-                  </div>
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs text-slate-400">Fecha</p>
-                    <p className="text-xs font-medium text-slate-600">
-                      {new Date(l.fecha_caducidad + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-4">
-      <Grupo titulo="Caducados" items={caducados} color="red" />
-      <Grupo titulo="Caducan en menos de 30 días" items={criticos} color="orange" />
-      <Grupo titulo="Caducan en 31–90 días" items={proximos} color="amber" />
+      <GrupoCaducidad titulo="Caducados" items={caducados} color="red" hoy={hoy} />
+      <GrupoCaducidad titulo="Caducan en menos de 30 días" items={criticos} color="orange" hoy={hoy} />
+      <GrupoCaducidad titulo="Caducan en 31–90 días" items={proximos} color="amber" hoy={hoy} />
     </div>
   )
 }
@@ -172,23 +174,6 @@ function VistaCaducidad({ lotes, cargando }) {
 export default function InventarioPage() {
   const { sucursales, perfil, sucursalActiva, turnoActivo, empresa } = useApp()
   const esCajero  = perfil?.rol === 'cajero'
-
-  // Cajero sin turno activo → no tiene sucursal asignada, no puede ver inventario
-  if (esCajero && !turnoActivo) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center">
-          <Clock className="w-8 h-8 text-amber-600" />
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">Abre tu turno primero</h2>
-          <p className="text-sm text-slate-500 mt-1 max-w-xs">
-            Para ver el inventario necesitas tener un turno activo. Ve a Ventas y abre tu caja.
-          </p>
-        </div>
-      </div>
-    )
-  }
   // Admin y propietario son globales — no tienen "su" sucursal
   const esGlobal  = perfil?.rol === 'admin' || perfil?.id === empresa?.propietario
   // Sucursal propia del usuario (cajeros/encargados tienen una asignada)
@@ -248,7 +233,7 @@ export default function InventarioPage() {
       ;(inv || []).forEach(i => { cantMap[i.lote_id] = (cantMap[i.lote_id] || 0) + Number(i.cantidad || 0) })
 
       setLotesCaducidad(lotes.map(l => ({ ...l, cantidad: cantMap[l.id] || 0 })).filter(l => l.cantidad > 0))
-    } catch (err) {
+    } catch {
       toast.error('No se pudieron cargar las caducidades.')
     } finally {
       setCargandoCad(false)
@@ -303,6 +288,23 @@ export default function InventarioPage() {
   }, [filtrados, filtroOtrasSuc, sucursalPropia, sucursales])
 
   const hayFiltros = busqueda || categoriaSel || filtroEstado !== 'todos' || filtroOtrasSuc
+
+  // Cajero sin turno activo → no tiene sucursal asignada, no puede ver inventario
+  if (esCajero && !turnoActivo) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center">
+          <Clock className="w-8 h-8 text-amber-600" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Abre tu turno primero</h2>
+          <p className="text-sm text-slate-500 mt-1 max-w-xs">
+            Para ver el inventario necesitas tener un turno activo. Ve a Ventas y abre tu caja.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   const toggleFiltro = (f) => setFiltroEstado(prev => prev === f ? 'todos' : f)
 
@@ -484,7 +486,6 @@ export default function InventarioPage() {
           <div className="flex flex-col divide-y divide-slate-100 sm:hidden">
             {filtradosConOtrasSuc.map(p => {
               const stockSuc = p.stock_por_sucursal || {}
-              const miStock = sucursalPropia ? Number(stockSuc[sucursalPropia.id] || 0) : null
               return (
                 <div key={p.producto_id} className={cn('px-4 py-3 flex items-start justify-between gap-3 hover:bg-slate-50/60 transition-colors', bordeIzq(p))}>
                   <div className="min-w-0 flex-1">

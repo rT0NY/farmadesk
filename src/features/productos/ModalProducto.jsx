@@ -88,7 +88,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
   const [stockPorSucursal, setStockPorSucursal] = useState({})
   const [loteInfo, setLoteInfo] = useState({ codigo_lote: '', fecha_caducidad: '' })
   const [categorias, setCategorias] = useState([])
-  const [sugerencias, setSugerencias] = useState([])
+  const [, setSugerencias] = useState([])
   const [cargando, setCargando] = useState(false)
   const cargandoRef = useRef(false)
   // Para saber cuál campo fue editado por el usuario y no sobreescribirlo en el efecto
@@ -96,6 +96,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
 
   // { [sucursal_id]: boolean } — disponibilidad por sucursal, solo edición
   const [disponibilidad, setDisponibilidad] = useState({})
+  const [mayoreoActivo, setMayoreoActivo] = useState(false)
 
   const esEdicion = !!productoEditar
 
@@ -140,6 +141,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
     if (esEdicion) {
       const pc = Number(productoEditar.precio_compra) || 0
       const pv = Number(productoEditar.precio_venta) || 0
+      const pm = Number(productoEditar.precio_mayoreo) || 0
       const util = pc > 0 ? ((pv - pc) / pc * 100) : 0
       setForm({
         nombre: (productoEditar.nombre || '').toUpperCase(),
@@ -148,16 +150,18 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
         precio_compra: String(pc || ''),
         utilidad_porcentaje: util > 0 ? util.toFixed(2) : '',
         precio_venta: String(pv || ''),
-        precio_mayoreo:   String(productoEditar.precio_mayoreo || ''),
+        precio_mayoreo:   pm > 0 ? String(pm) : '',
         cantidad_mayoreo: String(productoEditar.cantidad_mayoreo || ''),
         stock_minimo:     String(productoEditar.stock_minimo || 10),
         codigos: productoEditar.codigos || [],
       })
+      setMayoreoActivo(pm > 0)
     } else {
       setForm(formVacio())
       setStockPorSucursal({})
       setLoteInfo({ codigo_lote: '', fecha_caducidad: '' })
       setIncluirStock(false)
+      setMayoreoActivo(false)
       setPaso(1)
       // Inicializar disponibilidad con todas las sucursales habilitadas por defecto
       if (sucursales.length > 1) {
@@ -284,22 +288,24 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
       toast.error('El precio de venta es obligatorio')
       return false
     }
-    const pm = sanitizarNum(form.precio_mayoreo)
-    if (pm <= 0) {
-      toast.error('El precio de mayoreo es obligatorio')
-      return false
-    }
-    if (pm <= pc) {
-      toast.error('El precio de mayoreo debe ser mayor al costo de compra')
-      return false
-    }
-    if (pm >= sanitizarNum(form.precio_venta)) {
-      toast.error('El precio de mayoreo debe ser menor al precio de venta')
-      return false
-    }
-    if (!sanitizarEntero(form.cantidad_mayoreo) || sanitizarEntero(form.cantidad_mayoreo) < 1) {
-      toast.error('La cantidad mínima de mayoreo es obligatoria')
-      return false
+    if (mayoreoActivo) {
+      const pm = sanitizarNum(form.precio_mayoreo)
+      if (pm <= 0) {
+        toast.error('El precio de mayoreo es obligatorio cuando está activado')
+        return false
+      }
+      if (pm <= pc) {
+        toast.error('El precio de mayoreo debe ser mayor al costo de compra')
+        return false
+      }
+      if (pm >= sanitizarNum(form.precio_venta)) {
+        toast.error('El precio de mayoreo debe ser menor al precio de venta')
+        return false
+      }
+      if (!sanitizarEntero(form.cantidad_mayoreo) || sanitizarEntero(form.cantidad_mayoreo) < 1) {
+        toast.error('La cantidad mínima de mayoreo es obligatoria')
+        return false
+      }
     }
     if (!sanitizarEntero(form.stock_minimo) && sanitizarEntero(form.stock_minimo) !== 0) {
       toast.error('El stock mínimo es obligatorio')
@@ -333,15 +339,16 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
           p_categoria:      sanitizar(form.categoria) || null,
           p_precio_compra:  sanitizarNum(form.precio_compra),
           p_precio_venta:   sanitizarNum(form.precio_venta),
-          p_precio_mayoreo: sanitizarNum(form.precio_mayoreo),
+          p_precio_mayoreo: mayoreoActivo ? sanitizarNum(form.precio_mayoreo) : 0,
           p_stock_minimo:   sanitizarEntero(form.stock_minimo),
         })
         if (errEd) throw errEd
 
         // cantidad_mayoreo no está en el RPC — actualizar directamente
-        await supabase.from('productos')
-          .update({ cantidad_mayoreo: sanitizarEntero(form.cantidad_mayoreo) || null })
+        const { error: errCant } = await supabase.from('productos')
+          .update({ cantidad_mayoreo: mayoreoActivo ? (sanitizarEntero(form.cantidad_mayoreo) || null) : null })
           .eq('id', productoEditar.id)
+        if (errCant) throw errCant
 
         const { error: errProv } = await supabase
           .from('productos')
@@ -430,8 +437,8 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
           p_categoria:        sanitizar(form.categoria) || null,
           p_precio_compra:    sanitizarNum(form.precio_compra),
           p_precio_venta:     sanitizarNum(form.precio_venta),
-          p_precio_mayoreo:   sanitizarNum(form.precio_mayoreo),
-          p_cantidad_mayoreo: sanitizarEntero(form.cantidad_mayoreo) || null,
+          p_precio_mayoreo:   mayoreoActivo ? sanitizarNum(form.precio_mayoreo) : 0,
+          p_cantidad_mayoreo: mayoreoActivo ? (sanitizarEntero(form.cantidad_mayoreo) || null) : null,
           p_stock_minimo:     sanitizarEntero(form.stock_minimo),
           p_codigos:          form.codigos,
           p_stock_inicial:    stockArr,
@@ -591,7 +598,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                   placeholder="0.00"
                 />
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <Input
                     label="% Utilidad"
                     type="number"
@@ -612,6 +619,15 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                     onChange={cambiarCampo('precio_venta')}
                     placeholder="0.00"
                     required
+                  />
+                  <Input
+                    label="Stock mínimo *"
+                    type="number"
+                    min="0"
+                    iconoIzq={<Hash className="w-5 h-5" />}
+                    value={form.stock_minimo}
+                    onChange={cambiarCampo('stock_minimo')}
+                    placeholder="10"
                   />
                 </div>
 
@@ -637,49 +653,77 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-3 items-end">
-                <Input
-                  label="Precio mayoreo *"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  iconoIzq={<DollarSign className="w-5 h-5" />}
-                  value={form.precio_mayoreo}
-                  onChange={cambiarCampo('precio_mayoreo')}
-                  placeholder="0.00"
-                />
-                <Input
-                  label="Cant. mínima mayoreo *"
-                  type="number"
-                  min="1"
-                  iconoIzq={<Hash className="w-5 h-5" />}
-                  value={form.cantidad_mayoreo}
-                  onChange={cambiarCampo('cantidad_mayoreo')}
-                  placeholder="ej. 5"
-                />
-                <Input
-                  label="Stock mínimo *"
-                  type="number"
-                  min="0"
-                  iconoIzq={<Hash className="w-5 h-5" />}
-                  value={form.stock_minimo}
-                  onChange={cambiarCampo('stock_minimo')}
-                  placeholder="10"
-                />
-              </div>
-              {analisisMayoreo && (
-                <div className={cn(
-                  'flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium -mt-1',
-                  analisisMayoreo.ok
-                    ? 'bg-purple-50 border border-purple-200 text-purple-700'
-                    : 'bg-red-50 border border-red-200 text-red-700'
-                )}>
-                  {analisisMayoreo.ok
-                    ? <Check className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={3} />
-                    : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />}
-                  {analisisMayoreo.msg}
+              {/* Toggle precio mayoreo */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-slate-700">Precio de mayoreo</span>
+                    <span className="text-xs text-slate-400">Activa para definir precio especial por volumen</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !mayoreoActivo
+                      setMayoreoActivo(next)
+                      if (!next) setForm(prev => ({ ...prev, precio_mayoreo: '', cantidad_mayoreo: '' }))
+                    }}
+                    style={{
+                      position: 'relative', width: 44, height: 24,
+                      borderRadius: 9999, border: 'none', cursor: 'pointer',
+                      backgroundColor: mayoreoActivo ? '#10b981' : '#cbd5e1',
+                      transition: 'background-color 0.2s',
+                      flexShrink: 0, marginLeft: 12,
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute',
+                      top: 4, left: mayoreoActivo ? 24 : 4,
+                      width: 16, height: 16,
+                      borderRadius: 9999, backgroundColor: '#fff',
+                      transition: 'left 0.2s',
+                    }} />
+                  </button>
                 </div>
-              )}
+
+                {mayoreoActivo && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label="Precio mayoreo *"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        iconoIzq={<DollarSign className="w-5 h-5" />}
+                        value={form.precio_mayoreo}
+                        onChange={cambiarCampo('precio_mayoreo')}
+                        placeholder="0.00"
+                      />
+                      <Input
+                        label="Cant. mínima mayoreo *"
+                        type="number"
+                        min="1"
+                        iconoIzq={<Hash className="w-5 h-5" />}
+                        value={form.cantidad_mayoreo}
+                        onChange={cambiarCampo('cantidad_mayoreo')}
+                        placeholder="ej. 5"
+                      />
+                    </div>
+                    {analisisMayoreo && (
+                      <div className={cn(
+                        'flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium -mt-1',
+                        analisisMayoreo.ok
+                          ? 'bg-purple-50 border border-purple-200 text-purple-700'
+                          : 'bg-red-50 border border-red-200 text-red-700'
+                      )}>
+                        {analisisMayoreo.ok
+                          ? <Check className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={3} />
+                          : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />}
+                        {analisisMayoreo.msg}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
               {/* Disponibilidad por sucursal — cuando hay múltiples sucursales */}
               {sucursales.length > 1 && Object.keys(disponibilidad).length > 0 && (
                 <div className="flex flex-col gap-2">

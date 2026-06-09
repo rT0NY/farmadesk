@@ -11,6 +11,7 @@ import { cn } from '@/lib/clases'
 import { Link } from 'react-router-dom'
 
 // ─── Hook de conteo (ligero, para el badge) ───────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAlertaConteo() {
   const { empresa, tz, esAdmin, esEncargado } = useApp()
   const [total, setTotal] = useState(0)
@@ -66,6 +67,7 @@ export function useAlertaConteo() {
 }
 
 // ─── Hook de badges por item del menú ────────────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 export function useBadgesMenu() {
   const { empresa, esAdmin, esEncargado } = useApp()
   const tieneAcceso = esAdmin || esEncargado
@@ -103,6 +105,7 @@ function emitirAlerta() {
 }
 
 // ─── Hook de realtime (toasts automáticos) ────────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 export function useRealtimeAlertas(onCambio) {
   const { empresa, esAdmin, esEncargado, perfil, sucursales } = useApp()
   const onCambioRef = useRef(onCambio)

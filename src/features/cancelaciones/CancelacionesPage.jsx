@@ -29,7 +29,7 @@ function Badge({ estado }) {
 // ─── Modal Aprobar ────────────────────────────────────────────────────────────
 
 function ModalAprobar({ cancelacion, onClose, onExito }) {
-  const { perfil, tz } = useApp()
+  const { perfil } = useApp()
   const [nota, setNota] = useState('')
   const [procesando, setProcesando] = useState(false)
   const procesandoRef = useRef(false)

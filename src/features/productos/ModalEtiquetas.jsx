@@ -87,7 +87,7 @@ export default function ModalEtiquetas({ productos, onClose }) {
       </style>
     </head><body>
       ${html}
-      <script>window.onload=()=>{window.print();window.close()}<\/script>
+      <script>window.onload=()=>{window.print();window.close()}</script>
     </body></html>`)
     win.document.close()
   }

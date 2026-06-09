@@ -5,7 +5,7 @@ import {
   PackageCheck, MapPin, AlertTriangle, Calendar,
   ScanBarcode, ChevronDown, ChevronUp, RotateCcw,
   Search, Link2, ArrowLeftRight, Ban, Filter,
-  ExternalLink, Edit2, MoreVertical, FileText,
+  ExternalLink, Edit2, MoreVertical, FileText, Trash2,
 } from 'lucide-react'
 import { Table } from '@/components/ui/Table'
 import { toast } from 'sonner'
@@ -652,7 +652,7 @@ function ModalNuevoPedido({ empresa, proveedor, sucursales, onClose, onGuardado 
 
 // ─── Modal: editar pedido pendiente ──────────────────────────────────────────
 
-function ModalEditarPedido({ pedido, empresa, proveedor, sucursales, onClose, onGuardado }) {
+function ModalEditarPedido({ pedido, empresa, proveedor, onClose, onGuardado }) {
   const { perfil } = useApp()
   const [prods,      setProds]      = useState([])
   const [cantidades, setCantidades] = useState({})
@@ -866,7 +866,8 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   // { [id]: { estado, cantidad_recibida, precio_recibido, fecha_caducidad, expandido } }
   const [lineas, setLineas] = useState({})
   // Escáner de código de barras
-  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F\x7F]/g, '').trim().toUpperCase()
+  // eslint-disable-next-line no-control-regex
+  const normalizarCodigo = (s) => (s || '').replace(/[ -]/g, '').trim().toUpperCase()
   const [modalVincular,setModalVincular]= useState(null)  // { codigo }
   const [searchVinc,   setSearchVinc]  = useState('')
   const [guardandoVinc,setGuardandoVinc]= useState(false)
@@ -1918,7 +1919,7 @@ function ModalProductosProveedor({ proveedor, empresa, onClose }) {
 
 // ─── Modal: detalle pedido ────────────────────────────────────────────────────
 
-function ModalDetallePedido({ pedido, empresa, sucursales, tz, onClose, onEliminado, onRecibir, onEditar }) {
+function ModalDetallePedido({ pedido, empresa, onClose, onEliminado, onRecibir, onEditar }) {
   const { perfil } = useApp()
   const [items,       setItems]       = useState([])
   const [cargando,    setCargando]    = useState(true)
@@ -2196,7 +2197,7 @@ function ModalDetallePedido({ pedido, empresa, sucursales, tz, onClose, onElimin
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProveedoresPage() {
-  const { empresa, sucursales, tz } = useApp()
+  const { empresa, sucursales, tz, perfil, esAdmin } = useApp()
   const [tab,             setTab]             = useState('proveedores')
   const [proveedores,     setProveedores]     = useState([])
   const [pedidos,         setPedidos]         = useState([])
@@ -2208,6 +2209,8 @@ export default function ProveedoresPage() {
   const [modalDetalle,    setModalDetalle]    = useState(null)
   const [modalProdsProveedor, setModalProdsProveedor] = useState(null)
   const [modalEditar,     setModalEditar]     = useState(null)
+  const [confirmarEliminar, setConfirmarEliminar] = useState(null)
+  const [eliminando,        setEliminando]        = useState(false)
   // Filtros proveedores
   const [busquedaProv,    setBusquedaProv]    = useState('')
   // Filtros pedidos
@@ -2260,6 +2263,27 @@ export default function ProveedoresPage() {
       setCargando(false)
     }
   }, [empresa, filtroEstadoPed, filtroProv, fechaDesde, fechaHasta])
+
+  async function eliminarProveedor(prov) {
+    if (eliminando) return
+    setEliminando(true)
+    try {
+      const { error } = await supabase.rpc('archivar_proveedor', { p_proveedor_id: prov.id })
+      if (error) { toast.error(error.message || 'Error al eliminar proveedor'); return }
+      await logBitacora({
+        empresa_id:    empresa?.id,
+        tipo:          'proveedor_eliminado',
+        descripcion:   `Proveedor "${prov.nombre}" eliminado`,
+        usuario_id:    perfil?.id ?? null,
+        referencia_id: prov.id,
+      })
+      toast.success(`Proveedor "${prov.nombre}" eliminado`)
+      setConfirmarEliminar(null)
+      await cargar()
+    } finally {
+      setEliminando(false)
+    }
+  }
 
   useEffect(() => { cargar() }, [cargar])
   useFocusRefresh(cargar)
@@ -2422,6 +2446,15 @@ export default function ProveedoresPage() {
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
+                            {esAdmin && (
+                              <button
+                                onClick={() => setConfirmarEliminar(prov)}
+                                className="p-1.5 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Eliminar proveedor"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </Table.Cell>
                       </Table.Row>
@@ -2626,6 +2659,44 @@ export default function ProveedoresPage() {
           empresa={empresa}
           onClose={() => setModalProdsProveedor(null)}
         />
+      )}
+
+      {/* Modal confirmación eliminar proveedor */}
+      {confirmarEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setConfirmarEliminar(null)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Eliminar proveedor</h3>
+                <p className="text-sm text-slate-500">{confirmarEliminar.nombre}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600">
+              Los pedidos y compras anteriores se conservarán en el historial.
+              Los productos vinculados quedarán sin proveedor asignado.
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setConfirmarEliminar(null)}
+                className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => eliminarProveedor(confirmarEliminar)}
+                disabled={eliminando}
+                className="flex-1 px-4 py-2.5 rounded-2xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {eliminando ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

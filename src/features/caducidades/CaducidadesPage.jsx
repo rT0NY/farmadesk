@@ -167,7 +167,7 @@ export default function CaducidadesPage() {
           .map(l => ({ ...l, stock: stockMap[l.id] ?? { total: 0 } }))
           .filter(l => l.stock.total > 0)
       )
-    } catch (err) {
+    } catch {
       toast.error('No se pudieron cargar las caducidades. Verifica la conexión.')
     } finally {
       setCargando(false)
