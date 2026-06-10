@@ -36,11 +36,11 @@ Deno.serve(async (req) => {
 
     const { data: perfil } = await admin
       .from('perfiles')
-      .select('rol, empresa_id')
+      .select('rol, empresa_id, activo')
       .eq('id', user.id)
       .single()
 
-    if (!perfil || !['admin', 'propietario', 'super_admin'].includes(perfil.rol)) {
+    if (!perfil || !perfil.activo || !['admin', 'super_admin'].includes(perfil.rol)) {
       return new Response(JSON.stringify({ error: 'Sin permisos' }), {
         status: 403, headers: { ...cors, 'Content-Type': 'application/json' },
       })
@@ -51,6 +51,16 @@ Deno.serve(async (req) => {
     if (!email || !nombre || !rol) {
       return new Response(JSON.stringify({ error: 'Faltan datos requeridos' }), {
         status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Un admin solo puede crear roles de su nivel hacia abajo — nunca super_admin
+    const rolesPermitidos = perfil.rol === 'super_admin'
+      ? ['super_admin', 'admin', 'encargado', 'cajero']
+      : ['admin', 'encargado', 'cajero']
+    if (!rolesPermitidos.includes(rol)) {
+      return new Response(JSON.stringify({ error: 'Rol no permitido' }), {
+        status: 403, headers: { ...cors, 'Content-Type': 'application/json' },
       })
     }
 

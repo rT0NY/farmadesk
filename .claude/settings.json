@@ -1,4 +1,9 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
@@ -67,7 +72,29 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\vr114\\\\OneDrive\\\\Documentos\\\\farmadesk\\\\src\\\\features\" -Directory)",
       "Bash(supabase functions *)",
       "Bash(node -e ' *)",
-      "Bash(grep -v \"//.*set\")"
+      "Bash(grep -v \"//.*set\")",
+      "Bash(node check_hooks.mjs)",
+      "Bash(node -e \"const p = require\\('./node_modules/eslint-plugin-react-hooks'\\); console.log\\(Object.keys\\(p.rules\\)\\)\")",
+      "Bash(grep -E \"^\\\\s*C:\\\\\\\\|\\\\.jsx|\\\\.js\")",
+      "Bash(grep -v \"^\\\\s*$\")",
+      "Bash(grep -E \"^C:\\\\\\\\|\\\\.jsx|\\\\.js\")",
+      "Bash(grep -E \"^C:\\\\\\\\\\\\\\\\|^\\\\s+[0-9]+:[0-9]+\")",
+      "Bash(npx eslint *)",
+      "Bash(node lint_report.mjs)",
+      "Bash(grep -v \"^\\\\s*//\")",
+      "Bash(grep -i \"escape\\\\|slash\\\\|\\\\\\\\\\\\\\\\/\")",
+      "Bash(perl -pi -e 's/<\\\\\\\\\\\\/script>/<\\\\/script>/g' src/features/productos/ModalEtiquetas.jsx)",
+      "Bash(git checkout *)",
+      "Bash(iconv -f UTF-8 -t UTF-8 /c/Users/vr114/OneDrive/Documentos/farmadesk/src/features/proveedores/ProveedoresPage.jsx)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(git diff *)",
+      "Bash(python -c ' *)",
+      "PowerShell(npm run lint 2>&1)",
+      "WebSearch",
+      "PowerShell(npm run build 2>&1)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "PowerShell(git add -A)"
     ],
     "additionalDirectories": [
       "c:\\Users\\vr114\\.claude\\projects\\c--Users-vr114-OneDrive-Documentos-farmadesk\\memory"
