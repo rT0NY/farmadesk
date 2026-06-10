@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
   Search, ShoppingCart, X, Plus, Minus, Trash2, Check,
@@ -16,6 +16,21 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+
+// Consulta embebida reutilizable: inventario CON stock en una sucursal + su lote.
+// Solo trae lo que tiene existencias aquí (no todo el inventario histórico).
+const SELECT_INV_LOTES = 'id, lote_id, sucursal_id, cantidad, lotes!inner(id, producto_id, codigo_lote, fecha_caducidad, activo)'
+
+// Deriva los arrays planos de inventario y lotes desde la consulta embebida
+function derivarInvLotes(rows) {
+  const inv = []
+  const lotesMap = new Map()
+  ;(rows || []).forEach(r => {
+    inv.push({ id: r.id, lote_id: r.lote_id, sucursal_id: r.sucursal_id, cantidad: r.cantidad })
+    if (r.lotes && !lotesMap.has(r.lotes.id)) lotesMap.set(r.lotes.id, r.lotes)
+  })
+  return { inv, lot: [...lotesMap.values()] }
+}
 
 // ─── Modal Ver Ticket ───────────────────────────────────────
 function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }) {
@@ -539,10 +554,9 @@ export default function VentasPage() {
     setLoading(true)
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
+      const [{ data: prod }, { data: invRows }, { data: cod }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
-        supabase.from('lotes').select('id, producto_id, codigo_lote, fecha_caducidad, activo').eq('activo', true),
-        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad'),
+        supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         perfilId
@@ -558,7 +572,8 @@ export default function VentasPage() {
       setDeshabilitados(disabledSet)
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
-      setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
+      const { inv, lot } = derivarInvLotes(invRows)
+      setProductos(prod || []); setLotes(lot); setInventario(inv)
       setCodigosCat(cod || []); setVentasHoy(vts); setDetallesHoy(det)
       setCuentasHoy(cuentas || [])
       // Solo actualizar turnoActual si la query fue exitosa y tenemos usuario identificado.
@@ -590,15 +605,16 @@ export default function VentasPage() {
     refreshingRef.current = true
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: inv }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
-        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad'),
+      const [{ data: invRows }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
+        supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
         supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
       ])
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
-      setInventario(inv || [])
+      const { inv, lot } = derivarInvLotes(invRows)
+      setInventario(inv); setLotes(lot)
       setVentasHoy(vts)
       setDetallesHoy(det)
       setCuentasHoy(cuentas || [])
@@ -691,12 +707,6 @@ export default function VentasPage() {
   function stockEnSucursal(productoId) {
     const loteIds = new Set(lotes.filter(l => l.producto_id === productoId).map(l => l.id))
     return inventario.filter(i => loteIds.has(i.lote_id) && i.sucursal_id === sucursalId)
-      .reduce((a, i) => a + (i.cantidad || 0), 0)
-  }
-
-  function stockEnSucursalEspecifica(productoId, sid) {
-    const loteIds = new Set(lotes.filter(l => l.producto_id === productoId).map(l => l.id))
-    return inventario.filter(i => loteIds.has(i.lote_id) && i.sucursal_id === sid)
       .reduce((a, i) => a + (i.cantidad || 0), 0)
   }
 
@@ -894,36 +904,66 @@ export default function VentasPage() {
   const falta = Number(montoRecibido) > 0 && Number(montoRecibido) < total ? total - Number(montoRecibido) : 0
 
   // ── Búsqueda ──────────────────────────────────────────────
+  // Mapa producto_id → códigos en minúsculas, para filtrar rápido sin recorrer todo el catálogo
+  const codigosPorProducto = useMemo(() => {
+    const m = new Map()
+    codigosCat.forEach(bc => {
+      const arr = m.get(bc.producto_id) || []
+      arr.push((bc.codigo || '').toLowerCase())
+      m.set(bc.producto_id, arr)
+    })
+    return m
+  }, [codigosCat])
+
+  const otrasSucRef = useRef(null)
+
   function buscarProducto(q) {
+    if (otrasSucRef.current) clearTimeout(otrasSucRef.current)
     if (!q.trim()) { setResultados([]); setResultadosOtras([]); return }
     const q2 = q.toLowerCase()
     const todos = productos.filter(p => {
-      const mn = p.nombre.toLowerCase().includes(q2)
-      const mc = codigosCat.some(bc => bc.producto_id === p.id && bc.codigo.toLowerCase().includes(q2))
-      return mn || mc
+      if (p.nombre.toLowerCase().includes(q2)) return true
+      return (codigosPorProducto.get(p.id) || []).some(c => c.includes(q2))
     })
 
     // Resultados para esta sucursal (no deshabilitados)
     const disponibles = todos.filter(p => !deshabilitados.has(p.id)).slice(0, 8)
     setResultados(disponibles)
 
-    // Resultados de otras sucursales: deshabilitado aquí o sin stock aquí, pero con stock en otra
-    if (sucursales.length > 1) {
-      const idsYaMostrados = new Set(disponibles.map(p => p.id))
-      const otras = todos
-        .filter(p => deshabilitados.has(p.id) || stockEnSucursal(p.id) === 0)
-        .filter(p => !idsYaMostrados.has(p.id))
+    // Otras sucursales: candidatos = deshabilitado aquí o sin stock local.
+    // El stock de OTRAS sucursales ya no está precargado → se consulta bajo demanda (debounced).
+    if (sucursales.length <= 1) { setResultadosOtras([]); return }
+    const idsYaMostrados = new Set(disponibles.map(p => p.id))
+    const candidatos = todos
+      .filter(p => (deshabilitados.has(p.id) || stockEnSucursal(p.id) === 0) && !idsYaMostrados.has(p.id))
+      .slice(0, 12)
+    if (candidatos.length === 0) { setResultadosOtras([]); return }
+    const candIds = candidatos.map(p => p.id)
+    otrasSucRef.current = setTimeout(async () => {
+      const { data } = await supabase.from('inventario')
+        .select('cantidad, sucursal_id, lotes!inner(producto_id)')
+        .neq('sucursal_id', sucursalId)
+        .gt('cantidad', 0)
+        .in('lotes.producto_id', candIds)
+      const porProd = {}
+      ;(data || []).forEach(r => {
+        const pid = r.lotes?.producto_id
+        if (!pid) return
+        porProd[pid] = porProd[pid] || {}
+        porProd[pid][r.sucursal_id] = (porProd[pid][r.sucursal_id] || 0) + (r.cantidad || 0)
+      })
+      const nombreSuc = id => sucursales.find(s => s.id === id)?.nombre ?? ''
+      const otras = candidatos
         .map(p => ({
           ...p,
-          sucursalesConStock: sucursales
-            .filter(s => s.id !== sucursalId)
-            .map(s => ({ nombre: s.nombre, stock: stockEnSucursalEspecifica(p.id, s.id) }))
+          sucursalesConStock: Object.entries(porProd[p.id] || {})
+            .map(([sid, stock]) => ({ nombre: nombreSuc(sid), stock }))
             .filter(s => s.stock > 0),
         }))
         .filter(p => p.sucursalesConStock.length > 0)
         .slice(0, 3)
       setResultadosOtras(otras)
-    }
+    }, 300)
   }
 
   // Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y convierte a mayúsculas
@@ -1139,10 +1179,9 @@ export default function VentasPage() {
       }
       // Recargar datos de la sucursal
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: ventasConDet2 }, { data: ofVig }, { data: ps2 }] = await Promise.all([
+      const [{ data: prod }, { data: invRows }, { data: cod }, { data: ventasConDet2 }, { data: ofVig }, { data: ps2 }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
-        supabase.from('lotes').select('id, producto_id, codigo_lote, fecha_caducidad, activo').eq('activo', true),
-        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad'),
+        supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
@@ -1152,8 +1191,9 @@ export default function VentasPage() {
       ])
       const vts2 = (ventasConDet2 ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det2 = (ventasConDet2 ?? []).flatMap(v => v.detalle_ventas ?? [])
+      const { inv, lot } = derivarInvLotes(invRows)
       setDeshabilitados(new Set((ps2 || []).map(p => p.producto_id)))
-      setProductos(prod || []); setLotes(lot || []); setInventario(inv || [])
+      setProductos(prod || []); setLotes(lot); setInventario(inv)
       setCodigosCat(cod || []); setVentasHoy(vts2); setDetallesHoy(det2)
       setOfertasVigentes(ofVig || [])
       recargarTurno()
