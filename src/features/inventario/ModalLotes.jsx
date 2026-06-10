@@ -81,7 +81,7 @@ function ModalCuadrar({ lote, sucursales, onCerrar, onGuardar }) {
       <div className="absolute inset-0 bg-slate-900/60" onClick={onCerrar} />
       <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div><div className="flex items-center gap-2"><Scale className="w-4 h-4 text-primary-600" /><h3 className="text-base font-semibold text-slate-900">Cuadrar inventario</h3></div><p className="text-xs text-slate-500 mt-0.5">Lote: <span className="font-mono font-semibold">{lote.codigo_lote}</span></p></div>
+          <div><div className="flex items-center gap-2"><Scale className="w-4 h-4 text-primary-600" /><h3 className="text-base font-semibold text-slate-900">Cuadrar inventario</h3></div><p className="text-xs text-slate-500 mt-0.5">Lote: <span className="font-mono font-semibold">{lote.codigo_lote ?? '—'}</span></p></div>
           <button onClick={onCerrar} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-5 py-5 space-y-4">
@@ -142,7 +142,7 @@ function ModalEliminarLote({ lote, productoNombre, onCerrar, onConfirmar }) {
           <button onClick={onCerrar} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-5 py-5 space-y-4">
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4"><p className="text-sm font-semibold text-red-800 mb-1">Esta acción no se puede deshacer</p><p className="text-xs text-red-700">Se eliminará el lote <span className="font-mono font-bold">{lote.codigo_lote}</span> y todo su inventario en todas las sucursales.</p></div>
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4"><p className="text-sm font-semibold text-red-800 mb-1">Esta acción no se puede deshacer</p><p className="text-xs text-red-700">Se eliminará el lote <span className="font-mono font-bold">{lote.codigo_lote ?? '—'}</span> y todo su inventario en todas las sucursales.</p></div>
           <div className="text-sm text-slate-600 space-y-1"><p><span className="text-slate-400">Producto:</span> <strong>{productoNombre}</strong></p><p><span className="text-slate-400">Caducidad:</span> {lote.fecha_caducidad || 'Sin fecha'}</p><p><span className="text-slate-400">Stock total:</span> {lote.total_lote} unidades</p></div>
         </div>
         <div className="px-5 py-4 border-t border-slate-100 flex gap-2 justify-end">
@@ -225,7 +225,7 @@ export default function ModalLotes({ producto, onCerrar, onCambio }) {
                   <div className="px-4 py-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <div className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', est.punto)} />
-                      <span className="text-sm font-mono font-bold text-slate-900">{lote.codigo_lote}</span>
+                      <span className="text-sm font-mono font-bold text-slate-900">{lote.codigo_lote ?? '—'}</span>
                     </div>
                     <div className="flex items-center gap-2.5">
                       <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full border', est.badge)}>{est.texto}</span>

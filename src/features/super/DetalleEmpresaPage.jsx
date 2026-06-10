@@ -453,10 +453,10 @@ export default function DetalleEmpresaPage() {
           if (ventasIds.length > 0) {
             const { data: detalles } = await supabase
               .from('detalle_ventas')
-              .select('venta_id, cantidad, productos(precio_compra)')
+              .select('venta_id, cantidad, costo_unitario, productos(precio_compra)')
               .in('venta_id', ventasIds)
             ;(detalles || []).forEach(d => {
-              const c = d.cantidad * (Number(d.productos?.precio_compra) || 0)
+              const c = d.cantidad * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
               costosMap[d.venta_id] = (costosMap[d.venta_id] || 0) + c
             })
           }

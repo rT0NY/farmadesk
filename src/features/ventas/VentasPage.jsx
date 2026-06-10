@@ -166,6 +166,11 @@ async function abrirImpresion(html) {
   }
 }
 
+// ─── Helper: escapar texto interpolado en HTML de tickets ────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 // ─── Helper: construir HTML del ticket ───────────────────────────────────────
 function buildTicketHtml({ folio, items, total, montoRecibido, cambio, sucursalNombre, sucursal, empresaNombre, fecha }) {
   const suc    = sucursal || {}
@@ -177,12 +182,12 @@ function buildTicketHtml({ folio, items, total, montoRecibido, cambio, sucursalN
   const fStr   = f.toLocaleDateString('es-MX',  { day: '2-digit', month: 'long', year: 'numeric' })
   const hStr   = f.toLocaleTimeString('es-MX',  { hour: '2-digit', minute: '2-digit', hour12: false })
   const rows   = items.map(i =>
-    `<tr><td>${i.nombre}</td><td style="text-align:center">${i.cantidad}</td><td style="text-align:right">$${(i.precio * i.cantidad).toFixed(2)}</td></tr>`
+    `<tr><td>${esc(i.nombre)}</td><td style="text-align:center">${i.cantidad}</td><td style="text-align:right">$${(i.precio * i.cantidad).toFixed(2)}</td></tr>`
   ).join('')
   const pagoHtml = montoRecibido > 0
     ? `<div class="fila"><span>Recibido</span><span>$${Number(montoRecibido).toFixed(2)}</span></div><div class="fila cambio"><span>Cambio</span><span>$${Number(cambio).toFixed(2)}</span></div>`
     : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{height:auto}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${empresaNombre || 'FARMACIA'}</h2><div class="sub">${sucursalNombre || ''}</div>${dir ? `<div class="dir">${dir}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${folio}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{height:auto}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${esc(empresaNombre) || 'FARMACIA'}</h2><div class="sub">${esc(sucursalNombre)}</div>${dir ? `<div class="dir">${esc(dir)}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${esc(folio)}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
 }
 
 // ─── Modal: cerrar turno ────────────────────────────────────
@@ -1228,10 +1233,10 @@ export default function VentasPage() {
       `<tr><td class="mono">${generarFolio(v.id, sucursalActual?.nombre)}</td><td>${fh(v.creado_en)}</td><td>${v.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo'}</td><td class="r">${fm(v.total)}</td></tr>`
     ).join('')
     const entHtml = entradas.map(m =>
-      `<tr><td>${m.descripcion || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
+      `<tr><td>${esc(m.descripcion) || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
     ).join('')
     const salHtml = salidas.map(m =>
-      `<tr><td>${m.descripcion || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
+      `<tr><td>${esc(m.descripcion) || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
     ).join('')
     const aperturaDt = turnoActual?.fecha_apertura ? new Date(turnoActual.fecha_apertura) : new Date()
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -1250,10 +1255,10 @@ export default function VentasPage() {
       .sec{font-size:10px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
       .neg{color:#cc0000}
     </style></head><body>
-      <h2>${empresa?.nombre || 'FARMACIA'}</h2>
-      <div class="sub">${sucursalActual?.nombre || ''}</div>
+      <h2>${esc(empresa?.nombre) || 'FARMACIA'}</h2>
+      <div class="sub">${esc(sucursalActual?.nombre)}</div>
       <div class="fecha">Apertura: ${fd(aperturaDt)} ${fh(aperturaDt)}<br>Corte: ${fd(new Date())} ${fh(new Date())}</div>
-      ${turnoActual?.perfiles?.nombre ? `<div class="sub">Cajero: ${turnoActual.perfiles.nombre}</div>` : ''}
+      ${turnoActual?.perfiles?.nombre ? `<div class="sub">Cajero: ${esc(turnoActual.perfiles.nombre)}</div>` : ''}
       <hr>
       <p class="sec">Resumen de caja</p>
       <div class="fila"><span>Monto inicial</span><span>${fm(apertura)}</span></div>

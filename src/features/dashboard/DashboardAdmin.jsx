@@ -186,7 +186,7 @@ export default function DashboardAdmin() {
       if (ventaIdsHoy.length > 0) {
         const { data: dets } = await supabase
           .from('detalle_ventas')
-          .select('venta_id, producto_id, cantidad, precio_unitario, productos(nombre, precio_compra)')
+          .select('venta_id, producto_id, cantidad, precio_unitario, costo_unitario, productos(nombre, precio_compra)')
           .in('venta_id', ventaIdsHoy)
         detallesHoy = dets || []
       }
@@ -203,7 +203,7 @@ export default function DashboardAdmin() {
 
       // Ganancia total del día
       const gananciaHoy = detallesHoy.reduce((s, d) => {
-        const costo = d.productos?.precio_compra ?? 0
+        const costo = Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
         return s + (d.precio_unitario - costo) * (d.cantidad ?? 0)
       }, 0)
       const gananciaNeta = gananciaHoy - totalGastosHoy
@@ -216,7 +216,7 @@ export default function DashboardAdmin() {
         const countSuc  = ventasSuc.length
         const detsSuc   = detallesHoy.filter(d => ventaMap[d.venta_id] === suc.id)
         const gananciaSuc = detsSuc.reduce((s, d) => {
-          const costo = d.productos?.precio_compra ?? 0
+          const costo = Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
           return s + (d.precio_unitario - costo) * (d.cantidad ?? 0)
         }, 0)
         return { id: suc.id, nombre: suc.nombre, monto: montoSuc, count: countSuc, ganancia: gananciaSuc }

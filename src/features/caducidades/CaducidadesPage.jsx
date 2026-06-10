@@ -52,7 +52,7 @@ function FilaLote({ lote, sucursales, hoy }) {
           {lote.productos?.nombre ?? '—'}
         </p>
         <p className="text-xs text-slate-400 mt-0.5 truncate">
-          <span className="font-mono">{lote.codigo_lote}</span>
+          <span className="font-mono">{lote.codigo_lote ?? '—'}</span>
           {lote.productos?.categoria && ` · ${lote.productos.categoria}`}
           {sucursales.length > 1 && sucConStock.length > 0 && (
             ` · ${sucConStock.map(s => `${s.nombre} (${stockSuc[s.id]})`).join(', ')}`

@@ -13,7 +13,7 @@ import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
-import { formatoMoneda, fechaEnZona, addDias } from '@/lib/formatos'
+import { formatoMoneda, fechaEnZona } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
@@ -236,6 +236,27 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
   const [guardando, setGuardando] = useState(false)
   const guardandoRef = useRef(false)
 
+  // Paso 2 (solo creación): vincular productos al nuevo proveedor
+  const [paso,      setPaso]      = useState(1)
+  const [productos, setProductos] = useState([])
+  const [seleccion, setSeleccion] = useState({}) // { producto_id: true }
+  const [busqProd,  setBusqProd]  = useState('')
+
+  useEffect(() => {
+    if (esEdit || paso !== 2 || productos.length > 0) return
+    supabase.from('productos')
+      .select('id, nombre, categoria')
+      .eq('empresa_id', empresa.id)
+      .eq('activo', true)
+      .order('nombre')
+      .then(({ data }) => setProductos(data ?? []))
+  }, [paso, esEdit, empresa.id, productos.length])
+
+  const productosFiltrados = busqProd.trim()
+    ? productos.filter(p => p.nombre.toLowerCase().includes(busqProd.toLowerCase()))
+    : productos
+  const numSeleccionados = Object.values(seleccion).filter(Boolean).length
+
   const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
 
   const guardar = async () => {
@@ -254,15 +275,24 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
         }).eq('id', proveedor.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('proveedores').insert({
+        const { data: nuevo, error } = await supabase.from('proveedores').insert({
           empresa_id: empresa.id,
           nombre:   form.nombre.trim(),
           telefono: form.telefono.trim() || null,
           email:    form.email.trim()    || null,
           contacto: form.contacto.trim() || null,
           notas:    form.notas.trim()    || null,
-        })
+        }).select('id').single()
         if (error) throw error
+
+        // Vincular productos seleccionados en el paso 2
+        const ids = Object.keys(seleccion).filter(id => seleccion[id])
+        if (nuevo?.id && ids.length > 0) {
+          const { error: errVinc } = await supabase.from('producto_proveedores').insert(
+            ids.map(pid => ({ empresa_id: empresa.id, producto_id: pid, proveedor_id: nuevo.id }))
+          )
+          if (errVinc) throw errVinc
+        }
       }
       toast.success(esEdit ? 'Proveedor actualizado' : 'Proveedor creado')
       onGuardado()
@@ -278,10 +308,11 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
     <Modal onClose={onClose} maxWidth="sm:max-w-md">
       <ModalHeader
         titulo={esEdit ? 'Editar proveedor' : 'Nuevo proveedor'}
-        subtitulo={esEdit ? proveedor.nombre : 'Agrega los datos del proveedor'}
+        subtitulo={esEdit ? proveedor.nombre : (paso === 1 ? 'Paso 1 de 2 · Datos del proveedor' : 'Paso 2 de 2 · Vincular productos (opcional)')}
         onClose={onClose}
       />
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+        {(esEdit || paso === 1) && (<>
         {/* Nombre */}
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-slate-600">Nombre *</label>
@@ -332,13 +363,69 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
             placeholder="Condiciones de pago, horarios de entrega, etc."
             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
         </div>
+        </>)}
+
+        {!esEdit && paso === 2 && (<>
+          <p className="text-xs text-slate-500">
+            Marca los productos que surte este proveedor. Puedes omitir este paso y vincularlos después.
+          </p>
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
+            <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <input value={busqProd} onChange={e => setBusqProd(e.target.value)}
+              placeholder="Buscar producto..."
+              className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-slate-400" />
+            {busqProd && (
+              <button onClick={() => setBusqProd('')} className="text-slate-400 hover:text-slate-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {productos.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">Sin productos registrados</p>
+            ) : productosFiltrados.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">Sin resultados para "{busqProd}"</p>
+            ) : (
+              productosFiltrados.map(p => (
+                <label key={p.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer">
+                  <input type="checkbox" checked={!!seleccion[p.id]}
+                    onChange={() => setSeleccion(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                    className="w-4 h-4 accent-emerald-600 flex-shrink-0" />
+                  <span className="text-sm text-slate-700 truncate flex-1">{p.nombre}</span>
+                  {p.categoria && <span className="text-xs text-slate-400 flex-shrink-0">{p.categoria}</span>}
+                </label>
+              ))
+            )}
+          </div>
+        </>)}
       </div>
       <ModalFooter>
         <div className="flex gap-3">
-          <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button variante="primario" tamano="md" className="flex-1" cargando={guardando} onClick={guardar}>
-            {esEdit ? 'Guardar' : 'Crear proveedor'}
-          </Button>
+          {esEdit ? (
+            <>
+              <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose}>Cancelar</Button>
+              <Button variante="primario" tamano="md" className="flex-1" cargando={guardando} onClick={guardar}>
+                Guardar
+              </Button>
+            </>
+          ) : paso === 1 ? (
+            <>
+              <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose}>Cancelar</Button>
+              <Button variante="primario" tamano="md" className="flex-1" onClick={() => {
+                if (!form.nombre.trim()) return toast.error('Nombre del proveedor requerido')
+                setPaso(2)
+              }}>
+                Siguiente
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variante="secundario" tamano="md" className="flex-1" onClick={() => setPaso(1)}>Atrás</Button>
+              <Button variante="primario" tamano="md" className="flex-1" cargando={guardando} onClick={guardar}>
+                {numSeleccionados > 0 ? `Crear y vincular (${numSeleccionados})` : 'Crear sin productos'}
+              </Button>
+            </>
+          )}
         </div>
       </ModalFooter>
     </Modal>
@@ -363,13 +450,15 @@ function ModalNuevoPedido({ empresa, proveedor, sucursales, onClose, onGuardado 
     const fetchProds = async () => {
       try {
         const { data, error } = await supabase
-          .from('productos')
-          .select('id, nombre, precio_compra, stock_minimo')
+          .from('producto_proveedores')
+          .select('precio_compra, productos!inner(id, nombre, precio_compra, stock_minimo, activo)')
           .eq('proveedor_id', proveedor.id)
-          .eq('activo', true)
-          .order('nombre')
+          .eq('productos.activo', true)
         if (error) throw error
-        let prods = data ?? []
+        // precio_proveedor = último precio recibido de ESTE proveedor (fallback: costo general)
+        let prods = (data ?? [])
+          .map(r => ({ ...r.productos, precio_proveedor: r.precio_compra }))
+          .sort((a, b) => a.nombre.localeCompare(b.nombre))
         if (sucursalId && sucursales.length > 1) {
           const { data: ps } = await supabase
             .from('productos_sucursales')
@@ -423,7 +512,7 @@ function ModalNuevoPedido({ empresa, proveedor, sucursales, onClose, onGuardado 
 
   const itemsConCantidad = productos.filter(p => parseInt(cantidades[p.id] || 0) > 0)
   const totalUnidades = itemsConCantidad.reduce((s, p) => s + parseInt(cantidades[p.id] || 0), 0)
-  const totalCosto    = itemsConCantidad.reduce((s, p) => s + parseInt(cantidades[p.id] || 0) * Number(p.precio_compra || 0), 0)
+  const totalCosto    = itemsConCantidad.reduce((s, p) => s + parseInt(cantidades[p.id] || 0) * Number(p.precio_proveedor ?? p.precio_compra ?? 0), 0)
 
   const guardar = async (conPDF = false) => {
     if (itemsConCantidad.length === 0) return toast.error('Agrega al menos un producto con cantidad')
@@ -667,9 +756,14 @@ function ModalEditarPedido({ pedido, empresa, proveedor, onClose, onGuardado }) 
       try {
         const [{ data: itemsData }, { data: prodsData }] = await Promise.all([
           supabase.from('pedido_items').select('producto_id, cantidad_pedida').eq('pedido_id', pedido.id),
-          supabase.from('productos').select('id, nombre, precio_compra').eq('proveedor_id', proveedor.id).eq('activo', true).order('nombre'),
+          supabase.from('producto_proveedores')
+            .select('precio_compra, productos!inner(id, nombre, precio_compra, activo)')
+            .eq('proveedor_id', proveedor.id)
+            .eq('productos.activo', true),
         ])
-        setProds(prodsData ?? [])
+        setProds((prodsData ?? [])
+          .map(r => ({ ...r.productos, precio_proveedor: r.precio_compra }))
+          .sort((a, b) => a.nombre.localeCompare(b.nombre)))
         const init = {}
         ;(itemsData ?? []).forEach(it => { init[it.producto_id] = String(it.cantidad_pedida) })
         setCantidades(init)
@@ -690,7 +784,7 @@ function ModalEditarPedido({ pedido, empresa, proveedor, onClose, onGuardado }) 
 
   const conCantidad   = prods.filter(p => parseInt(cantidades[p.id] || 0) > 0)
   const totalUnidades = conCantidad.reduce((s, p) => s + parseInt(cantidades[p.id] || 0), 0)
-  const totalCostoEd  = conCantidad.reduce((s, p) => s + parseInt(cantidades[p.id] || 0) * Number(p.precio_compra || 0), 0)
+  const totalCostoEd  = conCantidad.reduce((s, p) => s + parseInt(cantidades[p.id] || 0) * Number(p.precio_proveedor ?? p.precio_compra ?? 0), 0)
 
   const guardar = async () => {
     if (conCantidad.length === 0) return toast.error('Agrega al menos un producto')
@@ -768,8 +862,8 @@ function ModalEditarPedido({ pedido, empresa, proveedor, onClose, onGuardado }) 
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-800 truncate">{prod.nombre}</p>
-                    {prod.precio_compra > 0 && (
-                      <p className="text-xs text-slate-400">{formatoMoneda(prod.precio_compra)} / ud</p>
+                    {Number(prod.precio_proveedor ?? prod.precio_compra) > 0 && (
+                      <p className="text-xs text-slate-400">{formatoMoneda(prod.precio_proveedor ?? prod.precio_compra)} / ud</p>
                     )}
                   </div>
                   <input
@@ -875,7 +969,6 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   const [busquedaItem, setBusquedaItem]= useState('')
 
   const hoy      = fechaEnZona(tz)
-  const unAnio   = addDias(hoy, 365)
   const sucursal = sucursales.find(s => s.id === sucursalId)
 
   useEffect(() => {
@@ -926,7 +1019,7 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
             bloqueado:         yaRecibido,
             cantidad_recibida: yaRecibido ? String(it.cantidad_recibida) : String(it.cantidad_pedida),
             precio_recibido:   String(it.precio_recibido ?? it.productos?.precio_compra ?? ''),
-            fecha_caducidad:   yaRecibido ? (it.fecha_caducidad ?? unAnio) : unAnio,
+            fecha_caducidad:   yaRecibido ? (it.fecha_caducidad ?? '') : '',
             expandido:         !yaRecibido,
             recibido_en:       it.updated_at ?? null,
           }
@@ -1052,15 +1145,26 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
   }, [lineas])
 
   const confirmarTodo = () => {
+    const faltantes = []
     setLineas(prev => {
       const next = { ...prev }
       items.forEach(it => {
-        if (next[it.id]?.estado === 'pendiente' && !next[it.id]?.bloqueado) {
-          next[it.id] = { ...next[it.id], estado: 'confirmado', expandido: false }
+        const l = next[it.id]
+        if (l?.estado !== 'pendiente' || l?.bloqueado) return
+        const cant = parseInt(l.cantidad_recibida) || 0
+        // Solo confirmar los que tienen cantidad y fecha; los incompletos se quedan pendientes
+        if (cant <= 0 || !l.fecha_caducidad) {
+          faltantes.push(it.nombre_producto)
+          next[it.id] = { ...l, expandido: true }
+          return
         }
+        next[it.id] = { ...l, estado: 'confirmado', expandido: false }
       })
       return next
     })
+    if (faltantes.length > 0) {
+      toast.error(`Falta cantidad o fecha de caducidad en: ${faltantes.join(', ')}`)
+    }
   }
 
   // Escáner: buscar el producto por código de barras
@@ -1439,13 +1543,16 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
               return (
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Fecha de caducidad
+                    <Calendar className="w-3 h-3" /> Fecha de caducidad <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date" min={hoy}
                     value={l.fecha_caducidad ?? ''}
                     onChange={e => setLinea(it.id, 'fecha_caducidad', e.target.value)}
-                    className="w-full h-11 px-3 rounded-xl border-2 border-slate-200 text-sm font-bold focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/15 bg-white transition-all"
+                    className={cn(
+                      'w-full h-11 px-3 rounded-xl border-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/15 bg-white transition-all',
+                      l.fecha_caducidad ? 'border-slate-200 focus:border-primary-400' : 'border-red-200 focus:border-red-400'
+                    )}
                   />
                   {l.fecha_caducidad && loteDetectado && (
                     <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
@@ -1829,32 +1936,89 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
 
 // ─── Modal: productos del proveedor ──────────────────────────────────────────
 
-function ModalProductosProveedor({ proveedor, empresa, onClose }) {
-  const [productos, setProductos] = useState([])
+function ModalProductosProveedor({ proveedor, empresa, onClose, onCambio }) {
+  const [productos, setProductos] = useState([]) // vinculados: { pp_id, precio_proveedor, ...producto }
   const [cargando,  setCargando]  = useState(true)
   const [busqueda,  setBusqueda]  = useState('')
+  // Vista "vincular más productos"
+  const [vinculando, setVinculando] = useState(false)
+  const [candidatos, setCandidatos] = useState([])
+  const [seleccion,  setSeleccion]  = useState({})
+  const [guardando,  setGuardando]  = useState(false)
 
-  useEffect(() => {
-    supabase.from('productos')
-      .select('id, nombre, categoria, precio_compra, precio_venta, activo')
-      .eq('empresa_id', empresa.id)
+  const cargar = async () => {
+    setCargando(true)
+    const { data } = await supabase.from('producto_proveedores')
+      .select('id, precio_compra, productos(id, nombre, categoria, precio_venta, activo)')
       .eq('proveedor_id', proveedor.id)
-      .order('nombre')
-      .then(({ data }) => { setProductos(data ?? []); setCargando(false) })
-  }, [proveedor.id, empresa.id])
+    setProductos((data ?? [])
+      .filter(r => r.productos)
+      .map(r => ({ pp_id: r.id, precio_proveedor: r.precio_compra, ...r.productos }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    setCargando(false)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { cargar() }, [proveedor.id])
 
+  const desvincular = async (v) => {
+    const { error } = await supabase.from('producto_proveedores').delete().eq('id', v.pp_id)
+    if (error) return toast.error(error.message ?? 'Error al desvincular')
+    toast.success(`"${v.nombre}" desvinculado`)
+    setProductos(prev => prev.filter(x => x.pp_id !== v.pp_id))
+    onCambio?.()
+  }
+
+  const abrirVincular = async () => {
+    const { data } = await supabase.from('productos')
+      .select('id, nombre, categoria')
+      .eq('empresa_id', empresa.id)
+      .eq('activo', true)
+      .order('nombre')
+    const yaIds = new Set(productos.map(v => v.id))
+    setCandidatos((data ?? []).filter(p => !yaIds.has(p.id)))
+    setSeleccion({})
+    setBusqueda('')
+    setVinculando(true)
+  }
+
+  const vincularSeleccionados = async () => {
+    const ids = Object.keys(seleccion).filter(id => seleccion[id])
+    if (ids.length === 0) return toast.error('Selecciona al menos un producto')
+    if (guardando) return
+    setGuardando(true)
+    try {
+      const { error } = await supabase.from('producto_proveedores').insert(
+        ids.map(pid => ({ empresa_id: empresa.id, producto_id: pid, proveedor_id: proveedor.id }))
+      )
+      if (error) throw error
+      toast.success(`${ids.length} producto${ids.length !== 1 ? 's' : ''} vinculado${ids.length !== 1 ? 's' : ''}`)
+      setVinculando(false)
+      setBusqueda('')
+      await cargar()
+      onCambio?.()
+    } catch (e) {
+      toast.error(e.message ?? 'Error al vincular')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const numSel = Object.values(seleccion).filter(Boolean).length
+  const base = vinculando ? candidatos : productos
   const filtrados = busqueda.trim()
-    ? productos.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()))
-    : productos
+    ? base.filter(p => p.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+    : base
 
   return (
     <Modal onClose={onClose} maxWidth="sm:max-w-md">
       <ModalHeader
         titulo={proveedor.nombre}
-        subtitulo={`${productos.length} producto${productos.length !== 1 ? 's' : ''} vinculado${productos.length !== 1 ? 's' : ''}`}
+        subtitulo={vinculando
+          ? 'Selecciona los productos a vincular'
+          : `${productos.length} producto${productos.length !== 1 ? 's' : ''} vinculado${productos.length !== 1 ? 's' : ''}`}
         onClose={onClose}
       />
-      {!cargando && productos.length > 0 && (
+      {!cargando && base.length > 0 && (
         <div className="px-6 pb-3">
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
             <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
@@ -1877,16 +2041,26 @@ function ModalProductosProveedor({ proveedor, empresa, onClose }) {
           <div className="flex justify-center py-10">
             <div className="w-6 h-6 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
           </div>
-        ) : productos.length === 0 ? (
+        ) : base.length === 0 ? (
           <div className="flex flex-col items-center py-10 gap-2 text-center">
             <Package className="w-8 h-8 text-slate-300" />
-            <p className="text-sm text-slate-500">Sin productos vinculados</p>
-            <p className="text-xs text-slate-400">Asigna este proveedor desde la sección Productos → Editar</p>
+            <p className="text-sm text-slate-500">{vinculando ? 'Todos los productos ya están vinculados' : 'Sin productos vinculados'}</p>
+            {!vinculando && <p className="text-xs text-slate-400">Usa "Vincular productos" para agregarlos desde aquí</p>}
           </div>
         ) : filtrados.length === 0 ? (
           <div className="flex flex-col items-center py-8 gap-2 text-center">
             <p className="text-sm text-slate-400">Sin resultados para "{busqueda}"</p>
           </div>
+        ) : vinculando ? (
+          filtrados.map(p => (
+            <label key={p.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" checked={!!seleccion[p.id]}
+                onChange={() => setSeleccion(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                className="w-4 h-4 accent-emerald-600 flex-shrink-0" />
+              <span className="text-sm font-semibold text-slate-800 truncate flex-1">{p.nombre}</span>
+              {p.categoria && <span className="text-xs text-slate-400 flex-shrink-0">{p.categoria}</span>}
+            </label>
+          ))
         ) : (
           filtrados.map(p => (
             <div key={p.id} className={cn(
@@ -1898,20 +2072,48 @@ function ModalProductosProveedor({ proveedor, empresa, onClose }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-800 truncate">{p.nombre}</p>
-                {p.categoria && <p className="text-xs text-slate-400">{p.categoria}</p>}
+                <p className="text-xs text-slate-400">
+                  {Number(p.precio_proveedor) > 0 ? `Últ. compra: ${formatoMoneda(p.precio_proveedor)}` : 'Sin compras aún'}
+                  {p.categoria ? ` · ${p.categoria}` : ''}
+                </p>
               </div>
-              <div className="text-right flex-shrink-0">
-                {p.precio_venta > 0 && (
-                  <p className="text-xs font-bold text-slate-700">${Number(p.precio_venta).toFixed(2)}</p>
-                )}
-                {!p.activo && <p className="text-[10px] text-slate-400">Archivado</p>}
+              <div className="text-right flex-shrink-0 flex items-center gap-2">
+                <div>
+                  {p.precio_venta > 0 && (
+                    <p className="text-xs font-bold text-slate-700">${Number(p.precio_venta).toFixed(2)}</p>
+                  )}
+                  {!p.activo && <p className="text-[10px] text-slate-400">Archivado</p>}
+                </div>
+                <button
+                  onClick={() => desvincular(p)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                  title="Desvincular producto"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
       <ModalFooter>
-        <Button variante="secundario" tamano="md" className="w-full" onClick={onClose}>Cerrar</Button>
+        {vinculando ? (
+          <div className="flex gap-3">
+            <Button variante="secundario" tamano="md" className="flex-1" onClick={() => { setVinculando(false); setBusqueda('') }}>
+              Atrás
+            </Button>
+            <Button variante="primario" tamano="md" className="flex-1" cargando={guardando} onClick={vincularSeleccionados}>
+              {numSel > 0 ? `Vincular (${numSel})` : 'Vincular'}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <Button variante="secundario" tamano="md" className="flex-1" onClick={onClose}>Cerrar</Button>
+            <Button variante="primario" tamano="md" className="flex-1" onClick={abrirVincular}>
+              + Vincular productos
+            </Button>
+          </div>
+        )}
       </ModalFooter>
     </Modal>
   )
@@ -2242,11 +2444,10 @@ export default function ProveedoresPage() {
           .eq('activo', true)
           .order('nombre'),
         pedidosQ,
-        supabase.from('productos')
-          .select('proveedor_id')
+        supabase.from('producto_proveedores')
+          .select('proveedor_id, productos!inner(activo)')
           .eq('empresa_id', empresa.id)
-          .eq('activo', true)
-          .not('proveedor_id', 'is', null),
+          .eq('productos.activo', true),
       ])
       if (e1) throw e1
       if (e2) throw e2
@@ -2658,6 +2859,7 @@ export default function ProveedoresPage() {
           proveedor={modalProdsProveedor}
           empresa={empresa}
           onClose={() => setModalProdsProveedor(null)}
+          onCambio={cargar}
         />
       )}
 

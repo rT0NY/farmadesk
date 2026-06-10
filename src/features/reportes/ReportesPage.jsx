@@ -180,7 +180,7 @@ export default function ReportesPage() {
       if (ventaIds.length > 0) {
         const { data: det } = await supabase
           .from('detalle_ventas')
-          .select('venta_id, producto_id, cantidad, precio_unitario, productos(nombre, precio_compra)')
+          .select('venta_id, producto_id, cantidad, precio_unitario, costo_unitario, productos(nombre, precio_compra)')
           .in('venta_id', ventaIds)
         detalles = det ?? []
       }
@@ -196,7 +196,7 @@ export default function ReportesPage() {
       const totalGastos   = (gastos  ?? []).reduce((a, g) => a + (g.monto           ?? 0), 0)
       const totalSalarios = semanasFiltradas.reduce((a, s) => a + (s.total_calculado ?? 0), 0)
       const totalCOGS     = detalles.reduce((a, d) =>
-        a + (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0), 0)
+        a + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0), 0)
 
       const margenBruto = totalIngresos - totalCOGS
       const ganancia    = margenBruto - totalGastos - totalSalarios
@@ -215,7 +215,7 @@ export default function ReportesPage() {
       for (const d of detalles) {
         const sid = ventaMap[d.venta_id]?.sucursal_id
         if (sid && sucMap[sid]) {
-          sucMap[sid].cogs += (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0)
+          sucMap[sid].cogs += (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
         }
       }
       for (const g of (gastos ?? [])) {
@@ -253,7 +253,7 @@ export default function ReportesPage() {
           const fecha = ventaMap[d.venta_id]?.creado_en
           if (!fecha) continue
           const k = isoEnZona(new Date(fecha), tz).slice(0, 7)
-          cogsPeriodo[k] = (cogsPeriodo[k] ?? 0) + (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0)
+          cogsPeriodo[k] = (cogsPeriodo[k] ?? 0) + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
         }
         // Iterar todos los meses del rango
         const cur = new Date(inicio.slice(0, 7) + '-01T12:00:00')
@@ -275,7 +275,7 @@ export default function ReportesPage() {
           const fecha = ventaMap[d.venta_id]?.creado_en
           if (!fecha) continue
           const k = isoEnZona(new Date(fecha), tz)
-          cogsPeriodo[k] = (cogsPeriodo[k] ?? 0) + (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0)
+          cogsPeriodo[k] = (cogsPeriodo[k] ?? 0) + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
         }
         const cur = new Date(inicio + 'T12:00:00')
         const end = new Date(fin   + 'T12:00:00')
@@ -316,7 +316,7 @@ export default function ReportesPage() {
         if (!prodMap[id]) prodMap[id] = { nombre: d.productos?.nombre ?? '—', cantidad: 0, ingresos: 0, cogs: 0 }
         prodMap[id].cantidad += d.cantidad ?? 0
         prodMap[id].ingresos += (d.cantidad ?? 0) * (d.precio_unitario ?? 0)
-        prodMap[id].cogs     += (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0)
+        prodMap[id].cogs     += (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
       }
       const topProductos = Object.values(prodMap)
         .map(p => ({ ...p, ganancia: p.ingresos - p.cogs, margen: p.ingresos > 0 ? ((p.ingresos - p.cogs) / p.ingresos) * 100 : 0 }))
@@ -339,7 +339,7 @@ export default function ReportesPage() {
         for (const d of detSuc) {
           const f = ventaMap[d.venta_id]?.creado_en; if (!f) continue
           const k = porMes ? isoEnZona(new Date(f), tz).slice(0,7) : isoEnZona(new Date(f), tz)
-          cogSuc[k] = (cogSuc[k] ?? 0) + (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0)
+          cogSuc[k] = (cogSuc[k] ?? 0) + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
         }
         const chartSuc = chartDatos.map(r => {
           const v = ingSuc[r.label] ?? 0; const co = cogSuc[r.label] ?? 0
@@ -351,7 +351,7 @@ export default function ReportesPage() {
           if (!pmSuc[d.producto_id]) pmSuc[d.producto_id] = { nombre: d.productos?.nombre ?? '—', cantidad: 0, ingresos: 0, cogs: 0 }
           pmSuc[d.producto_id].cantidad += d.cantidad ?? 0
           pmSuc[d.producto_id].ingresos += (d.cantidad ?? 0) * (d.precio_unitario ?? 0)
-          pmSuc[d.producto_id].cogs     += (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0)
+          pmSuc[d.producto_id].cogs     += (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0)
         }
         const topSuc = Object.values(pmSuc)
           .map(p => ({ ...p, ganancia: p.ingresos - p.cogs, margen: p.ingresos > 0 ? (p.ingresos - p.cogs) / p.ingresos * 100 : 0 }))
@@ -367,7 +367,7 @@ export default function ReportesPage() {
         }
 
         const tIng  = vtsSuc.reduce((a, v) => a + (v.total ?? 0), 0)
-        const tCogs = detSuc.reduce((a, d) => a + (d.cantidad ?? 0) * (d.productos?.precio_compra ?? 0), 0)
+        const tCogs = detSuc.reduce((a, d) => a + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0), 0)
         const tGts  = gtsSuc.reduce((a, g) => a + (g.monto ?? 0), 0)
         const tSal  = semSuc.reduce((a, s) => a + (s.total_calculado ?? 0), 0)
         const tGan  = tIng - tCogs - tGts - tSal

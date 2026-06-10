@@ -21,7 +21,6 @@ import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 const formVacio = () => ({
   nombre: '',
   categoria: '',
-  proveedor_id: '',
   precio_compra: '',
   utilidad_porcentaje: '',
   precio_venta: '',
@@ -98,6 +97,12 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
   const [disponibilidad, setDisponibilidad] = useState({})
   const [mayoreoActivo, setMayoreoActivo] = useState(false)
 
+  // Proveedores vinculados al producto (multi-proveedor)
+  const [provsVinculados,    setProvsVinculados]    = useState([]) // [{ proveedor_id, precio_compra }]
+  const [provsOriginales,    setProvsOriginales]    = useState([]) // ids al abrir, para diff al guardar
+  const [mostrarSelectorProv, setMostrarSelectorProv] = useState(false)
+  const [provAConfirmar,     setProvAConfirmar]     = useState(null) // proveedor pendiente de quitar
+
   const esEdicion = !!productoEditar
 
   // Cargar cantidad_mayoreo en edición (no viene en el RPC listar_productos_completo)
@@ -112,6 +117,25 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
         if (data != null) {
           setForm(prev => ({ ...prev, cantidad_mayoreo: String(data.cantidad_mayoreo ?? '') }))
         }
+      })
+  }, [abierto, esEdicion, productoEditar?.id])
+
+  // Cargar proveedores vinculados (multi-proveedor)
+  useEffect(() => {
+    if (!abierto) return
+    setMostrarSelectorProv(false)
+    if (!esEdicion) {
+      setProvsVinculados([])
+      setProvsOriginales([])
+      return
+    }
+    supabase.from('producto_proveedores')
+      .select('proveedor_id, precio_compra')
+      .eq('producto_id', productoEditar.id)
+      .then(({ data, error }) => {
+        if (error) { console.error('producto_proveedores fetch:', error.message); return }
+        setProvsVinculados(data || [])
+        setProvsOriginales((data || []).map(r => r.proveedor_id))
       })
   }, [abierto, esEdicion, productoEditar?.id])
 
@@ -146,7 +170,6 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
       setForm({
         nombre: (productoEditar.nombre || '').toUpperCase(),
         categoria: productoEditar.categoria || '',
-        proveedor_id: productoEditar.proveedor_id || '',
         precio_compra: String(pc || ''),
         utilidad_porcentaje: util > 0 ? util.toFixed(2) : '',
         precio_venta: String(pv || ''),
@@ -350,11 +373,26 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
           .eq('id', productoEditar.id)
         if (errCant) throw errCant
 
-        const { error: errProv } = await supabase
-          .from('productos')
-          .update({ proveedor_id: form.proveedor_id || null })
-          .eq('id', productoEditar.id)
-        if (errProv) throw errProv
+        // Sincronizar proveedores vinculados (diff: conserva precios de los que no cambiaron)
+        const actualesIds = provsVinculados.map(v => v.proveedor_id)
+        const agregados   = actualesIds.filter(id => !provsOriginales.includes(id))
+        const quitados    = provsOriginales.filter(id => !actualesIds.includes(id))
+        if (quitados.length > 0) {
+          const { error: errQ } = await supabase.from('producto_proveedores')
+            .delete()
+            .eq('producto_id', productoEditar.id)
+            .in('proveedor_id', quitados)
+          if (errQ) throw errQ
+        }
+        if (agregados.length > 0) {
+          const { error: errA } = await supabase.from('producto_proveedores')
+            .insert(agregados.map(pid => ({
+              empresa_id:   empresa?.id,
+              producto_id:  productoEditar.id,
+              proveedor_id: pid,
+            })))
+          if (errA) throw errA
+        }
 
         const codigosOriginales = productoEditar.codigos || []
         const codigosNuevos = form.codigos
@@ -446,10 +484,14 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
         })
         if (error) throw error
 
-        if (nuevoProductoId && form.proveedor_id) {
-          await supabase.from('productos')
-            .update({ proveedor_id: form.proveedor_id })
-            .eq('id', nuevoProductoId)
+        if (nuevoProductoId && provsVinculados.length > 0) {
+          const { error: errProv } = await supabase.from('producto_proveedores')
+            .insert(provsVinculados.map(v => ({
+              empresa_id:   empresa?.id,
+              producto_id:  nuevoProductoId,
+              proveedor_id: v.proveedor_id,
+            })))
+          if (errProv) throw errProv
         }
 
         await logBitacora({
@@ -575,15 +617,66 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
                 permitirVacio
               />
 
-              <Select
-                label="Proveedor"
-                iconoIzq={<Store className="w-5 h-5" />}
-                valor={form.proveedor_id}
-                onChange={(v) => setForm(prev => ({ ...prev, proveedor_id: v || '' }))}
-                opciones={proveedores.map(p => ({ valor: p.id, etiqueta: p.nombre }))}
-                placeholder={proveedores.length === 0 ? 'Sin proveedores registrados' : 'Seleccionar proveedor...'}
-                permitirVacio
-              />
+              {/* Proveedores vinculados (multi-proveedor) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Proveedores</label>
+
+                {provsVinculados.length === 0 && !mostrarSelectorProv && (
+                  <p className="text-xs text-slate-400">Sin proveedor asignado</p>
+                )}
+
+                {provsVinculados.map(v => {
+                  const prov = proveedores.find(p => p.id === v.proveedor_id)
+                  return (
+                    <div key={v.proveedor_id} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Store className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <span className="text-sm font-medium text-slate-700 truncate">{prov?.nombre ?? 'Proveedor'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs text-slate-400">
+                          {Number(v.precio_compra) > 0 ? `Últ: ${formatoMoneda(v.precio_compra)}` : 'Sin compras aún'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setProvAConfirmar(v)}
+                          className="p-1 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                          title="Quitar proveedor"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Selector inline al agregar */}
+                {mostrarSelectorProv && (
+                  <Select
+                    iconoIzq={<Store className="w-5 h-5" />}
+                    valor=""
+                    onChange={(v) => {
+                      if (v) setProvsVinculados(prev => [...prev, { proveedor_id: v, precio_compra: null }])
+                      setMostrarSelectorProv(false)
+                    }}
+                    opciones={proveedores
+                      .filter(p => !provsVinculados.some(x => x.proveedor_id === p.id))
+                      .map(p => ({ valor: p.id, etiqueta: p.nombre }))}
+                    placeholder="Seleccionar proveedor..."
+                  />
+                )}
+
+                {/* Botón siempre disponible si quedan proveedores por vincular */}
+                {!mostrarSelectorProv && proveedores.some(p => !provsVinculados.some(x => x.proveedor_id === p.id)) && (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSelectorProv(true)}
+                    className="self-start text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors"
+                  >
+                    + Agregar proveedor
+                  </button>
+                )}
+              </div>
 
               {/* Precio compra + utilidad + precio venta */}
               <div className="space-y-3">
@@ -913,6 +1006,46 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
           )}
         </div>
       </div>
+
+      {/* Confirmación: quitar proveedor del producto */}
+      {provAConfirmar && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setProvAConfirmar(null)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Quitar proveedor</h3>
+                <p className="text-sm text-slate-500">
+                  {proveedores.find(p => p.id === provAConfirmar.proveedor_id)?.nombre ?? 'Proveedor'}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600">
+              Este proveedor dejará de estar vinculado al producto. El cambio se aplica al guardar.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setProvAConfirmar(null)}
+                className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setProvsVinculados(prev => prev.filter(x => x.proveedor_id !== provAConfirmar.proveedor_id))
+                  setProvAConfirmar(null)
+                }}
+                className="flex-1 px-4 py-2.5 rounded-2xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors"
+              >
+                Quitar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
