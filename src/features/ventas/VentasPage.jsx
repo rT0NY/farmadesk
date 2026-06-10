@@ -536,9 +536,9 @@ export default function VentasPage() {
       const hoy = fechaEnZona(tz)
       const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
-        supabase.from('lotes').select('*').eq('activo', true),
-        supabase.from('inventario').select('*'),
-        supabase.from('codigos_barras').select('*'),
+        supabase.from('lotes').select('id, producto_id, codigo_lote, fecha_caducidad, activo').eq('activo', true),
+        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad'),
+        supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         perfilId
           ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
@@ -586,7 +586,7 @@ export default function VentasPage() {
     try {
       const hoy = fechaEnZona(tz)
       const [{ data: inv }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
-        supabase.from('inventario').select('*'),
+        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
         supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
@@ -1001,15 +1001,7 @@ export default function VentasPage() {
       })
       if (error) throw error
 
-      // Descontar stock (FEFO)
-      for (const item of carrito) {
-        await supabase.rpc('descontar_stock_venta', {
-          p_producto_id: item.producto.id,
-          p_sucursal_id: sucursalId,
-          p_cantidad: item.cantidad,
-          p_venta_id: data?.venta_id || null,
-        })
-      }
+      // El stock se descuenta dentro de registrar_venta (transacción atómica)
 
       const folio = generarFolio(data?.venta_id, sucursalActual?.nombre)
       await logBitacora({
@@ -1144,9 +1136,9 @@ export default function VentasPage() {
       const hoy = fechaEnZona(tz)
       const [{ data: prod }, { data: lot }, { data: inv }, { data: cod }, { data: ventasConDet2 }, { data: ofVig }, { data: ps2 }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
-        supabase.from('lotes').select('*').eq('activo', true),
-        supabase.from('inventario').select('*'),
-        supabase.from('codigos_barras').select('*'),
+        supabase.from('lotes').select('id, producto_id, codigo_lote, fecha_caducidad, activo').eq('activo', true),
+        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad'),
+        supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
         esCajero
