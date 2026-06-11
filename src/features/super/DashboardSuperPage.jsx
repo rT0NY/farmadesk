@@ -124,7 +124,7 @@ export default function DashboardSuperPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Dashboard</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
           <p className="text-sm text-slate-500 mt-0.5 capitalize">{HOY_STR}</p>
         </div>
         <button onClick={cargar} disabled={cargando}

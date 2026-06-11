@@ -43,9 +43,9 @@ function formatFechaCorta(iso) {
 function Modal({ children, onClose, maxWidth = 'sm:max-w-md' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       <div className={cn(
-        'relative w-full bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]',
+        'relative w-full bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in',
         maxWidth
       )}>
         {children}
@@ -772,7 +772,7 @@ export default function ProgramacionPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {sucursales.map((suc) => (
-            <div key={suc.id} className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+            <div key={suc.id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
               <div className="px-4 py-3 border-b border-slate-100">
                 <p className="text-sm font-bold text-slate-800">{suc.nombre}</p>
               </div>
@@ -837,7 +837,7 @@ export default function ProgramacionPage() {
 
   // ── Vista desktop: tabla ────────────────────────────────────────────────────
   const vistaDesktop = (
-    <div className="hidden sm:block bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+    <div className="hidden sm:block bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -937,7 +937,7 @@ export default function ProgramacionPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Programación</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Programación</h1>
           <p className="text-sm text-slate-500 mt-0.5 hidden sm:block">Asigna empleados por sucursal y turno</p>
         </div>
         <div className="flex items-center gap-2">
@@ -954,7 +954,7 @@ export default function ProgramacionPage() {
             className="p-2.5 rounded-xl border bg-white border-slate-200 text-slate-600 active:bg-slate-50 transition-colors sm:hidden">
             <Send className="w-4 h-4" />
           </button>
-          <Button variante="secundario" tamano="sm" onClick={() => setModalEnviar(true)} className="hidden sm:flex">
+          <Button variante="tinted" tamano="sm" onClick={() => setModalEnviar(true)} className="hidden sm:flex">
             <Send className="w-4 h-4 mr-1.5" />
             Enviar
           </Button>

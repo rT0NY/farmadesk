@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { toast } from 'sonner'
 
@@ -128,7 +129,7 @@ export default function CobranzaPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Cobranza</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Cobranza</h1>
           <p className="text-sm text-slate-500 mt-1 capitalize">{HOY_STR}</p>
         </div>
         <button
@@ -196,7 +197,7 @@ export default function CobranzaPage() {
               className={cn(
                 'flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
                 filtro === f.v
-                  ? 'bg-slate-900 text-white border-slate-900'
+                  ? 'bg-gradient-to-b from-primary-600 to-primary-700 text-white border-transparent shadow-md shadow-primary-500/30'
                   : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
               )}>
               {f.label}
@@ -212,11 +213,9 @@ export default function CobranzaPage() {
       </div>
 
       {/* Lista */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-          </div>
+          <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
         ) : filtradas.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">

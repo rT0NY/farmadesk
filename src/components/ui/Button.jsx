@@ -3,15 +3,19 @@ import { cn } from '@/lib/clases'
 
 const VARIANTES = {
   primario:
-    'bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white shadow-sm hover:shadow-md',
+    'bg-gradient-to-b from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 active:from-primary-800 active:to-primary-900 text-white shadow-primario hover:shadow-lg hover:shadow-primary-500/40',
   secundario:
-    'bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm',
+    'bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700',
+  tinted:
+    'bg-primary-50 hover:bg-primary-100 active:bg-primary-200 text-primary-700',
   fantasma:
     'bg-transparent hover:bg-slate-100 active:bg-slate-200 text-slate-700',
   peligro:
-    'bg-red-500 hover:bg-red-600 active:bg-red-700 text-white shadow-sm hover:shadow-md',
+    'bg-gradient-to-b from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 active:from-red-700 active:to-red-800 text-white shadow-peligro hover:shadow-lg hover:shadow-red-500/40',
+  'peligro-suave':
+    'bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-600',
   exito:
-    'bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white shadow-sm hover:shadow-md',
+    'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:from-emerald-700 active:to-emerald-800 text-white shadow-exito hover:shadow-lg hover:shadow-emerald-500/40',
 }
 
 const TAMANOS = {

@@ -83,8 +83,8 @@ function ModalInvitar({ empresa, onClose, onGuardado }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 animate-modal-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Crear usuario</h2>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
@@ -276,8 +276,8 @@ function ModalEditar({ empleado, empresa, onClose, onGuardado }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 animate-modal-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Editar empleado</h2>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
@@ -461,7 +461,7 @@ export default function EmpleadosPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Empleados</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Empleados</h1>
           <p className="text-sm text-slate-500 mt-0.5">{empresa?.nombre ?? '—'}</p>
         </div>
         <Button
@@ -475,11 +475,11 @@ export default function EmpleadosPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white border border-slate-200/60 rounded-2xl px-5 py-4">
+        <div className="bg-white border border-slate-100 shadow-card rounded-3xl px-5 py-4">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Activos</p>
           <p className="text-2xl font-bold text-slate-900 mt-1">{activos}</p>
         </div>
-        <div className="bg-white border border-slate-200/60 rounded-2xl px-5 py-4">
+        <div className="bg-white border border-slate-100 shadow-card rounded-3xl px-5 py-4">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Inactivos</p>
           <p className="text-2xl font-bold text-slate-400 mt-1">{inactivos}</p>
         </div>
@@ -508,7 +508,7 @@ export default function EmpleadosPage() {
       </div>
 
       {/* Lista */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
@@ -605,7 +605,7 @@ export default function EmpleadosPage() {
 
       {confirmarToggle && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setConfirmarToggle(null)} />
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setConfirmarToggle(null)} />
           <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 w-full sm:max-w-sm">
             <div className={cn(
               'w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4',

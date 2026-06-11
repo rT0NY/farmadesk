@@ -10,7 +10,7 @@ const TableContext = createContext({ modo: 'tabla' })
 export function Table({ children, className }) {
   return (
     <div className={cn(
-      'bg-white border border-slate-200/70 rounded-3xl overflow-hidden shadow-sm',
+      'bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card',
       className
     )}>
       {/* Desktop: tabla real */}

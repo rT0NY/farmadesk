@@ -12,7 +12,7 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
 const BADGE = {
-  pendiente: 'bg-red-100 text-red-700 border-red-200',
+  pendiente: 'bg-amber-100 text-amber-700 border-amber-200',
   aprobada:  'bg-emerald-100 text-emerald-700 border-emerald-200',
   rechazada: 'bg-red-100 text-red-700 border-red-200',
 }
@@ -20,7 +20,8 @@ const ETIQUETA = { pendiente: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rec
 
 function Badge({ estado }) {
   return (
-    <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full border', BADGE[estado] ?? BADGE.pendiente)}>
+    <span className={cn('inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border', BADGE[estado] ?? BADGE.pendiente)}>
+      <span className="w-1.5 h-1.5 rounded-full bg-current" />
       {ETIQUETA[estado] ?? estado}
     </span>
   )
@@ -68,8 +69,8 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto animate-modal-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Aprobar cancelación</h2>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
@@ -172,8 +173,8 @@ function ModalRechazar({ cancelacion, onClose, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 animate-modal-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Rechazar cancelación</h2>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
@@ -372,7 +373,7 @@ export default function CancelacionesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Cancelaciones</h1>
+        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Cancelaciones</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           {esAdmin ? 'Todas las sucursales' : sucursalActiva?.nombre ?? '—'}
         </p>
@@ -397,7 +398,7 @@ export default function CancelacionesPage() {
             className={cn(
               'px-3 py-1.5 rounded-xl text-xs font-medium border transition-all',
               periodo === p.v
-                ? 'bg-slate-900 text-white border-slate-900'
+                ? 'bg-gradient-to-b from-primary-600 to-primary-700 text-white border-transparent shadow-md shadow-primary-500/30'
                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
             )}
           >
@@ -426,7 +427,7 @@ export default function CancelacionesPage() {
       </div>
 
       {/* Lista */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />

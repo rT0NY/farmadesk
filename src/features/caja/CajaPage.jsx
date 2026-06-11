@@ -16,6 +16,7 @@ import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona } from '@/lib
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Impresión: Electron IPC o web fallback ──────────────────────────────────
 async function abrirImpresion(html) {
@@ -114,8 +115,8 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-4 animate-modal-in">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={cn(
@@ -278,14 +279,14 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !resultado && onCerrar()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !resultado && onCerrar()} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center">
-              <LogOut className="w-5 h-5 text-red-600" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30 flex items-center justify-center">
+              <LogOut className="w-5 h-5 text-white" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900">
@@ -588,7 +589,7 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
   if (turno) {
     return (
       <>
-        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden border-l-4 border-l-emerald-500 shadow-sm">
+        <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden border-l-4 border-l-emerald-500 shadow-card">
           {/* Cabecera */}
           <div className="p-4 pb-3">
             {sinCabezal ? (
@@ -798,7 +799,7 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
 
   // ── Sin turno ────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden border-l-4 border-l-slate-300 shadow-sm">
+    <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden border-l-4 border-l-slate-300 shadow-card">
       <div className="p-4">
         {sinCabezal ? (
           <p className="text-xs font-semibold text-slate-500 mb-3">Abrir mi turno</p>
@@ -1023,7 +1024,7 @@ export default function CajaPage() {
   if ((esCajero || esEncargado) && sucursalesVisibles.length === 0 && !cargando) {
     return (
       <div className="flex flex-col gap-5">
-        <h1 className="text-2xl font-bold text-slate-900">Mi caja</h1>
+        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Mi caja</h1>
         <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-center space-y-2">
           <Wallet className="w-10 h-10 text-amber-400 mx-auto" />
           <p className="text-sm font-semibold text-amber-800">Primero abre tu turno en Ventas</p>
@@ -1038,7 +1039,7 @@ export default function CajaPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
             {esCajero ? 'Mi caja' : 'Caja'}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -1058,9 +1059,7 @@ export default function CajaPage() {
 
       {/* Sucursales */}
       {cargando && sucursalesVisibles.length === 0 ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : (
         <div className="flex flex-col gap-3">
           {(esCajero || esEncargado)

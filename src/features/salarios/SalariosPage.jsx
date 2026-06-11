@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { formatoMoneda, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
 
@@ -89,8 +90,8 @@ function ModalDiaPago({ empresa, onClose, onGuardado }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-modal-in">
         <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-slate-100">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Día de pago</h2>
@@ -258,8 +259,8 @@ function ModalSalario({ empleado, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 flex-shrink-0">
@@ -491,7 +492,7 @@ export default function SalariosPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Salarios</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Salarios</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Día de pago: <span className="font-semibold text-slate-700">{DIA_NOMBRE[diaPago]}</span>
           </p>
@@ -548,9 +549,7 @@ export default function SalariosPage() {
 
       {/* Cards de empleados */}
       {cargando ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : empleados.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <Users className="w-8 h-8 text-slate-300" />
@@ -572,7 +571,7 @@ export default function SalariosPage() {
             const _totalSemAct = semAct?.total_calculado ?? 0
             return (
               <div key={emp.id}
-                className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm hover:shadow-md transition-all">
+                className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card hover:shadow-md transition-all">
                 <div className="flex items-start gap-4">
                   {/* Avatar */}
                   <div className="w-11 h-11 rounded-2xl bg-primary-100 flex items-center justify-center flex-shrink-0">

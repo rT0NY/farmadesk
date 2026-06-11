@@ -73,8 +73,8 @@ function ModalEditarSucursal({ sucursal, onClose, onGuardado }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
         <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-slate-100 flex-shrink-0">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Editar sucursal</h2>
@@ -140,7 +140,7 @@ export default function SucursalesPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Sucursales</h1>
+        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Sucursales</h1>
         <p className="text-sm text-slate-500 mt-0.5">Edita el nombre y dirección de tus sucursales.</p>
       </div>
 
@@ -156,7 +156,7 @@ export default function SucursalesPage() {
             const dir = formatDireccion(suc)
             return (
               <div key={suc.id}
-                className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all flex items-start gap-4">
+                className="bg-white border border-slate-100 rounded-3xl p-5 shadow-card hover:shadow-md transition-all flex items-start gap-4">
                 <div className="w-11 h-11 rounded-2xl bg-primary-100 flex items-center justify-center flex-shrink-0">
                   <Store className="w-5 h-5 text-primary-700" />
                 </div>

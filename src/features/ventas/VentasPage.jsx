@@ -39,8 +39,8 @@ function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }
   const folio  = generarFolio(venta.id, sucursalNombre)
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col animate-modal-in">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
             <h3 className="text-base font-semibold text-slate-900 font-mono">{folio}</h3>
@@ -108,8 +108,8 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
   if (!venta) return null
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl animate-modal-in">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <h3 className="text-base font-semibold text-red-700">Solicitar cancelación</h3>
           <button onClick={onCerrar} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500"><X className="w-4 h-4" /></button>
@@ -237,8 +237,8 @@ function ModalCierreTurno({ turnoActual, resumenTurno, sucursalNombre, onImprimi
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !resultado && onClose()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !resultado && onClose()} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -1350,7 +1350,7 @@ export default function VentasPage() {
       <div className="space-y-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Ventas</h1>
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Ventas</h1>
             <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5">
               <Store className="w-3.5 h-3.5" />
               {sucursalActual?.nombre}
@@ -1368,7 +1368,7 @@ export default function VentasPage() {
         </div>
 
         <div className="max-w-md mx-auto mt-8">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 text-center">
+          <div className="bg-white border border-slate-100 rounded-3xl p-6 text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-4">
               <Wallet className="w-8 h-8 text-primary-600" />
             </div>
@@ -1401,7 +1401,7 @@ export default function VentasPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Ventas</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Ventas</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {sucursalActual?.nombre} · {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'short' })}
           </p>
@@ -1898,7 +1898,7 @@ export default function VentasPage() {
           )}
 
           {/* ── Resumen de caja ── */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
               <div>
                 <p className="text-sm font-bold text-slate-900">Corte de turno</p>
@@ -1993,7 +1993,7 @@ export default function VentasPage() {
 
           {/* ── Entradas manuales — solo si existen ── */}
           {entradas.length > 0 && (
-            <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+            <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
               <div className="flex items-center gap-2 px-5 py-3.5 border-b border-slate-100">
                 <div className="w-7 h-7 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
                   <Receipt className="w-3.5 h-3.5 text-violet-600" />
@@ -2015,7 +2015,7 @@ export default function VentasPage() {
 
           {/* ── Salidas manuales — solo si existen ── */}
           {salidas.length > 0 && (
-            <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+            <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
               <div className="flex items-center gap-2 px-5 py-3.5 border-b border-slate-100">
                 <div className="w-7 h-7 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
                   <Receipt className="w-3.5 h-3.5 text-red-500" />
@@ -2037,7 +2037,7 @@ export default function VentasPage() {
 
           {/* ── Acciones del turno ── */}
           {(
-            <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+            <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
                 <div className="p-4">
                   <Button variante="peligro" onClick={prepararCierre} cargando={cargandoResumen} className="w-full">
                     <LogOut className="w-4 h-4 mr-1.5" />

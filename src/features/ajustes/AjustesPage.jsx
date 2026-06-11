@@ -39,7 +39,7 @@ function InputTexto({ value, onChange, placeholder, maxLength, className, disabl
 
 function Seccion({ titulo, descripcion, children }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+    <div className="bg-white border border-slate-100 rounded-3xl shadow-card overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
         <p className="text-sm font-bold text-slate-800">{titulo}</p>
         {descripcion && <p className="text-xs text-slate-500 mt-0.5">{descripcion}</p>}
@@ -125,7 +125,7 @@ export default function AjustesPage() {
     <div className="flex flex-col gap-5 max-w-2xl">
 
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Ajustes</h1>
+        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Ajustes</h1>
         <p className="text-sm text-slate-500 mt-0.5">Configura los datos de tu empresa</p>
       </div>
 

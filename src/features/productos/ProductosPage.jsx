@@ -12,7 +12,9 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Table } from '@/components/ui/Table'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Fab } from '@/components/ui/Fab'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import ModalProducto from './ModalProducto'
 import FilaProducto from './FilaProducto'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
@@ -172,13 +174,13 @@ export default function ProductosPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Productos</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Productos</h1>
           <p className="text-sm text-slate-500 mt-1">Catálogo de productos de la empresa</p>
         </div>
         <div className="flex gap-2">
           {!esCajero && (
             <>
-<Button onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
+              <Button onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
                 <span className="hidden sm:inline">Nuevo producto</span>
                 <span className="sm:hidden">Nuevo</span>
               </Button>
@@ -196,18 +198,21 @@ export default function ProductosPage() {
           <button
             onClick={() => setFiltroEstado('activos')}
             className={cn(
-              'bg-white border rounded-2xl p-4 text-left transition-all hover:shadow-md group',
+              'bg-white border rounded-3xl p-4 text-left transition-all duration-200',
               filtroEstado === 'activos'
-                ? 'border-primary-300 ring-2 ring-primary-100 shadow-sm'
-                : 'border-slate-200 hover:border-primary-200'
+                ? 'border-primary-200 ring-2 ring-primary-500/20 shadow-card-hover'
+                : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
             )}
           >
             <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl bg-primary-100 flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-primary-600" strokeWidth={2} />
+              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-md shadow-blue-500/30 flex items-center justify-center">
+                <ShoppingBag className="w-5 h-5 text-white" strokeWidth={2} />
               </div>
               {filtroEstado === 'activos' && (
-                <span className="text-[10px] font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded-full">Activo</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  Activo
+                </span>
               )}
             </div>
             <p className="text-2xl font-bold text-slate-900 tabular-nums">{conteos.activos}</p>
@@ -217,19 +222,16 @@ export default function ProductosPage() {
           {/* Agotados */}
           <button
             onClick={() => setFiltroEstado('activos')}
-            className={cn(
-              'border rounded-2xl p-4 text-left transition-all hover:shadow-md',
-              conteos.agotados > 0
-                ? 'bg-red-50 border-red-200 hover:border-red-300'
-                : 'bg-white border-slate-200 hover:border-slate-300'
-            )}
+            className="bg-white border border-slate-100 rounded-3xl p-4 text-left transition-all duration-200 shadow-card hover:shadow-card-hover hover:-translate-y-0.5"
           >
             <div className="flex items-start justify-between mb-3">
               <div className={cn(
-                'w-9 h-9 rounded-xl flex items-center justify-center',
-                conteos.agotados > 0 ? 'bg-red-100' : 'bg-slate-100'
+                'w-9 h-9 rounded-2xl flex items-center justify-center',
+                conteos.agotados > 0
+                  ? 'bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30'
+                  : 'bg-slate-100'
               )}>
-                <Package className={cn('w-5 h-5', conteos.agotados > 0 ? 'text-red-500' : 'text-slate-400')} strokeWidth={2} />
+                <Package className={cn('w-5 h-5', conteos.agotados > 0 ? 'text-white' : 'text-slate-400')} strokeWidth={2} />
               </div>
               {conteos.agotados === 0 && (
                 <Check className="w-4 h-4 text-emerald-500" />
@@ -247,23 +249,26 @@ export default function ProductosPage() {
           <button
             onClick={() => setFiltroEstado('bajo_stock')}
             className={cn(
-              'border rounded-2xl p-4 text-left transition-all hover:shadow-md',
+              'bg-white border rounded-3xl p-4 text-left transition-all duration-200',
               filtroEstado === 'bajo_stock'
-                ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-100 shadow-sm'
-                : conteos.bajo_stock > 0
-                  ? 'bg-amber-50 border-amber-200 hover:border-amber-300'
-                  : 'bg-white border-slate-200 hover:border-slate-300'
+                ? 'border-amber-200 ring-2 ring-amber-500/20 shadow-card-hover'
+                : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
             )}
           >
             <div className="flex items-start justify-between mb-3">
               <div className={cn(
-                'w-9 h-9 rounded-xl flex items-center justify-center',
-                conteos.bajo_stock > 0 ? 'bg-amber-100' : 'bg-slate-100'
+                'w-9 h-9 rounded-2xl flex items-center justify-center',
+                conteos.bajo_stock > 0
+                  ? 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-md shadow-amber-500/30'
+                  : 'bg-slate-100'
               )}>
-                <AlertTriangle className={cn('w-5 h-5', conteos.bajo_stock > 0 ? 'text-amber-500' : 'text-slate-400')} strokeWidth={2} />
+                <AlertTriangle className={cn('w-5 h-5', conteos.bajo_stock > 0 ? 'text-white' : 'text-slate-400')} strokeWidth={2} />
               </div>
               {filtroEstado === 'bajo_stock' && (
-                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Activo</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  Activo
+                </span>
               )}
             </div>
             <p className={cn('text-2xl font-bold tabular-nums', conteos.bajo_stock > 0 ? 'text-amber-600' : 'text-slate-900')}>
@@ -273,10 +278,10 @@ export default function ProductosPage() {
           </button>
 
           {/* Valor inventario */}
-          <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-2xl p-4">
+          <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card">
             <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <Wallet className="w-5 h-5 text-emerald-600" strokeWidth={2} />
+              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/30 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-white" strokeWidth={2} />
               </div>
             </div>
             <p className="text-xl font-bold text-emerald-700 tabular-nums leading-tight">
@@ -416,9 +421,7 @@ export default function ProductosPage() {
 
       {/* Contenido */}
       {cargando && productos.length === 0 ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : productosFiltrados.length === 0 ? (
         <EmptyState
           icono={Package}
@@ -469,6 +472,8 @@ export default function ProductosPage() {
         onExito={invalidar}
         productoEditar={productoEditar}
       />
+
+      <Fab onClick={abrirNuevo} label="Nuevo producto" />
 
     </div>
   )

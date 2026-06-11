@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 import { fechaEnZona, addDias } from '@/lib/formatos'
 import ModalAgregarInventario from './ModalAgregarInventario'
@@ -55,27 +56,39 @@ function DropdownFiltro({ label, icono: Icono, activo, children }) {
 
 function TarjetaResumen({ titulo, valor, icono: Icono, color, activa, onClick }) {
   const colores = {
-    emerald: { bg: 'bg-white hover:border-emerald-300',   borde: activa ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200', icono: 'bg-emerald-100 text-emerald-600', texto: 'text-slate-900' },
-    red:     { bg: activa ? 'bg-red-50'    : 'bg-red-50/40    hover:border-red-300',    borde: activa ? 'border-red-400    ring-2 ring-red-100'    : 'border-red-200',    icono: 'bg-red-100 text-red-500',      texto: 'text-red-600'    },
-    amber:   { bg: activa ? 'bg-amber-50'  : 'bg-amber-50/40  hover:border-amber-300',  borde: activa ? 'border-amber-400  ring-2 ring-amber-100'  : 'border-amber-200',  icono: 'bg-amber-100 text-amber-600',  texto: 'text-amber-700'  },
-    orange:  { bg: activa ? 'bg-orange-50' : 'bg-orange-50/40 hover:border-orange-300', borde: activa ? 'border-orange-400 ring-2 ring-orange-100' : 'border-orange-200', icono: 'bg-orange-100 text-orange-600', texto: 'text-orange-700' },
+    emerald: { icono: 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/30', ring: 'border-emerald-200 ring-2 ring-emerald-500/20', chip: 'text-emerald-700 bg-emerald-50', texto: 'text-slate-900'  },
+    red:     { icono: 'bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30',            ring: 'border-red-200 ring-2 ring-red-500/20',         chip: 'text-red-700 bg-red-50',         texto: 'text-red-600'    },
+    amber:   { icono: 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-md shadow-amber-500/30',      ring: 'border-amber-200 ring-2 ring-amber-500/20',     chip: 'text-amber-700 bg-amber-50',     texto: 'text-amber-700'  },
+    orange:  { icono: 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-md shadow-orange-500/30',    ring: 'border-orange-200 ring-2 ring-orange-500/20',   chip: 'text-orange-700 bg-orange-50',   texto: 'text-orange-700' },
   }
   const c = colores[color]
+  const sinDatos = !valor
 
   return (
     <button
       onClick={onClick}
-      className={cn('p-4 rounded-2xl border transition-all text-left w-full hover:shadow-md shadow-sm', c.bg, c.borde)}
+      className={cn(
+        'bg-white p-4 rounded-3xl border text-left w-full transition-all duration-200',
+        activa
+          ? cn(c.ring, 'shadow-card-hover')
+          : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
+      )}
     >
       <div className="flex items-start justify-between mb-3">
-        <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center', c.icono)}>
-          <Icono className="w-4 h-4" strokeWidth={2} />
+        <div className={cn(
+          'w-9 h-9 rounded-2xl flex items-center justify-center',
+          sinDatos ? 'bg-slate-100' : c.icono
+        )}>
+          <Icono className={cn('w-4 h-4', sinDatos ? 'text-slate-400' : 'text-white')} strokeWidth={2} />
         </div>
         {activa && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/70 text-slate-500">Activo</span>
+          <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full', c.chip)}>
+            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+            Activo
+          </span>
         )}
       </div>
-      <p className={cn('text-2xl font-bold tabular-nums', c.texto)}>{valor}</p>
+      <p className={cn('text-2xl font-bold tabular-nums', sinDatos ? 'text-slate-900' : c.texto)}>{valor}</p>
       <p className="text-xs text-slate-400 mt-0.5">{titulo}</p>
     </button>
   )
@@ -91,7 +104,7 @@ function GrupoCaducidad({ titulo, items, color, hoy }) {
     amber:  { header: 'bg-amber-50 border-amber-200',  badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
   }[color]
   return (
-    <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+    <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
       <div className={`flex items-center justify-between px-4 py-3 border-b ${cls.header}`}>
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${cls.dot}`} />
@@ -327,7 +340,7 @@ export default function InventarioPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Inventario</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Inventario</h1>
           <p className="text-sm text-slate-500 mt-1">{conteos.todos} producto{conteos.todos !== 1 && 's'} en catálogo</p>
         </div>
         {!esCajero && (
@@ -454,9 +467,7 @@ export default function InventarioPage() {
 
       {/* Tabla de productos */}
       {filtroEstado !== 'por_caducar' && (cargando && datos.length === 0 ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : filtradosConOtrasSuc.length === 0 ? (
         <EmptyState
           icono={errorCarga ? AlertTriangle : Archive}
@@ -474,14 +485,14 @@ export default function InventarioPage() {
           }
           accion={
             errorCarga
-              ? <Button variante="secundario" onClick={cargar} iconoIzq={<RefreshCw className="w-4 h-4" />}>Reintentar</Button>
+              ? <Button variante="tinted" onClick={cargar} iconoIzq={<RefreshCw className="w-4 h-4" />}>Reintentar</Button>
               : hayFiltros
                 ? <Button variante="secundario" onClick={() => { setBusqueda(''); setCategoriaSel(''); setFiltroEstado('todos'); setFiltroOtrasSuc(false) }} iconoIzq={<X className="w-4 h-4" />}>Limpiar filtros</Button>
                 : null
           }
         />
       ) : (
-        <div className="bg-white border border-slate-200/70 rounded-3xl overflow-hidden shadow-sm">
+        <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
           {/* Cards móvil */}
           <div className="flex flex-col divide-y divide-slate-100 sm:hidden">
             {filtradosConOtrasSuc.map(p => {
@@ -722,8 +733,8 @@ function ModalExistenciasInv({ onCerrar }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col animate-modal-in">
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">

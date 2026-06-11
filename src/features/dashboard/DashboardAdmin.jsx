@@ -11,30 +11,38 @@ import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, formatoHora, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
 import { ETIQUETAS_ROL } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor }) {
-  const colores = {
-    primary: { border: 'border-primary-100', icon: 'bg-primary-100 text-primary-600' },
-    emerald: { border: 'border-emerald-100', icon: 'bg-emerald-100 text-emerald-600' },
-    amber:   { border: 'border-amber-100',   icon: 'bg-amber-100 text-amber-600'     },
-    purple:  { border: 'border-purple-100',  icon: 'bg-purple-100 text-purple-600'   },
-    slate:   { border: 'border-slate-200',   icon: 'bg-slate-100 text-slate-400'     },
+function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor, hero = false }) {
+  const iconos = {
+    primary: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-md shadow-blue-500/30',
+    emerald: 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-500/30',
+    amber:   'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30',
+    purple:  'bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md shadow-violet-500/30',
+    slate:   'bg-slate-100 text-slate-400',
   }
-  const c = colores[color] || colores.primary
+  const icono = hero ? 'bg-white/20 text-white' : (iconos[color] || iconos.primary)
   const inner = (
-    <div className={cn('bg-white rounded-3xl p-4 border shadow-sm h-full flex flex-col gap-2', c.border)}>
+    <div className={cn(
+      'rounded-3xl p-4 h-full flex flex-col gap-2 transition-all duration-200',
+      hero
+        ? 'bg-gradient-to-br from-primary-600 via-primary-700 to-indigo-700 text-white shadow-lg shadow-primary-500/30'
+        : 'bg-white border border-slate-100 shadow-card',
+      enlace && (hero ? 'hover:shadow-xl hover:shadow-primary-500/40' : 'hover:shadow-card-hover hover:-translate-y-0.5')
+    )}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">{titulo}</span>
-        <div className={cn('w-8 h-8 rounded-2xl flex items-center justify-center flex-shrink-0', c.icon)}>
+        <span className={cn('text-[10px] font-bold uppercase tracking-wider leading-none', hero ? 'text-white/70' : 'text-slate-400')}>{titulo}</span>
+        <div className={cn('w-8 h-8 rounded-2xl flex items-center justify-center flex-shrink-0', icono)}>
           <Icono className="w-4 h-4" strokeWidth={2.5} />
         </div>
       </div>
-      <p className="text-xl sm:text-2xl font-bold text-slate-900 leading-none">{valor}</p>
+      <p className={cn('text-xl sm:text-2xl font-bold leading-none', hero ? 'text-white' : 'text-slate-900')}>{valor}</p>
       <div className="flex items-center gap-2 flex-wrap min-h-[18px]">
         {badge && (
           <span className={cn(
             'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full',
+            hero ? 'bg-white/20 text-white' :
             badgeColor === 'green' ? 'bg-emerald-100 text-emerald-700' :
             badgeColor === 'red'   ? 'bg-red-100 text-red-600'         : 'bg-slate-100 text-slate-400'
           )}>
@@ -43,7 +51,7 @@ function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor }
             {badge}
           </span>
         )}
-        {sub && <span className="text-xs text-slate-400">{sub}</span>}
+        {sub && <span className={cn('text-xs', hero ? 'text-white/70' : 'text-slate-400')}>{sub}</span>}
       </div>
     </div>
   )
@@ -53,10 +61,10 @@ function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor }
 // ─── Fila de alerta (para dashboard) ─────────────────────────────────────────
 function AlertaFila({ Icono, label, count, color, to }) {
   const cls = {
-    red:    { row: 'hover:bg-red-50',    icon: 'bg-red-100 text-red-600',     badge: 'bg-red-100 text-red-700'     },
-    orange: { row: 'hover:bg-orange-50', icon: 'bg-orange-100 text-orange-600', badge: 'bg-orange-100 text-orange-700' },
-    amber:  { row: 'hover:bg-amber-50',  icon: 'bg-amber-100 text-amber-600', badge: 'bg-amber-100 text-amber-700' },
-    violet: { row: 'hover:bg-violet-50', icon: 'bg-violet-100 text-violet-600', badge: 'bg-violet-100 text-violet-700' },
+    red:    { row: 'hover:bg-red-50',    icon: 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-sm shadow-red-500/30',       badge: 'bg-red-100 text-red-700'     },
+    orange: { row: 'hover:bg-orange-50', icon: 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-sm shadow-orange-500/30', badge: 'bg-orange-100 text-orange-700' },
+    amber:  { row: 'hover:bg-amber-50',  icon: 'bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm shadow-amber-500/30',   badge: 'bg-amber-100 text-amber-700' },
+    violet: { row: 'hover:bg-violet-50', icon: 'bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-sm shadow-violet-500/30', badge: 'bg-violet-100 text-violet-700' },
   }[color] || {}
   return (
     <Link to={to}
@@ -433,25 +441,32 @@ export default function DashboardAdmin() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{saludo}, {nombreCorto}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{saludo}, {nombreCorto}</h1>
           <p className="text-xs text-slate-500 mt-0.5 capitalize">{fecha}</p>
         </div>
         <button onClick={cargar} disabled={cargando}
-          className="w-9 h-9 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-all disabled:opacity-40 flex-shrink-0">
+          className="w-9 h-9 rounded-full bg-white border border-slate-100 shadow-card flex items-center justify-center text-slate-500 hover:text-slate-700 hover:shadow-card-hover transition-all disabled:opacity-40 flex-shrink-0">
           <RefreshCw className={cn('w-4 h-4', cargando && 'animate-spin')} />
         </button>
       </div>
 
       {cargando && !d ? (
-        <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-28" />)}
+          </div>
+          <Skeleton className="h-40" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Skeleton className="h-52" />
+            <Skeleton className="h-52" />
+          </div>
         </div>
       ) : d && (
         <>
           {/* KPIs — 2×2 móvil, 4 col desktop */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <KpiCard
-              titulo="Ventas hoy" Icono={ShoppingCart} color="primary" enlace="/ventas"
+              titulo="Ventas hoy" Icono={ShoppingCart} color="primary" enlace="/ventas" hero
               valor={formatoMoneda(d.montoHoy)}
               sub={`${d.ventasCount} venta${d.ventasCount !== 1 ? 's' : ''}`}
               badge={d.varPct !== null ? `${d.varPct >= 0 ? '+' : ''}${d.varPct.toFixed(0)}% vs ayer` : undefined}
@@ -476,7 +491,7 @@ export default function DashboardAdmin() {
 
           {/* Alertas — filas intuivas */}
           {hayAlertas && (
-            <div className="bg-white border border-slate-200 rounded-3xl p-3 shadow-sm">
+            <div className="bg-white border border-slate-100 rounded-3xl p-3 shadow-card">
               <div className="flex items-center gap-2 px-2 mb-2">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                 <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Alertas</p>
@@ -495,11 +510,11 @@ export default function DashboardAdmin() {
           )}
 
           {/* Ventas por sucursal */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm">
+          <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-primary-50 flex items-center justify-center">
-                  <Store className="w-3.5 h-3.5 text-primary-600" />
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-sm shadow-blue-500/30 flex items-center justify-center">
+                  <Store className="w-3.5 h-3.5 text-white" />
                 </div>
                 <p className="text-sm font-bold text-slate-900">Rendimiento por sucursal</p>
               </div>
@@ -540,7 +555,7 @@ export default function DashboardAdmin() {
                       {/* Barra de progreso */}
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-primary-500 transition-all"
+                          <div className="h-full rounded-full bg-gradient-to-r from-primary-500 to-primary-700 transition-all"
                             style={{ width: `${pct}%` }} />
                         </div>
                         <span className="text-[10px] font-semibold text-slate-400 w-10 text-right flex-shrink-0">
@@ -558,11 +573,11 @@ export default function DashboardAdmin() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
             {/* Top productos del día */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm">
+            <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-xl bg-sky-50 flex items-center justify-center">
-                    <TrendingUp className="w-3.5 h-3.5 text-sky-600" />
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-sm shadow-sky-500/30 flex items-center justify-center">
+                    <TrendingUp className="w-3.5 h-3.5 text-white" />
                   </div>
                   <p className="text-sm font-bold text-slate-900">Top productos hoy</p>
                 </div>
@@ -593,7 +608,7 @@ export default function DashboardAdmin() {
                           </div>
                         </div>
                         <div className="h-1 bg-slate-100 rounded-full overflow-hidden ml-5">
-                          <div className="h-full rounded-full bg-sky-400"
+                          <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-600"
                             style={{ width: `${(prod.total / maxTotal) * 100}%` }} />
                         </div>
                       </div>
@@ -604,11 +619,11 @@ export default function DashboardAdmin() {
             </div>
 
             {/* Personal en turno */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm">
+            <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-xl bg-emerald-50 flex items-center justify-center">
-                    <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-sm shadow-emerald-500/30 flex items-center justify-center">
+                    <Activity className="w-3.5 h-3.5 text-white" />
                   </div>
                   <p className="text-sm font-bold text-slate-900">Personal en turno</p>
                 </div>
@@ -633,10 +648,10 @@ export default function DashboardAdmin() {
 
           {/* Recomendaciones */}
           {d.recomendaciones.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm">
+            <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center">
-                  <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-sm shadow-amber-500/30 flex items-center justify-center">
+                  <Lightbulb className="w-3.5 h-3.5 text-white" />
                 </div>
                 <p className="text-sm font-bold text-slate-900">Recomendaciones</p>
               </div>

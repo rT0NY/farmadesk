@@ -49,17 +49,17 @@ export function Chips({
       <div
         onClick={() => inputRef.current?.focus()}
         className={cn(
-          'min-h-11 rounded-2xl border border-slate-200 bg-white',
+          'min-h-11 rounded-2xl border border-transparent bg-slate-100/70',
           'px-3 py-2 flex flex-wrap gap-1.5 items-center',
-          'transition-all cursor-text',
-          'focus-within:ring-2 focus-within:ring-primary-500/30 focus-within:border-primary-500',
+          'transition-all cursor-text hover:bg-slate-100',
+          'focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-500/25 focus-within:border-primary-300',
           disabled && 'bg-slate-50 cursor-not-allowed opacity-60'
         )}
       >
         {valores.map((v, i) => (
           <span
             key={`${v}-${i}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-primary-50 text-primary-700 text-sm font-medium"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-100 text-primary-700 text-sm font-medium"
           >
             {iconoChip}
             {v}

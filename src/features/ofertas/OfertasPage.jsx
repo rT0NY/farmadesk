@@ -11,11 +11,13 @@ import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, formatoFecha, fechaEnZona } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
+import { Fab } from '@/components/ui/Fab'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 const TIPOS_OFERTA = [
@@ -411,8 +413,8 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !cargando && onCerrar()} />
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !cargando && onCerrar()} />
+      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
 
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 flex-shrink-0">
@@ -944,7 +946,7 @@ export default function OfertasPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Ofertas</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Ofertas</h1>
           <p className="text-sm text-slate-500 mt-1">Descuentos y promociones vigentes</p>
         </div>
         <Button onClick={() => { setOfertaEditar(null); setModalAbierto(true) }} iconoIzq={<Plus className="w-4 h-4" />}>
@@ -1017,7 +1019,7 @@ export default function OfertasPage() {
       </div>
 
       {cargando && ofertas.length === 0 ? (
-        <div className="flex justify-center py-16"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" /></div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : filtradas.length === 0 ? (
         <EmptyState icono={Tag} titulo={ofertas.length === 0 ? 'Sin ofertas' : 'Sin resultados'}
           descripcion={ofertas.length === 0 ? 'Crea tu primera oferta.' : 'Ajusta los filtros.'}
@@ -1046,7 +1048,10 @@ export default function OfertasPage() {
                       {o.producto_trigger_id && (
                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">Cruzada</span>
                       )}
-                      <span className={cn('text-[10px] font-bold uppercase px-2.5 py-1 rounded-full border', est.cls)}>{est.label}</span>
+                      <span className={cn('inline-flex items-center gap-1.5 text-[10px] font-bold uppercase px-2.5 py-1 rounded-full border', est.cls)}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                        {est.label}
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
@@ -1079,10 +1084,10 @@ export default function OfertasPage() {
       {/* Modal confirmación eliminar oferta */}
       {confirmarEliminar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setConfirmarEliminar(null)} />
-          <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full">
-            <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6 text-red-600" />
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setConfirmarEliminar(null)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full animate-modal-in">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-white" />
             </div>
             <h3 className="text-center font-semibold text-slate-900 mb-1">Eliminar oferta</h3>
             <p className="text-center text-sm text-slate-500 mb-5">
@@ -1099,6 +1104,8 @@ export default function OfertasPage() {
           </div>
         </div>
       )}
+
+      <Fab onClick={() => { setOfertaEditar(null); setModalAbierto(true) }} label="Nueva oferta" />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import { useApp } from '@/context/AppCtx'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { formatoMoneda, formatoHora, fechaEnZona } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Modal existencias en otras sucursales ────────────────────────────────────
 function ModalExistencias({ onCerrar }) {
@@ -84,8 +85,8 @@ function ModalExistencias({ onCerrar }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
+      <div className="relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col animate-modal-in">
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -175,14 +176,14 @@ function ModalExistencias({ onCerrar }) {
 // ─── KPI compacto ─────────────────────────────────────────────────────────────
 function KpiCompacto({ Icono, label, valor, sub, color }) {
   const cls = {
-    primary: { icon: 'bg-primary-100 text-primary-600', val: 'text-primary-700' },
-    emerald: { icon: 'bg-emerald-100 text-emerald-600', val: 'text-emerald-700' },
-    amber:   { icon: 'bg-amber-100   text-amber-600',   val: 'text-amber-700'   },
-    red:     { icon: 'bg-red-100     text-red-600',     val: 'text-red-700'     },
-    slate:   { icon: 'bg-slate-100   text-slate-500',   val: 'text-slate-700'   },
+    primary: { icon: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-md shadow-blue-500/30',      val: 'text-primary-700' },
+    emerald: { icon: 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-500/30', val: 'text-emerald-700' },
+    amber:   { icon: 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30',    val: 'text-amber-700'   },
+    red:     { icon: 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-md shadow-red-500/30',          val: 'text-red-700'     },
+    slate:   { icon: 'bg-slate-100 text-slate-500',                                                                val: 'text-slate-700'   },
   }[color] ?? { icon: 'bg-slate-100 text-slate-500', val: 'text-slate-700' }
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm flex items-center gap-3">
+    <div className="bg-white rounded-3xl border border-slate-100 p-4 shadow-card flex items-center gap-3">
       <div className={cn('w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0', cls.icon)}>
         <Icono className="w-5 h-5" strokeWidth={2} />
       </div>
@@ -301,14 +302,14 @@ export default function DashboardCajero() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{saludo}, {nombre}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{saludo}, {nombre}</h1>
           <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
             <Store className="w-3.5 h-3.5" />
             {d?.nombreSuc ?? '—'}
           </p>
         </div>
         <button onClick={cargar} disabled={cargando}
-          className="w-9 h-9 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-all disabled:opacity-40 flex-shrink-0">
+          className="w-9 h-9 rounded-full bg-white border border-slate-100 shadow-card flex items-center justify-center text-slate-500 hover:text-slate-700 hover:shadow-card-hover transition-all disabled:opacity-40 flex-shrink-0">
           <RefreshCw className={cn('w-4 h-4', cargando && 'animate-spin')} />
         </button>
       </div>
@@ -320,10 +321,12 @@ export default function DashboardCajero() {
           d?.turno ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
         )}>
           <div className={cn('w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0',
-            d?.turno ? 'bg-emerald-100' : 'bg-amber-100')}>
+            d?.turno
+              ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/30'
+              : 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-md shadow-amber-500/30')}>
             {d?.turno
-              ? <CheckCircle2 className="w-5 h-5 text-emerald-600" strokeWidth={2.5} />
-              : <Clock className="w-5 h-5 text-amber-600" strokeWidth={2.5} />
+              ? <CheckCircle2 className="w-5 h-5 text-white" strokeWidth={2.5} />
+              : <Clock className="w-5 h-5 text-white" strokeWidth={2.5} />
             }
           </div>
           <div className="flex-1 min-w-0">
@@ -350,8 +353,16 @@ export default function DashboardCajero() {
       )}
 
       {cargando ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+        <div className="flex flex-col gap-5">
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+          </div>
+          <Skeleton className="h-48" />
         </div>
       ) : d && (
         <>
@@ -359,7 +370,7 @@ export default function DashboardCajero() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => setModalExistencias(true)}
-              className="bg-sky-600 hover:bg-sky-700 text-white rounded-3xl p-4 flex flex-col gap-3 transition-all active:scale-[0.98] shadow-sm text-left"
+              className="bg-gradient-to-br from-sky-600 to-blue-700 hover:from-sky-700 hover:to-blue-800 text-white rounded-3xl p-4 flex flex-col gap-3 transition-all active:scale-[0.98] shadow-lg shadow-sky-500/30 text-left"
             >
               <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
                 <MapPin className="w-5 h-5" strokeWidth={2.5} />
@@ -371,7 +382,7 @@ export default function DashboardCajero() {
             </button>
 
             {d.turno ? (
-              <div className="bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-3xl p-4 shadow-sm flex flex-col justify-between">
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl p-4 shadow-lg shadow-emerald-500/30 flex flex-col justify-between">
                 <div className="flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-emerald-100" strokeWidth={2} />
                   <p className="text-[11px] font-bold text-emerald-100 uppercase tracking-wider">Efectivo en caja</p>
@@ -414,7 +425,7 @@ export default function DashboardCajero() {
 
           {/* Últimas ventas — solo del cajero */}
           {d.ventasTurno.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+            <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-primary-500" />

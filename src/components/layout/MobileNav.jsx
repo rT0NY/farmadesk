@@ -82,7 +82,7 @@ export default function MobileNav() {
   return (
     <>
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 px-3 pb-3 pointer-events-none">
+      <nav className="fixed bottom-0 inset-x-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pointer-events-none">
         <div className="bg-white/90 backdrop-blur-2xl border border-slate-200/70 rounded-3xl shadow-xl shadow-slate-900/5 pointer-events-auto">
           <div className={cn('grid h-16', esCajero ? 'grid-cols-4' : 'grid-cols-5')}>
 
@@ -103,12 +103,12 @@ export default function MobileNav() {
                   {({ isActive }) => (
                     <>
                       <div className={cn(
-                        'flex items-center justify-center w-8 h-8 rounded-2xl transition-colors',
-                        isActive && 'bg-primary-100'
+                        'flex items-center justify-center w-9 h-8 rounded-full transition-all duration-200',
+                        isActive && 'bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-md shadow-primary-500/30'
                       )}>
                         <Icono className="w-5 h-5" strokeWidth={2.2} />
                       </div>
-                      <span className="text-[10px] font-medium leading-none">{item.nombre}</span>
+                      <span className={cn('text-[10px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>{item.nombre}</span>
                     </>
                   )}
                 </NavLink>
@@ -151,10 +151,10 @@ export default function MobileNav() {
       {abierto && (
         <div className="lg:hidden fixed inset-0 z-50 flex items-end">
           <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in"
             onClick={() => setAbierto(false)}
           />
-          <div className="relative w-full bg-white rounded-t-3xl pb-8 max-h-[88vh] overflow-hidden flex flex-col">
+          <div className="relative w-full bg-white rounded-t-3xl pb-[max(2rem,env(safe-area-inset-bottom))] max-h-[88vh] overflow-hidden flex flex-col animate-sheet-up">
 
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">

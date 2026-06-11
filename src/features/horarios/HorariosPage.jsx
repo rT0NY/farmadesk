@@ -112,8 +112,8 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
           <div>
@@ -148,7 +148,7 @@ function ModalHorarioEmpleado({ empleado, horariosEmpleado, empresa, onClose, on
                   className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30"
                 />
               </div>
-              <Button variante="secundario" tamano="sm" onClick={aplicarDefault}>
+              <Button variante="tinted" tamano="sm" onClick={aplicarDefault}>
                 Aplicar
               </Button>
             </div>
@@ -272,7 +272,7 @@ export default function HorariosPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Horarios</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Horarios</h1>
           <p className="text-sm text-slate-500 mt-0.5">Turnos semanales del equipo</p>
         </div>
         {esAdmin && sucursales.length > 1 && (
@@ -296,7 +296,7 @@ export default function HorariosPage() {
       </div>
 
       {/* Grid */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />

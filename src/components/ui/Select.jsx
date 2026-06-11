@@ -47,12 +47,12 @@ export const Select = forwardRef(function Select({
         onClick={() => !disabled && setAbierto(v => !v)}
         disabled={disabled}
         className={cn(
-          'w-full h-11 rounded-2xl border bg-white text-left',
+          'w-full h-11 rounded-2xl border text-left',
           'flex items-center gap-2 px-4 pr-10 relative',
           'transition-all',
-          abierto && 'ring-2 ring-primary-500/30 border-primary-500',
-          !abierto && error && 'border-red-300',
-          !abierto && !error && 'border-slate-200 hover:border-slate-300',
+          abierto && 'bg-white ring-2 ring-primary-500/25 border-primary-300',
+          !abierto && error && 'bg-red-50/60 border-red-300',
+          !abierto && !error && 'bg-slate-100/70 border-transparent hover:bg-slate-100',
           disabled && 'bg-slate-50 cursor-not-allowed opacity-60',
           className
         )}
@@ -78,7 +78,7 @@ export const Select = forwardRef(function Select({
 
       {abierto && !disabled && (
         <div className="relative">
-          <div className="absolute top-1 left-0 right-0 z-50 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+          <div className="absolute top-1 left-0 right-0 z-50 bg-white rounded-2xl border border-slate-100 shadow-card-hover overflow-hidden max-h-60 overflow-y-auto">
             {permitirVacio && (
               <button
                 type="button"

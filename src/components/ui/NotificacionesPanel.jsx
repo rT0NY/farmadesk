@@ -379,8 +379,8 @@ export function NotificacionesDrawer({ abierto, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:w-96 bg-white h-full shadow-2xl flex flex-col">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:w-96 bg-white h-full shadow-2xl flex flex-col sm:rounded-l-3xl overflow-hidden animate-slide-in-right">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center gap-2">

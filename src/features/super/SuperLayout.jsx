@@ -55,7 +55,7 @@ function SuperSidebar({ abierto, onToggle }) {
       'flex flex-col fixed inset-y-0 left-0 z-40 transition-[width] duration-300 ease-in-out',
       abierto ? 'w-64' : 'w-[60px]'
     )}>
-      <div className="flex flex-col flex-1 bg-white/80 backdrop-blur-xl border border-slate-200/60 m-3 rounded-3xl shadow-lg shadow-slate-200/40 overflow-hidden">
+      <div className="flex flex-col flex-1 bg-white/80 backdrop-blur-xl border border-slate-100 m-3 rounded-3xl shadow-lg shadow-slate-200/40 overflow-hidden">
 
         {/* Header */}
         {abierto ? (

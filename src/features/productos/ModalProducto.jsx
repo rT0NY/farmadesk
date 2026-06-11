@@ -530,11 +530,11 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
         onClick={() => !cargando && onCerrar()}
       />
 
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -1010,11 +1010,11 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
       {/* Confirmación: quitar proveedor del producto */}
       {provAConfirmar && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setProvAConfirmar(null)} />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setProvAConfirmar(null)} />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4 animate-modal-in">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Quitar proveedor</h3>

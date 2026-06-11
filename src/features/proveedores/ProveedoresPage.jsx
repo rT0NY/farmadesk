@@ -15,6 +15,7 @@ import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { formatoMoneda, fechaEnZona } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 // ─── Modal base ───────────────────────────────────────────────────────────────
@@ -22,7 +23,7 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 function Modal({ children, onClose, maxWidth = 'sm:max-w-md' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       <div className={cn(
         'relative w-full bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]',
         maxWidth
@@ -1896,8 +1897,8 @@ function ModalRecibirPedido({ pedido, sucursales, tz, onClose, onExito }) {
       {/* ── Sub-modal: vincular código desconocido ── */}
       {modalVincular && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { setModalVincular(null); setSearchVinc('') }} />
-          <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => { setModalVincular(null); setSearchVinc('') }} />
+          <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal-in">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Código no registrado</h3>
@@ -2510,7 +2511,7 @@ export default function ProveedoresPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Proveedores</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Proveedores</h1>
           <p className="text-sm text-slate-500 mt-0.5 hidden sm:block">
             {proveedores.length} proveedor{proveedores.length !== 1 ? 'es' : ''}
             {' · '}{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''}
@@ -2541,9 +2542,7 @@ export default function ProveedoresPage() {
 
       {/* Loader */}
       {cargando && (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       )}
 
       {/* ── Tab: proveedores ── */}
@@ -2866,7 +2865,7 @@ export default function ProveedoresPage() {
       {/* Modal confirmación eliminar proveedor */}
       {confirmarEliminar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setConfirmarEliminar(null)} />
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setConfirmarEliminar(null)} />
           <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">

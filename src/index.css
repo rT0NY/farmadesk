@@ -35,12 +35,38 @@
 
   /* Radios y sombras */
   --radius-card: 0.75rem;
-  --shadow-card: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.06);
-  --shadow-card-hover: 0 4px 12px 0 rgb(15 23 42 / 0.08);
+  --shadow-card: 0 2px 12px 0 rgb(15 23 42 / 0.05), 0 8px 24px -8px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 4px 16px 0 rgb(15 23 42 / 0.07), 0 12px 32px -8px rgb(15 23 42 / 0.10);
   --shadow-modal: 0 20px 40px -12px rgb(15 23 42 / 0.25);
+  --shadow-primario: 0 4px 14px -2px rgb(37 99 235 / 0.35);
+  --shadow-peligro: 0 4px 14px -2px rgb(239 68 68 / 0.35);
+  --shadow-exito: 0 4px 14px -2px rgb(16 185 129 / 0.35);
 
   /* Tipografía */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Animaciones de entrada (modales y sheets) */
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-sheet-up: sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-modal-in: modal-in 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+  }
 }
 
 html, body, #root {
@@ -52,10 +78,11 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: 
-    radial-gradient(circle at 15% 0%, rgba(191, 219, 254, 0.25) 0%, transparent 40%),
-    radial-gradient(circle at 85% 100%, rgba(219, 234, 254, 0.3) 0%, transparent 45%),
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(147, 197, 253, 0.30) 0%, transparent 42%),
+    radial-gradient(circle at 85% 100%, rgba(165, 180, 252, 0.22) 0%, transparent 45%),
+    radial-gradient(circle at 95% 10%, rgba(103, 232, 249, 0.14) 0%, transparent 35%),
+    linear-gradient(180deg, #fbfcfe 0%, #f1f5fb 100%);
   background-attachment: fixed;
   min-height: 100vh;
 }

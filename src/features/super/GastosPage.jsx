@@ -6,6 +6,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { formatoMoneda } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { toast } from 'sonner'
 
 function estadoGasto(g) {
@@ -77,12 +78,12 @@ function ModalGasto({ gasto, onCerrar, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !cargando && onCerrar()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !cargando && onCerrar()} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-modal-in">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center">
-              <Receipt className="w-5 h-5 text-red-600" />
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30 flex items-center justify-center">
+              <Receipt className="w-5 h-5 text-white" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900">
@@ -214,7 +215,7 @@ export default function GastosPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">Gastos</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Gastos</h1>
           <p className="text-sm text-slate-500 mt-0.5 capitalize">{HOY_STR}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -259,11 +260,9 @@ export default function GastosPage() {
       )}
 
       {/* Lista */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-          </div>
+          <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
         ) : gastos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
@@ -316,7 +315,7 @@ export default function GastosPage() {
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={() => eliminar(g)}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors border border-slate-200">
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors border border-red-200">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>

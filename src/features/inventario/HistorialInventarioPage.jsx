@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Config motivos ───────────────────────────────────────────────────────────
 const MOTIVOS_CFG = {
@@ -144,7 +145,7 @@ export default function HistorialInventarioPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Historial de inventario</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Historial de inventario</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {totalCount > 0
               ? `${totalCount.toLocaleString('es-MX')} movimientos registrados`
@@ -158,7 +159,7 @@ export default function HistorialInventarioPage() {
       </div>
 
       {/* Panel de filtros */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-4 flex flex-col gap-3 shadow-sm">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl p-4 flex flex-col gap-3 shadow-card">
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
@@ -215,9 +216,7 @@ export default function HistorialInventarioPage() {
 
       {/* Contenido */}
       {cargando ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
@@ -248,7 +247,7 @@ export default function HistorialInventarioPage() {
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
 
-              <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+              <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
                 <div className="divide-y divide-slate-100">
                   {items.map(r => {
                     const delta = r.diferencia ?? (Number(r.cantidad_nueva ?? 0) - Number(r.cantidad_anterior ?? 0))

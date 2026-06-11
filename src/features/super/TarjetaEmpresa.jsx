@@ -56,7 +56,7 @@ export default function TarjetaEmpresa({ empresa, onCambio }) {
     <div
       onClick={abrirDetalle}
       className={cn(
-        'bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all',
+        'bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl p-5 shadow-card hover:shadow-md transition-all',
         empresa.estado !== 'eliminada' && 'cursor-pointer hover:border-primary-200'
       )}
     >
@@ -113,7 +113,7 @@ export default function TarjetaEmpresa({ empresa, onCambio }) {
                 {empresa.estado !== 'eliminada' && (
                   <button
                     onClick={() => accion('eliminar', `¿Eliminar "${empresa.nombre}"? Los datos se conservan pero la empresa dejará de aparecer.`)}
-                    className="w-full text-left px-3 py-2 rounded-xl text-sm text-slate-700 hover:bg-red-50 hover:text-red-600 flex items-center gap-2 transition-colors"
+                    className="w-full text-left px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" /> Eliminar
                   </button>

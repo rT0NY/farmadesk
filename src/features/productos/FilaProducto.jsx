@@ -23,8 +23,8 @@ function analizarMargen(precioCompra, precioVenta) {
 function ModalConfirmar({ titulo, mensaje, variante = 'warning', onConfirmar, onCancelar }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCancelar} />
-      <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCancelar} />
+      <div className="relative bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full animate-modal-in">
         <div className={cn(
           'w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4',
           variante === 'danger' ? 'bg-red-100' : 'bg-amber-100'

@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Tipos con colores ────────────────────────────────────────────────────────
 
@@ -166,7 +167,7 @@ export default function BitacoraPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Bitácora</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Bitácora</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {totalCount > 0 ? `${totalCount} registros en total` : 'Historial de movimientos'}
           </p>
@@ -174,7 +175,7 @@ export default function BitacoraPage() {
       </div>
 
       {/* Filtros */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-4 flex flex-col gap-3 shadow-sm">
+      <div className="bg-white border border-slate-100 rounded-3xl p-4 flex flex-col gap-3 shadow-card">
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input type="text" value={busqueda} onChange={e => setBusqueda(e.target.value)}
@@ -226,9 +227,7 @@ export default function BitacoraPage() {
 
       {/* Timeline */}
       {cargando ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-        </div>
+        <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
       ) : registros.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <History className="w-8 h-8 text-slate-300" />

@@ -13,6 +13,7 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { formatoMoneda, isoEnZona, fechaEnZona, addDias } from '@/lib/formatos'
 import { CATEGORIAS_GASTO } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 const CAT_COLORES = {
   insumos:       '#0ea5e9',
@@ -41,12 +42,12 @@ function monedaCorta(v) {
 
 function StatCard({ label, valor, sub, extra, color, Icono, negativo }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-3xl px-5 py-4 shadow-sm flex flex-col gap-3">
+    <div className="bg-white border border-slate-100 rounded-3xl px-5 py-4 shadow-card flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</span>
         <div className="w-8 h-8 rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{ background: color + '20' }}>
-          <Icono style={{ width: 14, height: 14, color }} strokeWidth={2.5} />
+          style={{ background: `linear-gradient(135deg, ${color}e6, ${color})`, boxShadow: `0 4px 10px -2px ${color}55` }}>
+          <Icono style={{ width: 14, height: 14 }} className="text-white" strokeWidth={2.5} />
         </div>
       </div>
       <div>
@@ -565,12 +566,12 @@ export default function ReportesPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Reportes</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Reportes</h1>
           <p className="text-sm text-slate-500 mt-0.5">{labelRango()}</p>
         </div>
         {datos && !cargando && (
           <button onClick={exportarCSV}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm flex-shrink-0">
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary-50 text-sm font-semibold text-primary-700 hover:bg-primary-100 transition-colors flex-shrink-0">
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Exportar CSV</span>
             <span className="sm:hidden">CSV</span>
@@ -579,15 +580,15 @@ export default function ReportesPage() {
       </div>
 
       {/* Selector de período */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm flex flex-col gap-3">
+      <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-card flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           {PERIODOS.map(p => (
             <button key={p.key} onClick={() => setPeriodo(p.key)}
               className={cn(
-                'px-4 py-2 rounded-2xl text-sm font-semibold border transition-all',
+                'px-4 py-2 rounded-full text-sm font-semibold transition-all',
                 periodo === p.key
-                  ? 'bg-primary-600 text-white border-primary-600 shadow-sm shadow-primary-500/20'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300'
+                  ? 'bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-md shadow-primary-500/30'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               )}>
               {p.label}
             </button>
@@ -599,20 +600,30 @@ export default function ReportesPage() {
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-slate-500 w-10">Desde</label>
               <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 bg-slate-50" />
+                className="px-3 py-2 border border-transparent rounded-xl text-sm bg-slate-100/70 hover:bg-slate-100 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500/25 focus:border-primary-300 transition-all" />
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold text-slate-500 w-10">Hasta</label>
               <input type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 bg-slate-50" />
+                className="px-3 py-2 border border-transparent rounded-xl text-sm bg-slate-100/70 hover:bg-slate-100 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500/25 focus:border-primary-300 transition-all" />
             </div>
           </div>
         )}
       </div>
 
       {cargando ? (
-        <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32 col-span-2 lg:col-span-1" />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32 col-span-2 lg:col-span-1" />
+          </div>
+          <Skeleton className="h-64" />
         </div>
       ) : periodo === 'custom' && (!fechaInicio || !fechaFin) ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
@@ -632,13 +643,13 @@ export default function ReportesPage() {
             <StatCard label="Costo de ventas" valor={datos.totalCOGS}
               sub={`${pct(datos.totalCOGS, datos.totalIngresos)}% de los ingresos`}
               color="#ef4444" Icono={Package} />
-            <div className="col-span-2 lg:col-span-1 bg-emerald-50 border border-emerald-200 rounded-3xl px-5 py-4 shadow-sm flex flex-col gap-3">
+            <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl px-5 py-4 shadow-lg shadow-emerald-500/30 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Margen bruto</span>
-                <span className="text-xs font-semibold text-emerald-500">{datos.margenBrPct.toFixed(1)}%</span>
+                <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">Margen bruto</span>
+                <span className="text-xs font-bold text-white bg-white/20 px-2 py-0.5 rounded-full">{datos.margenBrPct.toFixed(1)}%</span>
               </div>
-              <p className="text-2xl font-bold text-emerald-700">{formatoMoneda(datos.margenBruto)}</p>
-              <p className="text-xs text-emerald-500">Ingresos − Costo de ventas</p>
+              <p className="text-2xl font-bold text-white">{formatoMoneda(datos.margenBruto)}</p>
+              <p className="text-xs text-white/70">Ingresos − Costo de ventas</p>
             </div>
           </div>
 
@@ -649,28 +660,30 @@ export default function ReportesPage() {
               sub={`${datos.salarios.length} empleado${datos.salarios.length !== 1 ? 's' : ''}`}
               color="#8b5cf6" Icono={Users} />
             <div className={cn(
-              'col-span-2 lg:col-span-1 rounded-3xl px-5 py-4 shadow-sm flex flex-col gap-3 border',
-              datos.ganancia >= 0 ? 'bg-sky-50 border-sky-200' : 'bg-red-50 border-red-200'
+              'col-span-2 lg:col-span-1 rounded-3xl px-5 py-4 flex flex-col gap-3',
+              datos.ganancia >= 0
+                ? 'bg-gradient-to-br from-primary-600 via-primary-700 to-indigo-700 shadow-lg shadow-primary-500/30'
+                : 'bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/30'
             )}>
               <div className="flex items-center justify-between">
-                <span className={`text-xs font-semibold uppercase tracking-wide ${datos.ganancia >= 0 ? 'text-sky-600' : 'text-red-600'}`}>
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/80">
                   Ganancia neta
                 </span>
-                <span className={`text-xs font-semibold ${datos.ganancia >= 0 ? 'text-sky-500' : 'text-red-500'}`}>
+                <span className="text-xs font-bold text-white bg-white/20 px-2 py-0.5 rounded-full">
                   {datos.margenPct >= 0 ? '' : '–'}{Math.abs(datos.margenPct).toFixed(1)}% margen
                 </span>
               </div>
-              <p className={`text-2xl font-bold ${datos.ganancia >= 0 ? 'text-sky-700' : 'text-red-600'}`}>
+              <p className="text-2xl font-bold text-white">
                 {datos.ganancia < 0 ? '–' : ''}{formatoMoneda(Math.abs(datos.ganancia))}
               </p>
-              <p className={`text-xs ${datos.ganancia >= 0 ? 'text-sky-500' : 'text-red-400'}`}>
+              <p className="text-xs text-white/70">
                 Margen bruto − Gastos − Salarios
               </p>
             </div>
           </div>
 
           {/* ── Gráfica ── */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-card">
             <div className="flex items-center justify-between mb-6">
               <p className="text-sm font-semibold text-slate-700">Ventas en el período</p>
               <div className="flex items-center gap-4 text-xs text-slate-500">
@@ -736,7 +749,7 @@ export default function ReportesPage() {
 
           {/* Por sucursal */}
           {datos.sucursalesData.length > 1 && (
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col gap-5">
+            <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-card flex flex-col gap-5">
               <p className="text-sm font-semibold text-slate-700">Desglose por sucursal</p>
               <div className="flex flex-col gap-5">
                 {datos.sucursalesData.map((s, i) => (
@@ -754,7 +767,7 @@ export default function ReportesPage() {
                       <span>Personal <span className="font-semibold text-slate-700">{formatoMoneda(s.salarios)}</span></span>
                     </div>
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-sky-400 transition-all"
+                      <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-600 transition-all"
                         style={{ width: `${(s.ventas / maxSucVentas) * 100}%` }} />
                     </div>
                     <p className="text-xs text-slate-400">
@@ -771,7 +784,7 @@ export default function ReportesPage() {
 
           {/* Gastos + Salarios */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
+            <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-card flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-slate-700">Gastos por categoría</p>
                 <span className="text-xs text-slate-400">{formatoMoneda(datos.totalGastos)}</span>
@@ -798,7 +811,7 @@ export default function ReportesPage() {
               )}
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
+            <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-card flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-slate-700">Costo de personal</p>
                 <span className="text-xs text-slate-400">{formatoMoneda(datos.totalSalarios)}</span>
@@ -838,7 +851,7 @@ export default function ReportesPage() {
 
           {/* Top productos con margen */}
           {datos.topProductos.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
+            <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-card flex flex-col gap-4">
               <p className="text-sm font-semibold text-slate-700">Productos más vendidos</p>
               <div className="flex flex-col gap-3">
                 {datos.topProductos.map((prod, i) => {

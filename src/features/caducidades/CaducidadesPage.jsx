@@ -10,6 +10,7 @@ import { useApp } from '@/context/AppCtx'
 import { fechaEnZona, addDias } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Fila individual de lote ──────────────────────────────────────────────────
 function FilaLote({ lote, sucursales, hoy }) {
@@ -28,15 +29,10 @@ function FilaLote({ lote, sucursales, hoy }) {
     : dias <= 30                   ? 'text-orange-500'
     : 'text-amber-600'
 
-  const iconBg = dias < 0          ? 'bg-red-100'
-    : dias <= 15                   ? 'bg-red-50'
-    : dias <= 30                   ? 'bg-orange-50'
-    : 'bg-amber-50'
-
-  const iconClr = dias < 0         ? 'text-red-500'
-    : dias <= 15                   ? 'text-red-400'
-    : dias <= 30                   ? 'text-orange-500'
-    : 'text-amber-500'
+  const iconBg = dias < 0          ? 'bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30'
+    : dias <= 15                   ? 'bg-gradient-to-br from-red-400 to-red-600 shadow-md shadow-red-500/25'
+    : dias <= 30                   ? 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-md shadow-orange-500/25'
+    : 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-md shadow-amber-500/25'
 
   // Info de stock por sucursal (solo las que tienen stock)
   const sucConStock = sucursales.filter(s => Number(stockSuc[s.id] || 0) > 0)
@@ -44,7 +40,7 @@ function FilaLote({ lote, sucursales, hoy }) {
   return (
     <div className="flex items-center gap-4 px-5 py-4">
       <div className={cn('w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0', iconBg)}>
-        <CalendarX className={cn('w-5 h-5', iconClr)} strokeWidth={2} />
+        <CalendarX className="w-5 h-5 text-white" strokeWidth={2} />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -102,7 +98,7 @@ function SeccionGrupo({ titulo, lotes, color, Icono, sucursales, hoy }) {
         <div className="h-px flex-1 bg-slate-200" />
       </div>
 
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         <div className="divide-y divide-slate-100">
           {lotes.map(l => (
             <FilaLote key={l.id} lote={l} sucursales={sucursales} hoy={hoy} />
@@ -181,8 +177,8 @@ export default function CaducidadesPage() {
   if (esCajero && !turnoActivo) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center">
-          <Clock className="w-8 h-8 text-amber-600" />
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/30 flex items-center justify-center">
+          <Clock className="w-8 h-8 text-white" />
         </div>
         <div>
           <h2 className="text-lg font-bold text-slate-900">Abre tu turno primero</h2>
@@ -224,7 +220,7 @@ export default function CaducidadesPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Caducidades</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Caducidades</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {lotes.length > 0
               ? `${lotes.length} lote${lotes.length !== 1 ? 's' : ''} con existencias por vencer`
@@ -232,7 +228,7 @@ export default function CaducidadesPage() {
           </p>
         </div>
         <button onClick={cargar} disabled={cargando}
-          className="w-9 h-9 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-40 flex-shrink-0">
+          className="w-9 h-9 rounded-full bg-white border border-slate-100 shadow-card flex items-center justify-center text-slate-500 hover:text-slate-700 hover:shadow-card-hover transition-all disabled:opacity-40 flex-shrink-0">
           <RefreshCw className={cn('w-4 h-4', cargando && 'animate-spin')} />
         </button>
       </div>
@@ -240,18 +236,33 @@ export default function CaducidadesPage() {
       {/* Tarjetas resumen */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { key: 'caducados', label: 'Caducados',    sub: 'con stock',    count: caducados.length, bg: 'bg-red-50',    border: 'border-red-200/60',    num: 'text-red-700',    act: 'ring-2 ring-red-400'    },
-          { key: 'criticos',  label: 'Críticos',     sub: '≤ 30 días',    count: criticos.length,  bg: 'bg-orange-50', border: 'border-orange-200/60', num: 'text-orange-700', act: 'ring-2 ring-orange-400' },
-          { key: 'proximos',  label: 'Próximos',     sub: `≤ ${diasAlerta}d`, count: proximos.length, bg: 'bg-amber-50', border: 'border-amber-200/60', num: 'text-amber-700', act: 'ring-2 ring-amber-400'  },
+          { key: 'caducados', label: 'Caducados', sub: 'con stock',        count: caducados.length, Icono: Flame,         icono: 'bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30',       num: 'text-red-600',    ring: 'border-red-200 ring-2 ring-red-500/20',       chip: 'text-red-700 bg-red-50'       },
+          { key: 'criticos',  label: 'Críticos',  sub: '≤ 30 días',        count: criticos.length,  Icono: AlertTriangle, icono: 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-md shadow-orange-500/30', num: 'text-orange-600', ring: 'border-orange-200 ring-2 ring-orange-500/20', chip: 'text-orange-700 bg-orange-50' },
+          { key: 'proximos',  label: 'Próximos',  sub: `≤ ${diasAlerta}d`, count: proximos.length,  Icono: Clock,         icono: 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-md shadow-amber-500/30',   num: 'text-amber-600',  ring: 'border-amber-200 ring-2 ring-amber-500/20',   chip: 'text-amber-700 bg-amber-50'   },
         ].map(c => (
           <button key={c.key}
             onClick={() => setGrupoActivo(g => g === c.key ? '' : c.key)}
             className={cn(
-              'rounded-2xl border px-4 py-3 text-left transition-all hover:shadow-sm',
-              c.bg, c.border,
-              grupoActivo === c.key && c.act
+              'bg-white rounded-3xl border px-4 py-3 text-left transition-all duration-200',
+              grupoActivo === c.key
+                ? cn(c.ring, 'shadow-card-hover')
+                : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
             )}>
-            <p className={cn('text-2xl font-bold tabular-nums', c.num)}>{c.count}</p>
+            <div className="flex items-start justify-between mb-2">
+              <div className={cn(
+                'w-9 h-9 rounded-2xl flex items-center justify-center',
+                c.count === 0 ? 'bg-slate-100' : c.icono
+              )}>
+                <c.Icono className={cn('w-4 h-4', c.count === 0 ? 'text-slate-400' : 'text-white')} strokeWidth={2} />
+              </div>
+              {grupoActivo === c.key && (
+                <span className={cn('hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full', c.chip)}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  Activo
+                </span>
+              )}
+            </div>
+            <p className={cn('text-2xl font-bold tabular-nums', c.count === 0 ? 'text-slate-900' : c.num)}>{c.count}</p>
             <p className="text-xs font-medium text-slate-700 mt-0.5">{c.label}</p>
             <p className="text-[11px] text-slate-400">{c.sub}</p>
           </button>
@@ -264,7 +275,7 @@ export default function CaducidadesPage() {
         <div className="relative">
           <Timer className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <select value={diasAlerta} onChange={e => setDiasAlerta(Number(e.target.value))}
-            className="appearance-none bg-white border border-slate-200 rounded-2xl pl-8 pr-7 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+            className="appearance-none bg-slate-100/70 hover:bg-slate-100 border border-transparent rounded-2xl pl-8 pr-7 py-2 text-sm text-slate-700 transition-all focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500/25 focus:border-primary-300">
             <option value={30}>30 días</option>
             <option value={60}>60 días</option>
             <option value={90}>90 días</option>
@@ -278,7 +289,7 @@ export default function CaducidadesPage() {
           <div className="relative">
             <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             <select value={sucFiltro} onChange={e => setSucFiltro(e.target.value)}
-              className="appearance-none bg-white border border-slate-200 rounded-2xl pl-8 pr-7 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              className="appearance-none bg-slate-100/70 hover:bg-slate-100 border border-transparent rounded-2xl pl-8 pr-7 py-2 text-sm text-slate-700 transition-all focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500/25 focus:border-primary-300">
               <option value="">Todas las sucursales</option>
               {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
@@ -298,7 +309,7 @@ export default function CaducidadesPage() {
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)}
-              className="appearance-none bg-white border border-slate-200 rounded-2xl pl-8 pr-7 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              className="appearance-none bg-slate-100/70 hover:bg-slate-100 border border-transparent rounded-2xl pl-8 pr-7 py-2 text-sm text-slate-700 transition-all focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary-500/25 focus:border-primary-300">
               <option value="">Todas las categorías</option>
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -330,8 +341,10 @@ export default function CaducidadesPage() {
 
       {/* Lista */}
       {cargando ? (
-        <div className="flex justify-center py-16">
-          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
         </div>
       ) : filtrados.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">

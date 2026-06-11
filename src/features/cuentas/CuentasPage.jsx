@@ -17,15 +17,18 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 function TarjetaKpi({ titulo, valor, sub, color }) {
   const cls = {
-    red:    { wrap: 'bg-red-50    border-red-200',    num: 'text-red-700',    sub: 'text-red-400'    },
-    amber:  { wrap: 'bg-amber-50  border-amber-200',  num: 'text-amber-700',  sub: 'text-amber-500'  },
-    emerald:{ wrap: 'bg-emerald-50 border-emerald-200',num:'text-emerald-700',sub: 'text-emerald-500' },
+    red:    { num: 'text-red-600',     dot: 'bg-red-500'     },
+    amber:  { num: 'text-amber-600',   dot: 'bg-amber-500'   },
+    emerald:{ num: 'text-emerald-600', dot: 'bg-emerald-500' },
   }[color] ?? {}
   return (
-    <div className={cn('rounded-2xl border px-4 py-3.5 flex flex-col gap-0.5', cls.wrap)}>
-      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{titulo}</p>
+    <div className="bg-white rounded-3xl border border-slate-100 shadow-card px-4 py-3.5 flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5">
+        <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cls.dot)} />
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{titulo}</p>
+      </div>
       <p className={cn('text-xl font-bold tabular-nums leading-tight', cls.num)}>{valor}</p>
-      {sub && <p className={cn('text-xs', cls.sub)}>{sub}</p>}
+      {sub && <p className="text-xs text-slate-400">{sub}</p>}
     </div>
   )
 }
@@ -88,8 +91,8 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col gap-5 p-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col gap-5 p-6 animate-modal-in">
 
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -408,7 +411,7 @@ export default function CuentasPage() {
     <div className="flex flex-col gap-6">
       {/* Encabezado */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Cuentas pendientes</h1>
+        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Cuentas pendientes</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           {esAdmin ? 'Todas las sucursales' : sucursalActiva?.nombre ?? '—'}
         </p>
@@ -438,7 +441,7 @@ export default function CuentasPage() {
           ].map(p => (
             <button key={p.v} onClick={() => setPeriodo(p.v)}
               className={cn('px-3 py-1.5 rounded-xl text-xs font-medium border transition-all',
-                periodo === p.v ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300')}>
+                periodo === p.v ? 'bg-gradient-to-b from-primary-600 to-primary-700 text-white border-transparent shadow-md shadow-primary-500/30' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300')}>
               {p.label}
             </button>
           ))}
@@ -498,7 +501,7 @@ export default function CuentasPage() {
       </div>
 
       {/* Lista */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />

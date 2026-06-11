@@ -134,10 +134,10 @@ export default function BuscadorGlobal({ abierto, onClose }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center pt-16 px-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal-in">
 
         {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">

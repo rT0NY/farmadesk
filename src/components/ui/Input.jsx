@@ -27,15 +27,15 @@ export const Input = forwardRef(function Input(
           ref={ref}
           id={inputId}
           className={cn(
-            'w-full h-11 rounded-2xl border bg-white text-slate-900 placeholder:text-slate-400',
+            'w-full h-11 rounded-2xl border text-slate-900 placeholder:text-slate-400',
             'transition-all duration-200 ease-out',
-            'focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500',
+            'focus:outline-none focus:bg-white focus:ring-2',
             'disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed',
             iconoIzq ? 'pl-11' : 'pl-4',
             iconoDer ? 'pr-11' : 'pr-4',
             error
-              ? 'border-red-300 focus:ring-red-500/30 focus:border-red-500'
-              : 'border-slate-200',
+              ? 'bg-red-50/60 border-red-300 focus:ring-red-500/25 focus:border-red-400'
+              : 'bg-slate-100/70 border-transparent hover:bg-slate-100 focus:ring-primary-500/25 focus:border-primary-300',
             className
           )}
           {...props}

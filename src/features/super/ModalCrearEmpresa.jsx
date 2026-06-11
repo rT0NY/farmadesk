@@ -207,11 +207,11 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
         onClick={() => !cargando && onCerrar()}
       />
 
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-primary-100 flex items-center justify-center">
@@ -307,7 +307,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
                       <button
                         type="button"
                         onClick={() => quitarSucursal(s.id)}
-                        className="w-7 h-7 rounded-lg hover:bg-red-50 hover:text-red-600 text-slate-400 flex items-center justify-center transition-colors"
+                        className="w-7 h-7 rounded-lg hover:bg-red-50 hover:text-red-600 text-red-400 flex items-center justify-center transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

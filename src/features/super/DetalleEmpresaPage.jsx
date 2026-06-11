@@ -12,6 +12,7 @@ import { sanitizar } from '@/lib/sanitizar'
 import { formatoFecha, formatoMoneda } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 
 function CampoTexto({ label, value, onChange, placeholder, opts = {} }) {
@@ -42,8 +43,8 @@ function formatDireccion(s) {
 function ModalConfirmar({ mensaje, onConfirmar, onCancelar, variante = 'danger' }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCancelar} />
-      <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 w-full sm:max-w-sm">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCancelar} />
+      <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 w-full sm:max-w-sm animate-modal-in">
         <div className={cn(
           'w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4',
           variante === 'danger' ? 'bg-red-100' : 'bg-amber-100'
@@ -108,8 +109,8 @@ function ModalEditarSucursal({ sucursal, onCerrar, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !cargando && onCerrar()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !cargando && onCerrar()} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-primary-100 flex items-center justify-center">
@@ -189,8 +190,8 @@ function ModalNuevaSucursal({ empresaId, onCerrar, onExito }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => !cargando && onCerrar()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !cargando && onCerrar()} />
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 flex-shrink-0">
           <div className="w-9 h-9 rounded-2xl bg-primary-100 flex items-center justify-center">
             <Store className="w-5 h-5 text-primary-600" />
@@ -619,9 +620,7 @@ export default function DetalleEmpresaPage() {
 
   if (cargando) {
     return (
-      <div className="flex justify-center py-16">
-        <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-      </div>
+      <div className="flex flex-col gap-3"><Skeleton className="h-24" /><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
     )
   }
 
@@ -642,7 +641,7 @@ export default function DetalleEmpresaPage() {
       </button>
 
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 shadow-sm">
+      <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl p-5 shadow-card">
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-2xl bg-primary-100 flex items-center justify-center flex-shrink-0">
             <Building2 className="w-7 h-7 text-primary-600" />
@@ -650,7 +649,7 @@ export default function DetalleEmpresaPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 flex-wrap">
               <div>
-                <h1 className="text-xl lg:text-2xl font-bold text-slate-900">
+                <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">
                   {empresa.nombre}
                 </h1>
                 <p className="text-sm text-slate-500 mt-0.5">
@@ -936,7 +935,7 @@ export default function DetalleEmpresaPage() {
 
       {/* Historial de pagos */}
       {(pagosHistorial.length > 0 || billing.dia_pago) && (
-        <div className="bg-white/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden">
+        <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
           <button
             onClick={() => setHistorialAbierto(v => !v)}
             className="w-full flex items-center gap-3 px-5 py-4 hover:bg-slate-50/60 transition-colors"
@@ -1002,7 +1001,7 @@ export default function DetalleEmpresaPage() {
         </div>
 
         {sucursales.length === 0 ? (
-          <div className="bg-white/80 border border-slate-200/60 rounded-3xl p-8 text-center">
+          <div className="bg-white/80 border border-slate-100 rounded-3xl p-8 text-center">
             <p className="text-sm text-slate-500">Sin sucursales</p>
           </div>
         ) : (
