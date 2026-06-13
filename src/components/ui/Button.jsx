@@ -16,6 +16,8 @@ const VARIANTES = {
     'bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-600',
   exito:
     'bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:from-emerald-700 active:to-emerald-800 text-white shadow-exito hover:shadow-lg hover:shadow-emerald-500/40',
+  advertencia:
+    'bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 active:from-amber-600 active:to-amber-700 text-white shadow-advertencia hover:shadow-lg hover:shadow-amber-500/40',
 }
 
 const TAMANOS = {

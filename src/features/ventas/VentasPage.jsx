@@ -40,7 +40,7 @@ function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col animate-modal-in">
+      <div className="relative w-full sm:max-w-md bg-white rounded-none sm:rounded-3xl shadow-2xl h-[100dvh] sm:h-auto sm:max-h-[92dvh] overflow-hidden flex flex-col animate-modal-in">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
             <h3 className="text-base font-semibold text-slate-900 font-mono">{folio}</h3>
@@ -86,14 +86,23 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
     enviandoRef.current = true
     setEnviando(true)
     try {
+      const userId = (await supabase.auth.getUser()).data.user.id
       const { error } = await supabase.from('cancelaciones').insert([{
         empresa_id: empresa.id,
         venta_id: venta.id,
-        solicitado_por: (await supabase.auth.getUser()).data.user.id,
+        solicitado_por: userId,
         motivo: motivo.trim(),
         estado: 'pendiente',
       }])
       if (error) throw error
+      await logBitacora({
+        empresa_id:    empresa.id,
+        tipo:          'cancelacion_solicitada',
+        descripcion:   `Solicitud de cancelación · ${generarFolio(venta.id, sucursalNombre)} · ${formatoMoneda(venta.total)} · Motivo: ${motivo.trim()}`,
+        usuario_id:    userId,
+        sucursal_id:   venta.sucursal_id ?? null,
+        referencia_id: String(venta.id),
+      })
       toast.success('Cancelación solicitada')
       onExito?.()
       onCerrar()
@@ -238,7 +247,7 @@ function ModalCierreTurno({ turnoActual, resumenTurno, sucursalNombre, onImprimi
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !resultado && onClose()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
+      <div className="relative w-full sm:max-w-md bg-white rounded-none sm:rounded-3xl shadow-2xl h-[100dvh] sm:h-auto sm:max-h-[92dvh] overflow-hidden flex flex-col animate-modal-in">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">

@@ -41,6 +41,7 @@
   --shadow-primario: 0 4px 14px -2px rgb(37 99 235 / 0.35);
   --shadow-peligro: 0 4px 14px -2px rgb(239 68 68 / 0.35);
   --shadow-exito: 0 4px 14px -2px rgb(16 185 129 / 0.35);
+  --shadow-advertencia: 0 4px 14px -2px rgb(245 158 11 / 0.35);
 
   /* Tipografía */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;

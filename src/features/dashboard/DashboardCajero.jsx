@@ -86,7 +86,7 @@ function ModalExistencias({ onCerrar }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onCerrar} />
-      <div className="relative w-full sm:max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col animate-modal-in">
+      <div className="relative w-full sm:max-w-xl bg-white rounded-none sm:rounded-3xl shadow-2xl h-[100dvh] sm:h-auto sm:max-h-[92dvh] flex flex-col animate-modal-in">
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3">

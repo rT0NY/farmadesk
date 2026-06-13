@@ -26,6 +26,7 @@ import CuentasPage from '@/features/cuentas/CuentasPage'
 import TransferenciasPage from '@/features/transferencias/TransferenciasPage'
 import EmpleadosPage from '@/features/empleados/EmpleadosPage'
 import ProveedoresPage from '@/features/proveedores/ProveedoresPage'
+import PedidosPage from '@/features/pedidos/PedidosPage'
 import ProgramacionPage from '@/features/programacion/ProgramacionPage'
 import SalariosPage from '@/features/salarios/SalariosPage'
 import SucursalesPage from '@/features/sucursales/SucursalesPage'
@@ -161,6 +162,7 @@ export default function App() {
       <Route path="/horarios" element={<RutaNormal roles={['admin','encargado']}><ProgramacionPage /></RutaNormal>} />
       <Route path="/salarios" element={<RutaNormal roles={['admin']}><SalariosPage /></RutaNormal>} />
       <Route path="/proveedores" element={<RutaNormal roles={['admin','encargado']}><ProveedoresPage /></RutaNormal>} />
+      <Route path="/pedidos" element={<RutaNormal roles={['admin','encargado','cajero']}><PedidosPage /></RutaNormal>} />
 
       {/* Administración */}
       <Route path="/sucursales" element={<RutaNormal roles={['admin']}><SucursalesPage /></RutaNormal>} />

@@ -211,7 +211,7 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
         onClick={() => !cargando && onCerrar()}
       />
 
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-hidden flex flex-col animate-modal-in">
+      <div className="relative w-full sm:max-w-lg bg-white rounded-none sm:rounded-3xl shadow-2xl h-[100dvh] sm:h-auto sm:max-h-[92dvh] overflow-hidden flex flex-col animate-modal-in">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-primary-100 flex items-center justify-center">

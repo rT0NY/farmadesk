@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Ban, Check, X, AlertTriangle, Building2, Package } from 'lucide-react'
+import { Ban, Check, X, AlertTriangle, Building2, Package, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { formatoMoneda, formatoFechaHora, fechaEnZona, generarFolio } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,13 @@ const BADGE = {
   rechazada: 'bg-red-100 text-red-700 border-red-200',
 }
 const ETIQUETA = { pendiente: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' }
+
+// Estilo visual por estado (iconos en gradiente + ring/chip al filtrar)
+const ESTADO_VISUAL = {
+  pendiente: { Icono: Clock, sub: 'por revisar',  icono: 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-md shadow-amber-500/30',   ring: 'border-amber-200 ring-2 ring-amber-500/20',     chip: 'text-amber-700 bg-amber-50',     num: 'text-amber-600'   },
+  aprobada:  { Icono: Check, sub: 'en el período', icono: 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/30', ring: 'border-emerald-200 ring-2 ring-emerald-500/20', chip: 'text-emerald-700 bg-emerald-50', num: 'text-emerald-600' },
+  rechazada: { Icono: X,     sub: 'en el período', icono: 'bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30',          ring: 'border-red-200 ring-2 ring-red-500/20',         chip: 'text-red-700 bg-red-50',         num: 'text-red-600'     },
+}
 
 function Badge({ estado }) {
   return (
@@ -70,7 +78,7 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto animate-modal-in">
+      <div className="relative w-full sm:max-w-md bg-white rounded-none sm:rounded-3xl shadow-2xl p-6 flex flex-col gap-5 h-[100dvh] sm:h-auto sm:max-h-[92dvh] overflow-y-auto animate-modal-in">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Aprobar cancelación</h2>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-colors">
@@ -106,7 +114,7 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
 
         <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-600 space-y-0.5">
           <p>Se restaurará el inventario de todos los productos.</p>
-          <p>Se creará un movimiento de entrada en caja por {formatoMoneda(cancelacion.ventas?.total)}.</p>
+          <p>La venta se marcará como cancelada y se descontará del corte de caja del turno.</p>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -216,12 +224,14 @@ function FilaCancelacion({ c, puedeGestionar, onAprobar, onRechazar }) {
   const sucursal  = c.ventas?.sucursales?.nombre
   const solicitante = c.solicitante?.nombre
   const productos = c.ventas?.detalle_ventas ?? []
+  const v = ESTADO_VISUAL[c.estado] ?? ESTADO_VISUAL.pendiente
+  const IconoEstado = v.Icono
 
   return (
     <div className="px-5 py-4 flex flex-col gap-2">
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <Ban className="w-5 h-5 text-slate-400" />
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className={cn('w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 mt-0.5', v.icono)}>
+          <IconoEstado className="w-5 h-5 text-white" strokeWidth={2} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -248,10 +258,10 @@ function FilaCancelacion({ c, puedeGestionar, onAprobar, onRechazar }) {
           )}
         </div>
         {puedeGestionar && c.estado === 'pendiente' && (
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 w-full sm:w-auto justify-end sm:flex-shrink-0">
             <button
               onClick={() => onRechazar(c)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-100 text-red-700 hover:bg-red-200 active:scale-95 transition-all text-xs font-bold border border-red-200"
+              className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-3.5 py-2 sm:py-1.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 active:scale-95 transition-all text-xs font-bold"
               title="Rechazar cancelación"
             >
               <X className="w-3.5 h-3.5" strokeWidth={3} />
@@ -259,7 +269,7 @@ function FilaCancelacion({ c, puedeGestionar, onAprobar, onRechazar }) {
             </button>
             <button
               onClick={() => onAprobar(c)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 transition-all text-xs font-bold shadow-sm"
+              className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-3.5 py-2 sm:py-1.5 rounded-full bg-gradient-to-b from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 active:scale-95 transition-all text-xs font-bold shadow-md shadow-emerald-500/30"
               title="Aprobar cancelación"
             >
               <Check className="w-3.5 h-3.5" strokeWidth={3} />
@@ -271,7 +281,7 @@ function FilaCancelacion({ c, puedeGestionar, onAprobar, onRechazar }) {
 
       {/* Productos de la venta */}
       {productos.length > 0 && (
-        <div className="ml-14 bg-slate-50 border border-slate-200 rounded-2xl divide-y divide-slate-200 overflow-hidden">
+        <div className="ml-14 bg-slate-50 border border-slate-100 rounded-2xl divide-y divide-slate-100 overflow-hidden">
           {productos.map((d, i) => (
             <div key={i} className="flex items-center justify-between px-3 py-2">
               <div className="flex items-center gap-2">
@@ -388,6 +398,41 @@ export default function CancelacionesPage() {
         </div>
       )}
 
+      {/* KPIs — usan conteos de TODAS, no del filtro */}
+      <div className="grid grid-cols-3 gap-3">
+        {['pendiente', 'aprobada', 'rechazada'].map((estado) => {
+          const v = ESTADO_VISUAL[estado]
+          const activo = filtroEstado === estado
+          return (
+            <button
+              key={estado}
+              onClick={() => setFiltroEstado(estado)}
+              className={cn(
+                'bg-white rounded-3xl border px-4 py-3 text-left transition-all duration-200',
+                activo
+                  ? cn(v.ring, 'shadow-card-hover')
+                  : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
+              )}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className={cn('w-9 h-9 rounded-2xl flex items-center justify-center', v.icono)}>
+                  <v.Icono className="w-4 h-4 text-white" strokeWidth={2} />
+                </div>
+                {activo && (
+                  <span className={cn('hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full', v.chip)}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                    Activo
+                  </span>
+                )}
+              </div>
+              <p className={cn('text-2xl font-bold tabular-nums', v.num)}>{conteos[estado]}</p>
+              <p className="text-xs font-medium text-slate-700 mt-0.5">{ETIQUETA[estado]}</p>
+              <p className="text-[11px] text-slate-400">{v.sub}</p>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Filtro de período */}
       <div className="flex gap-2 flex-wrap items-center">
         <span className="text-xs font-medium text-slate-500">Período:</span>
@@ -396,10 +441,10 @@ export default function CancelacionesPage() {
             key={p.v}
             onClick={() => setPeriodo(p.v)}
             className={cn(
-              'px-3 py-1.5 rounded-xl text-xs font-medium border transition-all',
+              'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
               periodo === p.v
-                ? 'bg-gradient-to-b from-primary-600 to-primary-700 text-white border-transparent shadow-md shadow-primary-500/30'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                ? 'bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-md shadow-primary-500/30'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             )}
           >
             {p.label}
@@ -407,30 +452,19 @@ export default function CancelacionesPage() {
         ))}
       </div>
 
-      {/* KPIs — usan conteos de TODAS, no del filtro */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {['pendiente', 'aprobada', 'rechazada'].map((estado) => (
-          <button
-            key={estado}
-            onClick={() => setFiltroEstado(estado)}
-            className={cn(
-              'border rounded-2xl px-4 py-3 text-left transition-all',
-              filtroEstado === estado
-                ? BADGE[estado] + ' border-current'
-                : 'bg-white border-slate-200/60 hover:border-slate-300'
-            )}
-          >
-            <p className="text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-wide">{ETIQUETA[estado]}</p>
-            <p className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">{conteos[estado]}</p>
-          </button>
-        ))}
-      </div>
-
       {/* Lista */}
       <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
         {cargando ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+          <div className="divide-y divide-slate-100">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="px-5 py-4 flex items-center gap-4">
+                <Skeleton className="w-10 h-10 rounded-2xl flex-shrink-0" />
+                <div className="flex-1 flex flex-col gap-2">
+                  <Skeleton className="h-3.5 w-1/3 rounded-full" />
+                  <Skeleton className="h-3 w-1/2 rounded-full" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : cancelaciones.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">

@@ -260,7 +260,7 @@ function ModalSalario({ empleado, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
+      <div className="relative w-full sm:max-w-lg bg-white rounded-none sm:rounded-3xl shadow-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[92dvh] animate-modal-in">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 flex-shrink-0">

@@ -29,6 +29,7 @@ const MAS_SECCIONES = [
     items: [
       { ruta: '/productos',      nombre: 'Productos',      icono: Package,       roles: ['admin', 'encargado'] },
       { ruta: '/inventario',     nombre: 'Inventario',     icono: Archive,       roles: ['admin', 'encargado'] },
+      { ruta: '/pedidos',        nombre: 'Pedidos',        icono: ClipboardList, roles: ['admin', 'encargado', 'cajero'] },
       { ruta: '/ofertas',        nombre: 'Ofertas',        icono: Tag,           roles: ['admin', 'encargado'] },
       { ruta: '/transferencias',       nombre: 'Transferencias',       icono: ArrowLeftRight, roles: ['admin', 'encargado'] },
       { ruta: '/historial-inventario', nombre: 'Historial inventario', icono: ListOrdered,    roles: ['admin', 'encargado'] },
@@ -154,7 +155,7 @@ export default function MobileNav() {
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in"
             onClick={() => setAbierto(false)}
           />
-          <div className="relative w-full bg-white rounded-t-3xl pb-[max(2rem,env(safe-area-inset-bottom))] max-h-[88vh] overflow-hidden flex flex-col animate-sheet-up">
+          <div className="relative w-full bg-white rounded-t-3xl pb-[max(2rem,env(safe-area-inset-bottom))] max-h-[88dvh] overflow-hidden flex flex-col animate-sheet-up">
 
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">

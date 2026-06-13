@@ -48,9 +48,13 @@ const TIPOS = {
 
   // ── Pedidos a proveedores ────────────────────────────────────────────────────
   pedido_creado:            { label: 'Pedido creado',          color: '#8b5cf6', bg: '#ede9fe', borde: '#8b5cf6', Icono: ClipboardList  },
+  pedido_editado:           { label: 'Pedido editado',         color: '#0087c6', bg: '#dbeafe', borde: '#0087c6', Icono: ClipboardList  },
   pedido_recibido:          { label: 'Mercancía recibida',     color: '#10b981', bg: '#d1fae5', borde: '#10b981', Icono: Truck          },
   pedido_recibido_parcial:  { label: 'Recepción parcial',      color: '#f59e0b', bg: '#fef3c7', borde: '#f59e0b', Icono: Truck          },
   pedido_cancelado:         { label: 'Pedido cancelado',       color: '#ef4444', bg: '#fee2e2', borde: '#ef4444', Icono: Ban            },
+
+  // ── Proveedores ───────────────────────────────────────────────────────────
+  proveedor_eliminado:      { label: 'Proveedor eliminado',    color: '#64748b', bg: '#f1f5f9', borde: '#94a3b8', Icono: Truck          },
 
   // ── Productos ───────────────────────────────────────────────────────────────
   producto_creado:          { label: 'Producto creado',        color: '#0087c6', bg: '#dbeafe', borde: '#0087c6', Icono: Package        },

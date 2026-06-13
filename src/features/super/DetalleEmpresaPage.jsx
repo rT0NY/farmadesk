@@ -110,7 +110,7 @@ function ModalEditarSucursal({ sucursal, onCerrar, onExito }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !cargando && onCerrar()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
+      <div className="relative w-full sm:max-w-md bg-white rounded-none sm:rounded-3xl shadow-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[92dvh] animate-modal-in">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-primary-100 flex items-center justify-center">
@@ -191,7 +191,7 @@ function ModalNuevaSucursal({ empresaId, onCerrar, onExito }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => !cargando && onCerrar()} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] animate-modal-in">
+      <div className="relative w-full sm:max-w-md bg-white rounded-none sm:rounded-3xl shadow-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[92dvh] animate-modal-in">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 flex-shrink-0">
           <div className="w-9 h-9 rounded-2xl bg-primary-100 flex items-center justify-center">
             <Store className="w-5 h-5 text-primary-600" />
