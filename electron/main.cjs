@@ -43,6 +43,21 @@ function crearVentana() {
     return { action: 'deny' }
   })
 
+  // Impedir que la ventana principal navegue fuera de la app (defensa en profundidad).
+  // La app es una SPA: cualquier navegación del top frame a otro origen se cancela;
+  // si es http(s) se abre en el navegador del sistema, no dentro de Electron.
+  win.webContents.on('will-navigate', (event, url) => {
+    const permitido = isDev
+      ? url.startsWith('http://localhost:5173')
+      : url.startsWith('file://')
+    if (!permitido) {
+      event.preventDefault()
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        shell.openExternal(url)
+      }
+    }
+  })
+
   if (isDev) {
     win.loadURL('http://localhost:5173')
   } else {

@@ -170,21 +170,6 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
             />
           </div>
 
-          {/* Botones rápidos */}
-          <div className="flex gap-2 flex-wrap">
-            {[50, 100, 200, 500].map(v => (
-              <button key={v}
-                onClick={() => setMonto(String(Math.min(v, saldo).toFixed(2)))}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
-                +${v}
-              </button>
-            ))}
-            <button
-              onClick={() => setMonto(String(saldo.toFixed(2)))}
-              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors ml-auto">
-              Saldo completo
-            </button>
-          </div>
         </div>
 
         {/* Nuevo saldo preview */}
@@ -266,7 +251,7 @@ function TarjetaCuenta({ cuenta, onAbonar, onLiquidar }) {
               {!cuenta.pagada && diasPendiente > 0 && (
                 <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border', antigüedadColor)}>
                   {diasPendiente > 7 && <AlertTriangle className="w-2.5 h-2.5" />}
-                  {diasPendiente}d pendiente
+                  {diasPendiente} {diasPendiente === 1 ? 'día pendiente' : 'días pendientes'}
                 </span>
               )}
             </div>

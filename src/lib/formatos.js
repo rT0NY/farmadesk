@@ -84,3 +84,16 @@ export const formatoHora = (fecha) => {
   const d = new Date(fecha)
   return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
 }
+
+// Escapa texto controlado por el usuario antes de interpolarlo en HTML de tickets/etiquetas.
+// Evita XSS almacenado: p. ej. un producto llamado <img onerror=...> ejecutándose en la
+// ventana de impresión (mismo origen que la app → acceso a la sesión de Supabase).
+export const escapeHtml = (valor) => {
+  if (valor === null || valor === undefined) return ''
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}

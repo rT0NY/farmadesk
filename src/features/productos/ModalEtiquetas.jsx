@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { X, Printer, Tag } from 'lucide-react'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
+import { escapeHtml } from '@/lib/formatos'
 
 // Dimensiones fijas: etiqueta estilo farmacia (3 por fila)
 const COLS   = 3
@@ -23,12 +24,12 @@ function htmlEtiqueta(producto, empresaNombre) {
       <div style="font-size:${FS - 2}px;color:#64748b;font-weight:600;
         text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;
         overflow:hidden;text-overflow:ellipsis">
-        ${empresaNombre}${categoria ? ` · ${categoria}` : ''}
+        ${escapeHtml(empresaNombre)}${categoria ? ` · ${escapeHtml(categoria)}` : ''}
       </div>
       <div style="font-size:${FS}px;font-weight:700;color:#0f172a;line-height:1.25;flex:1;
         display:flex;align-items:center;margin:4px 0">
         <span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
-          ${nombre}
+          ${escapeHtml(nombre)}
         </span>
       </div>
       <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:6px">
@@ -71,15 +72,19 @@ export default function ModalEtiquetas({ productos, onClose }) {
 
   function imprimir() {
     const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win || win.closed) return
     const html = filas.map(fila =>
       `<div style="display:flex;gap:8px;margin-bottom:8px">
         ${fila.map(p => htmlEtiqueta(p, empresaNombre)).join('')}
       </div>`
     ).join('')
 
+    // Sin <script> inline en la ventana hija: la CSP de la app (script-src 'self')
+    // se hereda a la ventana about:blank y bloquearía scripts inline. Disparamos
+    // print/close desde la ventana padre, que no está sujeta a esa restricción.
     win.document.write(`<!DOCTYPE html><html><head>
       <meta charset="UTF-8">
-      <title>Etiquetas — ${empresaNombre}</title>
+      <title>Etiquetas — ${escapeHtml(empresaNombre)}</title>
       <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Arial,sans-serif;padding:10px;background:white}
@@ -87,9 +92,10 @@ export default function ModalEtiquetas({ productos, onClose }) {
       </style>
     </head><body>
       ${html}
-      <script>window.onload=()=>{window.print();window.close()}</script>
     </body></html>`)
     win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
   }
 
   return (

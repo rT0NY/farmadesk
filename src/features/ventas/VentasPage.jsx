@@ -192,7 +192,7 @@ async function abrirImpresion(html) {
 
 // ─── Helper: escapar texto interpolado en HTML de tickets ────────────────────
 function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
 // ─── Helper: construir HTML del ticket ───────────────────────────────────────
@@ -977,7 +977,7 @@ export default function VentasPage() {
 
   // Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y convierte a mayúsculas
   // eslint-disable-next-line no-control-regex
-  const normalizarCodigo = (s) => (s || '').replace(/[ -]/g, '').trim().toUpperCase()
+  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F]/g, '').trim().toUpperCase()
 
   function procesarBarcode(val) {
     val = normalizarCodigo(val)

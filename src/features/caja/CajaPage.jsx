@@ -12,7 +12,7 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp } from '@/context/AppCtx'
-import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona } from '@/lib/formatos'
+import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
@@ -223,10 +223,10 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
       .sec{font-size:10px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
       .neg{color:#cc0000}
     </style></head><body>
-      <h2>${empresa?.nombre || 'FARMACIA'}</h2>
-      <div class="sub">${sucursalNombre || ''}</div>
+      <h2>${escapeHtml(empresa?.nombre || 'FARMACIA')}</h2>
+      <div class="sub">${escapeHtml(sucursalNombre || '')}</div>
       <div class="fecha">Apertura: ${fd(aperturaDt)} ${fh(aperturaDt)}<br>Corte: ${fd(new Date())} ${fh(new Date())}</div>
-      ${turno?.perfiles?.nombre ? `<div class="sub">Operador: ${turno.perfiles.nombre}</div>` : ''}
+      ${turno?.perfiles?.nombre ? `<div class="sub">Operador: ${escapeHtml(turno.perfiles.nombre)}</div>` : ''}
       <hr>
       <p class="sec">Resumen de caja</p>
       <div class="fila"><span>Fondo inicial</span><span>${fm(resultado.apertura)}</span></div>
@@ -240,7 +240,7 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
         <span>${Number(resultado.diferencia) === 0 ? 'Cuadre perfecto' : Number(resultado.diferencia) > 0 ? 'Sobrante' : 'Faltante'}</span>
         <span>${Number(resultado.diferencia) > 0 ? '+' : ''}${fm(resultado.diferencia)}</span>
       </div>
-      ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${resultado.nota}</div>` : ''}
+      ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${escapeHtml(resultado.nota)}</div>` : ''}
       <hr><div style="text-align:center;font-size:10px;color:#555;margin-top:6px">Firma: _________________</div>
     </body></html>`
     abrirImpresion(html)
@@ -600,7 +600,9 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
                   </p>
                   <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                    Activo desde {formatoHora(turno.fecha_apertura)}
+                    Activo desde {isoEnZona(new Date(turno.fecha_apertura)) === fechaEnZona()
+                      ? formatoHora(turno.fecha_apertura)
+                      : formatoFechaHora(turno.fecha_apertura)}
                   </p>
                 </div>
                 {turno.usuario_id && (
