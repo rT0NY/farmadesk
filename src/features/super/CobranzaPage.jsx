@@ -57,11 +57,8 @@ export default function CobranzaPage() {
     cargandoRef.current = true
     setCargando(true)
     try {
-      const { data, error } = await supabase
-        .from('empresas')
-        .select('id, nombre, estado, cliente_nombre, cliente_telefono, dia_pago, ultimo_pago, precio_mensual')
-        .neq('estado', 'eliminada')
-        .order('nombre')
+      // El RPC ya excluye eliminadas y ordena por nombre
+      const { data, error } = await supabase.rpc('datos_cobranza_super')
       if (error) throw error
       setEmpresas(data || [])
     } catch (err) {

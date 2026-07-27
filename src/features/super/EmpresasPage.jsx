@@ -53,7 +53,7 @@ export default function EmpresasPage() {
     try {
       const [{ data, error }, { data: billing }] = await Promise.all([
         supabase.rpc('resumen_empresas_super'),
-        supabase.from('empresas').select('id, cliente_nombre, cliente_telefono, dia_pago, ultimo_pago, precio_mensual').neq('estado', 'eliminada'),
+        supabase.rpc('datos_cobranza_super'),
       ])
       if (error) throw error
       const bMap = {}

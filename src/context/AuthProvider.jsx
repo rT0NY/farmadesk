@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useRef } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 
@@ -76,41 +76,62 @@ export function AuthProvider({ children }) {
     return () => subscription?.unsubscribe()
   }, [])
 
-  // Verificación periódica del estado de la empresa (cada 60 seg)
-  useEffect(() => {
+  // ── Corte de acceso: cuenta desactivada o empresa suspendida ────────────────
+  // Va por RPC y no por consulta directa a propósito: al suspender la empresa,
+  // get_empresa_id_seguro() devuelve NULL y el RLS deja de entregarle al usuario
+  // hasta su propio perfil, así que una consulta normal no podría distinguir
+  // "cuenta desactivada" de "empresa suspendida".
+  const verificandoRef = useRef(false)
+  const verificarAcceso = useCallback(async () => {
     if (!sesion?.user) return
+    if (typeof window !== 'undefined' && window.__creandoUsuario) return
+    if (verificandoRef.current) return
+    verificandoRef.current = true
+    try {
+      const { data, error } = await supabase.rpc('estado_sesion')
+      // Error de red: no cerrar sesión por un fallo de conexión
+      if (error) return
+      const estado = Array.isArray(data) ? data[0] : data
+      if (!estado) return
 
-    const verificarEmpresa = async () => {
-      const { data: perfilData } = await supabase
-        .from('perfiles')
-        .select('rol, activo, empresa_id')
-        .eq('id', sesion.user.id)
-        .maybeSingle()
-
-      if (!perfilData || !perfilData.activo) {
-        toast.error('Tu cuenta fue desactivada')
+      if (!estado.usuario_activo) {
+        toast.error('Tu cuenta fue desactivada', { duration: 6000 })
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
         return
       }
 
-      if (perfilData.rol === 'super_admin') return
-      if (!perfilData.empresa_id) return
-
-      const { data: empresaData } = await supabase
-        .from('empresas')
-        .select('estado')
-        .eq('id', perfilData.empresa_id)
-        .maybeSingle()
-
-      if (!empresaData || empresaData.estado !== 'activa') {
-        toast.error('Tu empresa fue suspendida o eliminada', { duration: 5000 })
+      if (estado.empresa_estado && estado.empresa_estado !== 'activa') {
+        toast.error(
+          estado.empresa_estado === 'suspendida'
+            ? 'Tu empresa fue suspendida. Contacta al administrador.'
+            : 'Tu empresa ya no está disponible.',
+          { duration: 8000 }
+        )
+        sessionStorage.setItem('farmadesk_salida_login', '1')
         await supabase.auth.signOut()
       }
+    } finally {
+      verificandoRef.current = false
     }
-
-    const interval = setInterval(verificarEmpresa, 60_000)
-    return () => clearInterval(interval)
   }, [sesion?.user?.id])
+
+  useEffect(() => {
+    if (!sesion?.user) return
+
+    verificarAcceso()                       // al entrar, sin esperar al intervalo
+
+    const t = setInterval(verificarAcceso, 15_000)
+    const alVolver = () => { if (!document.hidden) verificarAcceso() }
+    window.addEventListener('focus', verificarAcceso)
+    document.addEventListener('visibilitychange', alVolver)
+
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', verificarAcceso)
+      document.removeEventListener('visibilitychange', alVolver)
+    }
+  }, [sesion?.user?.id, verificarAcceso])
 
   const cerrarSesion = async () => {
     cierreIntencional.current = true
@@ -125,6 +146,7 @@ export function AuthProvider({ children }) {
     cargando,
     autenticado: !!sesion,
     cerrarSesion,
+    verificarAcceso,
   }
 
   return (

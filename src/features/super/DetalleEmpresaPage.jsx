@@ -396,10 +396,11 @@ export default function DetalleEmpresaPage() {
       }
       setEmpresa(emp)
 
-      // Datos de cobranza privados
-      const { data: bil } = await supabase.from('empresas')
-        .select('cliente_nombre, cliente_telefono, dia_pago, ultimo_pago, precio_mensual, creado_en')
-        .eq('id', id).single()
+      // Datos de cobranza privados. Van por RPC con guardia de super_admin porque
+      // las columnas sensibles de `empresas` ya no son legibles vía consulta directa
+      // (si lo fueran, cada dueño podría leer las notas internas escritas sobre él).
+      const { data: bils } = await supabase.rpc('datos_cobranza_super')
+      const bil = (bils || []).find(b => String(b.id) === String(id))
       if (bil) {
         setBilling({
           cliente_nombre:   bil.cliente_nombre   ?? '',

@@ -10,7 +10,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
-import { formatoMoneda, isoEnZona, fechaEnZona, addDias } from '@/lib/formatos'
+import { formatoMoneda, isoEnZona, fechaEnZona, addDias, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { CATEGORIAS_GASTO } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -145,8 +145,8 @@ export default function ReportesPage() {
           .select('id, total, creado_en, sucursal_id')
           .eq('empresa_id', empresa.id)
           .neq('estado', 'cancelada')
-          .gte('creado_en', inicio + 'T00:00:00')
-          .lte('creado_en', fin   + 'T23:59:59'),
+          .gte('creado_en', inicioDiaUtc(inicio, tz))
+          .lte('creado_en', finDiaUtc(fin, tz)),
         supabase.from('gastos')
           .select('monto, categoria, sucursal_id')
           .eq('empresa_id', empresa.id)

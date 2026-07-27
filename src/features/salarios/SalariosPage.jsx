@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
-import { formatoMoneda, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
+import { formatoMoneda, fechaEnZona, addDias, dowEnZona, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 
 const DIAS_ORD   = [1, 2, 3, 4, 5, 6, 0]
 const DIA_LETRA  = { 0: 'D', 1: 'L', 2: 'M', 3: 'X', 4: 'J', 5: 'V', 6: 'S' }
@@ -45,8 +45,8 @@ async function diasDesdeProgramacion(usuarioId, empresaId, semanaInicio) {
 
 // Días realmente trabajados según turnos_caja (solo días donde el empleado abrió turno)
 async function diasDesdeTurnos(usuarioId, semanaInicio, empresaId, tz = 'America/Mexico_City') {
-  const inicio = semanaInicio + 'T00:00:00'
-  const fin    = addDias(semanaInicio, 6) + 'T23:59:59'
+  const inicio = inicioDiaUtc(semanaInicio, tz)
+  const fin    = finDiaUtc(addDias(semanaInicio, 6), tz)
   const { data } = await supabase
     .from('turnos_caja')
     .select('fecha_apertura')

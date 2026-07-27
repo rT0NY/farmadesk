@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Store, Check } from 'lucide-react'
+import { Store, Check, LogOut } from 'lucide-react'
 import { useAuth } from '@/context/AuthProvider'
 import { useApp } from '@/context/AppCtx'
 import LoginPage from '@/features/auth/LoginPage'
@@ -46,7 +46,8 @@ function PantallaCarga() {
 }
 
 function SelectorSucursalGlobal() {
-  const { sucursales, confirmarSucursal } = useApp()
+  const { sucursales, confirmarSucursal, perfil } = useApp()
+  const { cerrarSesion } = useAuth()
   const [sucursalTemp, setSucursalTemp] = useState(null)
 
   return (
@@ -55,6 +56,9 @@ function SelectorSucursalGlobal() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-900">¿En qué farmacia trabajas hoy?</h1>
           <p className="text-sm text-slate-500 mt-1">Selecciona la sucursal donde abrirás tu turno</p>
+          {perfil?.nombre && (
+            <p className="text-xs text-slate-400 mt-2">Sesión de <span className="font-semibold text-slate-500">{perfil.nombre}</span></p>
+          )}
         </div>
         <div className="flex flex-col gap-3">
           {sucursales.map(s => {
@@ -79,6 +83,15 @@ function SelectorSucursalGlobal() {
           }}
           className="w-full py-3 rounded-2xl bg-primary-600 text-white font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-700 transition-colors">
           {sucursalTemp ? `Confirmar — ${sucursales.find(s => s.id === sucursalTemp)?.nombre}` : 'Selecciona una sucursal'}
+        </button>
+
+        {/* Sin esto el empleado queda atrapado aquí al terminar su turno:
+            es la única pantalla que ve y no tiene sidebar donde salir. */}
+        <button
+          onClick={cerrarSesion}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
+          <LogOut className="w-4 h-4" />
+          Cerrar sesión
         </button>
       </div>
     </div>

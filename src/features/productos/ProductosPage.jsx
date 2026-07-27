@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Package, Filter, RefreshCw, Archive,
   AlertTriangle, ChevronDown, X, Check, CircleCheck,
@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Fab } from '@/components/ui/Fab'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { invalidarStock } from '@/lib/cache'
 import ModalProducto from './ModalProducto'
 import FilaProducto from './FilaProducto'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
@@ -68,7 +69,6 @@ function DropdownFiltro({ label, icono: Icono, activo, contador, children }) {
 
 export default function ProductosPage() {
   const { empresa, perfil } = useApp()
-  const queryClient = useQueryClient()
   const esCajero = perfil?.rol === 'cajero'
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('activos')
@@ -87,7 +87,8 @@ export default function ProductosPage() {
     enabled:   !!empresa?.id,
   })
 
-  const invalidar = () => queryClient.invalidateQueries({ queryKey: ['productos', empresa?.id] })
+  // Crear/editar/archivar un producto también cambia lo que ve Inventario
+  const invalidar = invalidarStock
 
   const categorias = useMemo(() => {
     const conteos = new Map()

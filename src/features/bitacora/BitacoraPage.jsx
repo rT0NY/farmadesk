@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
+import { inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { Skeleton } from '@/components/ui/Skeleton'
 
@@ -108,7 +109,7 @@ function BadgeTipo({ tipo }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BitacoraPage() {
-  const { empresa, sucursales } = useApp()
+  const { empresa, sucursales, tz } = useApp()
 
   const [registros,  setRegistros]  = useState([])
   const [cargando,   setCargando]   = useState(true)
@@ -141,8 +142,8 @@ export default function BitacoraPage() {
 
       if (busquedaDB) q = q.ilike('descripcion', `%${busquedaDB}%`)
       if (fechaFiltro) {
-        q = q.gte('creado_en', fechaFiltro + 'T00:00:00+00:00')
-             .lte('creado_en', fechaFiltro + 'T23:59:59+00:00')
+        q = q.gte('creado_en', inicioDiaUtc(fechaFiltro, tz))
+             .lte('creado_en', finDiaUtc(fechaFiltro, tz))
       }
       if (tipoFiltro) q = q.eq('tipo', tipoFiltro)
       if (sucFiltro)  q = q.eq('sucursal_id', sucFiltro)
@@ -157,7 +158,7 @@ export default function BitacoraPage() {
     } finally {
       setCargando(false)
     }
-  }, [empresa, busquedaDB, fechaFiltro, tipoFiltro, sucFiltro])
+  }, [empresa, busquedaDB, fechaFiltro, tipoFiltro, sucFiltro, tz])
 
   useEffect(() => { cargar(0) }, [cargar])
   useFocusRefresh(() => cargar(0))

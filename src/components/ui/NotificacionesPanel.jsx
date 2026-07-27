@@ -7,8 +7,10 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
+import { EVENTO_ALERTA, emitirAlerta } from '@/lib/alertas'
+import { invalidarStock } from '@/lib/cache'
 import { cn } from '@/lib/clases'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 // ─── Hook de conteo (ligero, para el badge) ───────────────────────────────────
 // eslint-disable-next-line react-refresh/only-export-components
@@ -55,11 +57,12 @@ export function useAlertaConteo() {
 
   useEffect(() => {
     calcular()
+    // Consulta pesada (lotes + inventario + productos): sondeo espaciado.
     const t = setInterval(calcular, 60_000)
-    window.addEventListener('farmadesk:alerta', calcular)
+    window.addEventListener(EVENTO_ALERTA, calcular)
     return () => {
       clearInterval(t)
-      window.removeEventListener('farmadesk:alerta', calcular)
+      window.removeEventListener(EVENTO_ALERTA, calcular)
     }
   }, [calcular])
 
@@ -88,37 +91,63 @@ export function useBadgesMenu() {
 
   useEffect(() => {
     calcular()
-    const t = setInterval(calcular, 60_000)
-    window.addEventListener('farmadesk:alerta', calcular)
+    // Son dos COUNT con head:true (no traen filas), así que se puede sondear
+    // seguido: es la red de seguridad por si Realtime no está activo en la tabla.
+    const t = setInterval(calcular, 20_000)
+    // Al volver a la ventana/pestaña, recalcular de inmediato
+    const alVolver = () => { if (!document.hidden) calcular() }
+    window.addEventListener(EVENTO_ALERTA, calcular)
+    window.addEventListener('focus', calcular)
+    document.addEventListener('visibilitychange', alVolver)
     return () => {
       clearInterval(t)
-      window.removeEventListener('farmadesk:alerta', calcular)
+      window.removeEventListener(EVENTO_ALERTA, calcular)
+      window.removeEventListener('focus', calcular)
+      document.removeEventListener('visibilitychange', alVolver)
     }
   }, [calcular])
 
   return badges
 }
 
-// Emite el evento global que fuerza recalcular el badge
-function emitirAlerta() {
-  window.dispatchEvent(new CustomEvent('farmadesk:alerta'))
-}
-
 // ─── Hook de realtime (toasts automáticos) ────────────────────────────────────
 // eslint-disable-next-line react-refresh/only-export-components
 export function useRealtimeAlertas(onCambio) {
   const { empresa, esAdmin, esEncargado, perfil, sucursales } = useApp()
+  const navigate = useNavigate()
   const onCambioRef = useRef(onCambio)
   onCambioRef.current = onCambio
+  // navigate cambia de identidad en cada render; con ref el efecto no se re-suscribe
+  const navRef = useRef(navigate)
+  navRef.current = navigate
 
   useEffect(() => {
     if (!empresa?.id || !perfil?.id) return
 
     const channels = []
-    const notificar = () => { emitirAlerta(); onCambioRef.current?.() }
 
-    // ── Admin: cancelación nueva ────────────────────────────────────────────
-    if (esAdmin) {
+    // Los eventos llegan en ráfaga (una venta de 5 productos = 5 UPDATE en
+    // inventario). Sin agrupar, cada uno dispararía el recálculo completo de
+    // alertas en TODAS las terminales conectadas. Se juntan en uno solo.
+    let timerNotif = null
+    const notificar = () => {
+      if (timerNotif) clearTimeout(timerNotif)
+      timerNotif = setTimeout(() => {
+        timerNotif = null
+        invalidarStock()          // el stock cambió en otra terminal
+        emitirAlerta()            // badges del menú
+        onCambioRef.current?.()
+      }, 1200)
+    }
+
+    // window.location.href rompe el HashRouter de Electron: navegar por el router
+    const irA = (ruta) => ({ label: 'Ver', onClick: () => navRef.current(ruta) })
+
+    // ── Admin/Encargado: cancelaciones ──────────────────────────────────────
+    // El badge del menú lo ven ambos roles, así que ambos necesitan el realtime.
+    // Se escucha INSERT (nueva solicitud) y UPDATE/DELETE (ya se atendió): sin el
+    // UPDATE el contador se quedaba en 1 después de aprobar hasta el siguiente sondeo.
+    if (esAdmin || esEncargado) {
       channels.push(
         supabase.channel(`rt-cancel-${empresa.id}`)
           .on('postgres_changes', {
@@ -130,10 +159,17 @@ export function useRealtimeAlertas(onCambio) {
                 ? `Motivo: ${payload.new.motivo}`
                 : 'Un cajero solicita cancelar una venta',
               icon: '🚫',
-              action: { label: 'Ver', onClick: () => window.location.href = '/cancelaciones' },
+              action: irA('/cancelaciones'),
             })
             notificar()
           })
+          .on('postgres_changes', {
+            event: 'UPDATE', schema: 'public', table: 'cancelaciones',
+            filter: `empresa_id=eq.${empresa.id}`,
+          }, notificar)
+          .on('postgres_changes', {
+            event: 'DELETE', schema: 'public', table: 'cancelaciones',
+          }, notificar)
           .subscribe()
       )
     }
@@ -151,7 +187,7 @@ export function useRealtimeAlertas(onCambio) {
                 ? `Cliente: ${payload.new.nombre_cliente} · ${formatoMoneda(payload.new.total ?? 0)}`
                 : 'Se registró una cuenta pendiente',
               icon: '💳',
-              action: { label: 'Ver', onClick: () => window.location.href = '/cuentas' },
+              action: irA('/cuentas'),
             })
             notificar()
           })
@@ -177,7 +213,7 @@ export function useRealtimeAlertas(onCambio) {
               toast(estado === 'recibido' ? 'Mercancía recibida' : 'Recepción parcial', {
                 description: sucNombre ? `Recibido en ${sucNombre}` : 'Pedido a proveedor actualizado',
                 icon: '📦',
-                action: { label: 'Ver', onClick: () => window.location.href = '/proveedores' },
+                action: irA('/pedidos'),
               })
               notificar()
             }
@@ -223,7 +259,7 @@ export function useRealtimeAlertas(onCambio) {
             if (totalStock === 0) {
               toast.error(`Sin stock: ${nombre}`, {
                 description: 'El producto se agotó en todas las sucursales',
-                action: { label: 'Ver', onClick: () => window.location.href = '/inventario' },
+                action: irA('/inventario'),
               })
             }
           } catch { /* silencioso */ }
@@ -232,7 +268,10 @@ export function useRealtimeAlertas(onCambio) {
         .subscribe()
     )
 
-    return () => { channels.forEach(ch => supabase.removeChannel(ch)) }
+    return () => {
+      if (timerNotif) clearTimeout(timerNotif)
+      channels.forEach(ch => supabase.removeChannel(ch))
+    }
   }, [empresa?.id, esAdmin, esEncargado, perfil?.id, sucursales])
 }
 

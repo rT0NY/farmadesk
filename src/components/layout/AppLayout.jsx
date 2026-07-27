@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import MobileNav from './MobileNav'
 import { useDevice } from '@/hooks/useDevice'
+import { useAuth } from '@/context/AuthProvider'
 import { useRealtimeAlertas } from '@/components/ui/NotificacionesPanel'
 import BuscadorGlobal, { useBuscadorGlobal } from '@/components/ui/BuscadorGlobal'
 import { useActualizacion } from '@/hooks/useActualizacion'
@@ -11,6 +13,16 @@ import { RefreshCw, Download, X, Check, WifiOff } from 'lucide-react'
 
 function RealtimeWatcher() {
   useRealtimeAlertas(useCallback(() => {}, []))
+  return null
+}
+
+// Revalida el acceso en cada cambio de pantalla: si el dueño suspendió la
+// empresa hace un momento, el corte se nota en cuanto el usuario intenta
+// moverse, sin esperar al siguiente sondeo.
+function GuardiaAcceso() {
+  const { pathname } = useLocation()
+  const { verificarAcceso } = useAuth()
+  useEffect(() => { verificarAcceso?.() }, [pathname, verificarAcceso])
   return null
 }
 
@@ -135,6 +147,7 @@ export default function AppLayout({ children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <RealtimeWatcher />
+      <GuardiaAcceso />
       <BannerSinConexion online={online} />
       <BannerElectron />
       <BannerWeb />

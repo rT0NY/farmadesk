@@ -12,12 +12,20 @@ const ESTADO_LABEL = {
   parcial:   'Parcial',
   cancelado: 'Cancelado',
 }
+const ESTADO_AYUDA = {
+  pendiente: 'Todavía no llega nada de este pedido',
+  recibido:  'Llegó completo: todos los productos se registraron',
+  parcial:   'Llegó parte del pedido — faltan productos por recibir',
+  cancelado: 'Pedido cancelado: no se espera mercancía',
+}
 function BadgeEstado({ estado }) {
   return (
-    <span className={cn(
-      'inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide',
-      ESTADO_BADGE[estado] ?? ESTADO_BADGE.pendiente
-    )}>
+    <span
+      title={ESTADO_AYUDA[estado] ?? ''}
+      className={cn(
+        'inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide',
+        ESTADO_BADGE[estado] ?? ESTADO_BADGE.pendiente
+      )}>
       {ESTADO_LABEL[estado] ?? estado}
     </span>
   )

@@ -12,7 +12,7 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp } from '@/context/AppCtx'
-import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml } from '@/lib/formatos'
+import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml, inicioDiaUtc } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
@@ -995,7 +995,7 @@ export default function CajaPage() {
         .from('turnos_caja')
         .select('*, perfiles(nombre), sucursales(nombre)')
         .eq('estado', 'cerrado')
-        .gte('fecha_apertura', `${hoy}T00:00:00`)
+        .gte('fecha_apertura', inicioDiaUtc(hoy, tz))
         .order('fecha_cierre', { ascending: false })
         .limit(20)
       if (sucIdsVisibles.length > 0) {

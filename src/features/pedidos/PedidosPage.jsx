@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal, ModalHeader } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/clases'
+import { inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { BadgeEstado } from './BadgeEstado'
 import ModalNuevoPedido from './ModalNuevoPedido'
@@ -107,8 +108,8 @@ export default function PedidosPage() {
 
       if (filtroEstadoPed) pedidosQ = pedidosQ.eq('estado', filtroEstadoPed)
       if (filtroProv)      pedidosQ = pedidosQ.eq('proveedor_id', filtroProv)
-      if (fechaDesde)      pedidosQ = pedidosQ.gte('created_at', fechaDesde + 'T00:00:00')
-      if (fechaHasta)      pedidosQ = pedidosQ.lte('created_at', fechaHasta + 'T23:59:59')
+      if (fechaDesde)      pedidosQ = pedidosQ.gte('created_at', inicioDiaUtc(fechaDesde, tz))
+      if (fechaHasta)      pedidosQ = pedidosQ.lte('created_at', finDiaUtc(fechaHasta, tz))
 
       const [{ data: provs, error: e1 }, { data: peds, error: e2 }] = await Promise.all([
         supabase.from('proveedores')

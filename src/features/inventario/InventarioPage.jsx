@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Archive, RefreshCw, AlertTriangle,
   X, Clock, Filter, ChevronDown, Check, Package, Eye,
@@ -15,6 +15,8 @@ import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 import { fechaEnZona, addDias } from '@/lib/formatos'
+import { invalidarStock } from '@/lib/cache'
+import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import ModalAgregarInventario from './ModalAgregarInventario'
 import ModalLotes from './ModalLotes'
 
@@ -191,7 +193,6 @@ export default function InventarioPage() {
   const esGlobal  = perfil?.rol === 'admin' || perfil?.id === empresa?.propietario
   // Sucursal propia del usuario (cajeros/encargados tienen una asignada)
   const sucursalPropia = esGlobal ? null : (sucursalActiva ?? sucursales.find(s => s.id === perfil?.sucursal_id) ?? null)
-  const queryClient = useQueryClient()
   const [lotesCaducidad, setLotesCaducidad] = useState([])
   const [cargandoCad, setCargandoCad] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -208,7 +209,7 @@ export default function InventarioPage() {
     return Number((p.stock_por_sucursal || {})[sucursalPropia.id] || 0)
   }, [sucursalPropia])
 
-  const { data: datos = [], isLoading: cargando, error: errorCarga, refetch: cargar } = useQuery({
+  const { data: datos = [], isLoading: cargando, isFetching, error: errorCarga, dataUpdatedAt, refetch } = useQuery({
     queryKey:  ['inventario_completo', empresa?.id],
     queryFn:   async () => {
       const { data, error } = await supabase.rpc('inventario_completo', {
@@ -222,8 +223,12 @@ export default function InventarioPage() {
     enabled:   !!empresa?.id,
   })
 
-  const invalidarInventario = () =>
-    queryClient.invalidateQueries({ queryKey: ['inventario_completo', empresa?.id] })
+  // Sin argumentos: refetch() recibiría el evento del click como opciones
+  const cargar = useCallback(() => { refetch() }, [refetch])
+
+  // Otro empleado puede mover stock desde su terminal: al volver a la ventana,
+  // si los datos ya tienen rato, se recargan solos.
+  useFocusRefresh(cargar)
 
   const cargarCaducidad = useCallback(async () => {
     setCargandoCad(true)
@@ -341,7 +346,17 @@ export default function InventarioPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Inventario</h1>
-          <p className="text-sm text-slate-500 mt-1">{conteos.todos} producto{conteos.todos !== 1 && 's'} en catálogo</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {conteos.todos} producto{conteos.todos !== 1 && 's'} en catálogo
+            {dataUpdatedAt > 0 && (
+              <span className="text-slate-400">
+                {' · '}
+                {isFetching
+                  ? 'actualizando…'
+                  : `actualizado ${new Date(dataUpdatedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`}
+              </span>
+            )}
+          </p>
         </div>
         {!esCajero && (
           <Button onClick={() => setModalAgregar(true)} iconoIzq={<Plus className="w-4 h-4" />}>
@@ -454,8 +469,9 @@ export default function InventarioPage() {
             </button>
           )}
 
-          <button onClick={cargar} disabled={cargando} className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition-colors disabled:opacity-50">
-            <RefreshCw className={cn('w-4 h-4', cargando && 'animate-spin')} />
+          <button onClick={cargar} disabled={isFetching} title="Actualizar existencias"
+            className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition-colors disabled:opacity-50">
+            <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
           </button>
         </div>
       </div>
@@ -670,8 +686,8 @@ export default function InventarioPage() {
         </div>
       ))}
 
-      <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={invalidarInventario} />
-      <ModalLotes producto={productoLotes} onCerrar={() => setProductoLotes(null)} onCambio={invalidarInventario} />
+      <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={invalidarStock} />
+      <ModalLotes producto={productoLotes} onCerrar={() => setProductoLotes(null)} onCambio={invalidarStock} />
       {modalExistencias && <ModalExistenciasInv onCerrar={() => setModalExistencias(false)} />}
     </div>
   )

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
-import { formatoMoneda, formatoHora, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
+import { formatoMoneda, formatoHora, fechaEnZona, addDias, dowEnZona, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { ETIQUETAS_ROL } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -159,13 +159,13 @@ export default function DashboardAdmin() {
         supabase.from('ventas')
           .select('id, total, sucursal_id, creado_en')
           .neq('estado', 'cancelada')
-          .gte('creado_en', `${hoyS}T00:00:00`)
-          .lte('creado_en', `${hoyS}T23:59:59`),
+          .gte('creado_en', inicioDiaUtc(hoyS, tz))
+          .lte('creado_en', finDiaUtc(hoyS, tz)),
         supabase.from('ventas')
           .select('total')
           .neq('estado', 'cancelada')
-          .gte('creado_en', `${ayerS}T00:00:00`)
-          .lte('creado_en', `${ayerS}T23:59:59`),
+          .gte('creado_en', inicioDiaUtc(ayerS, tz))
+          .lte('creado_en', finDiaUtc(ayerS, tz)),
         supabase.rpc('empleados_activos_por_sucursal'),
         supabase.from('lotes')
           .select('id, fecha_caducidad, producto_id, productos(nombre)')

@@ -70,9 +70,17 @@ export function AppProvider({ children }) {
         return
       }
 
+      // Lista explícita a propósito: con select('*') se mandaban al navegador de
+      // CADA empleado las columnas privadas del SaaS (notas_internas,
+      // motivo_suspension, precio_mensual). Esas viven solo en el panel de
+      // superadmin, vía RPC con guardia.
       const { data: empresaData } = await supabase
         .from('empresas')
-        .select('*')
+        .select(`id, nombre, propietario, estado, creado_en, zona_horaria,
+                 dia_pago, ultimo_pago, rfc, telefono, correo_contacto,
+                 calle, colonia, ciudad, entidad, codigo_postal,
+                 cliente_nombre, cliente_telefono, telefono_whatsapp,
+                 suspendida_desde, eliminada_desde`)
         .eq('id', perfilData.empresa_id)
         .maybeSingle()
 

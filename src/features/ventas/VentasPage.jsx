@@ -11,11 +11,13 @@ import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp } from '@/context/AppCtx'
-import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, generarFolio } from '@/lib/formatos'
+import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, generarFolio, inicioDiaUtc } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { invalidarStock } from '@/lib/cache'
+import { emitirAlerta } from '@/lib/alertas'
 
 // Consulta embebida reutilizable: inventario CON stock en una sucursal + su lote.
 // Solo trae lo que tiene existencias aquí (no todo el inventario histórico).
@@ -103,6 +105,7 @@ function ModalCancelar({ venta, sucursalNombre, onCerrar, onExito }) {
         sucursal_id:   venta.sucursal_id ?? null,
         referencia_id: String(venta.id),
       })
+      emitirAlerta()
       toast.success('Cancelación solicitada')
       onExito?.()
       onCerrar()
@@ -567,12 +570,12 @@ export default function VentasPage() {
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
         supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
-        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
+        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         perfilId
           ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         supabase.rpc('ofertas_vigentes'),
-        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
         esCajero
           ? Promise.resolve({ data: [] })
           : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
@@ -616,9 +619,9 @@ export default function VentasPage() {
       const hoy = fechaEnZona(tz)
       const [{ data: invRows }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
         supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
-        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
+        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
-        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', `${hoy}T00:00:00`),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
       ])
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
@@ -1056,6 +1059,7 @@ export default function VentasPage() {
       if (error) throw error
 
       // El stock se descuenta dentro de registrar_venta (transacción atómica)
+      invalidarStock()
 
       const folio = generarFolio(data?.venta_id, sucursalActual?.nombre)
       await logBitacora({
@@ -1192,7 +1196,7 @@ export default function VentasPage() {
         supabase.from('productos').select('*').eq('activo', true).order('nombre'),
         supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
-        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', `${hoy}T00:00:00`).order('creado_en', { ascending: false }),
+        supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
         esCajero
           ? Promise.resolve({ data: [] })

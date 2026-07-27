@@ -73,9 +73,7 @@ export default function DashboardSuperPage() {
       const [{ data: kpisData }, { data: gastosData }, { data: empresasData }] = await Promise.all([
         supabase.rpc('resumen_dashboard_super'),
         supabase.rpc('obtener_gastos_super'),
-        supabase.from('empresas')
-          .select('id, nombre, estado, dia_pago, ultimo_pago, precio_mensual, cliente_nombre, cliente_telefono')
-          .neq('estado', 'eliminada'),
+        supabase.rpc('datos_cobranza_super'),
       ])
       setKpis(kpisData)
       setGastos(gastosData || [])

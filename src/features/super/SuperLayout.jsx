@@ -13,14 +13,12 @@ import { supabase } from '@/lib/supabase'
 function useUrgentes() {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    supabase.from('empresas')
-      .select('dia_pago, ultimo_pago')
-      .neq('estado', 'eliminada')
-      .not('dia_pago', 'is', null)
+    supabase.rpc('datos_cobranza_super')
       .then(({ data }) => {
         if (!data) return
         const hoy = new Date(); const d = hoy.getDate()
         setCount(data.filter(e => {
+          if (e.dia_pago == null) return false
           if (e.ultimo_pago) {
             const up = new Date(e.ultimo_pago + 'T12:00:00')
             if (up.getFullYear() === hoy.getFullYear() && up.getMonth() === hoy.getMonth()) return false

@@ -2,31 +2,66 @@ import { useState, useCallback, useEffect } from 'react'
 import {
   Search, Calendar, Filter, ChevronDown,
   PackageCheck, RefreshCw, TrendingUp, TrendingDown,
-  Package, ShoppingCart, ArrowLeftRight, Flame, Minus,
+  Package, PackagePlus, ShoppingCart, ArrowLeftRight, Flame, Minus,
+  Truck, Scale, RotateCcw, Trash2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
+import { inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Config motivos ───────────────────────────────────────────────────────────
+// El motivo lo escriben los RPC de Supabase (recibir_pedido, ajustar_inventario,
+// registrar_venta, registrar_transferencia, agregar_stock_multi_sucursal...).
+// Algunos traen un detalle después de dos puntos: "ajuste_manual: conteo físico".
 const MOTIVOS_CFG = {
-  entrada:               { label: 'Entrada',               color: 'emerald', Icono: Package        },
-  inventario_entrada:    { label: 'Entrada',               color: 'emerald', Icono: Package        },
-  entrada_inventario:    { label: 'Entrada inventario',    color: 'emerald', Icono: Package        },
-  inicial:               { label: 'Stock inicial',         color: 'emerald', Icono: Package        },
-  ajuste:                { label: 'Ajuste',                color: 'amber',   Icono: Package        },
-  ajuste_positivo:       { label: 'Ajuste +',              color: 'emerald', Icono: Package        },
-  ajuste_negativo:       { label: 'Ajuste −',              color: 'red',     Icono: Package        },
+  recepcion_pedido:      { label: 'Recepción de pedido',   color: 'emerald', Icono: Truck          },
+  entrada_inventario:    { label: 'Entrada de inventario', color: 'emerald', Icono: PackagePlus    },
+  inicial:               { label: 'Stock inicial',         color: 'emerald', Icono: PackagePlus    },
+  ajuste_manual:         { label: 'Ajuste manual',         color: 'amber',   Icono: Scale          },
   venta:                 { label: 'Venta',                 color: 'sky',     Icono: ShoppingCart   },
-  salida_venta:          { label: 'Venta',                 color: 'sky',     Icono: ShoppingCart   },
+  cancelacion_venta:     { label: 'Venta cancelada',       color: 'sky',     Icono: RotateCcw      },
   transferencia:         { label: 'Transferencia',         color: 'violet',  Icono: ArrowLeftRight },
   transferencia_entrada: { label: 'Transferencia entrada', color: 'violet',  Icono: ArrowLeftRight },
   transferencia_salida:  { label: 'Transferencia salida',  color: 'violet',  Icono: ArrowLeftRight },
+  baja_lote:             { label: 'Baja de lote',          color: 'red',     Icono: Trash2         },
   caducidad:             { label: 'Caducidad',             color: 'red',     Icono: Flame          },
   merma:                 { label: 'Merma',                 color: 'red',     Icono: Flame          },
 }
+
+// Variantes que escriben (o escribieron) los RPC → clave canónica de arriba
+const ALIAS_MOTIVO = {
+  entrada:              'entrada_inventario',
+  inventario_entrada:   'entrada_inventario',
+  compra:               'recepcion_pedido',
+  pedido_recibido:      'recepcion_pedido',
+  recepcion:            'recepcion_pedido',
+  ajuste:               'ajuste_manual',
+  ajuste_inventario:    'ajuste_manual',
+  ajuste_positivo:      'ajuste_manual',
+  ajuste_negativo:      'ajuste_manual',
+  cuadre:               'ajuste_manual',
+  cuadre_inventario:    'ajuste_manual',
+  salida_venta:         'venta',
+  venta_cancelada:      'cancelacion_venta',
+  cancelacion:          'cancelacion_venta',
+  devolucion:           'cancelacion_venta',
+  eliminacion_lote:     'baja_lote',
+  lote_eliminado:       'baja_lote',
+}
+
+// Opciones del filtro — `valor` es el patrón que se busca con ILIKE sobre `motivo`,
+// por eso un patrón corto ("ajuste") cubre también "ajuste_manual: conteo físico".
+const FILTROS_MOTIVO = [
+  { valor: 'recepcion',          label: 'Recepción de pedido' },
+  { valor: 'entrada_inventario', label: 'Entrada de inventario' },
+  { valor: 'ajuste',             label: 'Ajuste manual' },
+  { valor: 'venta',              label: 'Venta' },
+  { valor: 'transferencia',      label: 'Transferencia' },
+  { valor: 'lote',               label: 'Baja de lote' },
+]
 
 const ICON_BG = {
   emerald: 'bg-emerald-50 text-emerald-600',
@@ -50,20 +85,43 @@ const DELTA_CLS = {
   zero: 'text-slate-400',
 }
 
-function motivoCfg(motivo) {
-  if (!motivo) return { label: '—', color: 'slate', Icono: Package }
-  const key = Object.keys(MOTIVOS_CFG).find(k =>
-    motivo.toLowerCase() === k ||
-    motivo.toLowerCase().replace(/_/g, '') === k.replace(/_/g, '')
-  )
-  return MOTIVOS_CFG[key] ?? { label: motivo, color: 'slate', Icono: Package }
+const capitalizar = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/**
+ * Traduce el motivo crudo de `registros_stock` a algo legible.
+ * "recepcion_pedido"            → { label: 'Recepción de pedido' }
+ * "ajuste_manual: conteo fisico" → { label: 'Ajuste manual', detalle: 'Conteo fisico' }
+ * Si el motivo es una transferencia sin dirección, la deduce del signo del delta.
+ */
+function motivoCfg(motivo, delta = 0) {
+  if (!motivo) return { label: '—', color: 'slate', Icono: Package, detalle: null }
+
+  const sep     = motivo.indexOf(':')
+  const crudo   = sep === -1 ? motivo : motivo.slice(0, sep)
+  const detalle = sep === -1 ? null : (motivo.slice(sep + 1).trim() || null)
+  const base    = crudo.trim().toLowerCase().replace(/[\s-]+/g, '_')
+
+  const clave = ALIAS_MOTIVO[base] ?? base
+  const cfg   = MOTIVOS_CFG[clave]
+
+  if (!cfg) {
+    // Motivo que aún no conocemos: al menos mostrarlo legible ("otra_cosa" → "Otra cosa")
+    return { label: capitalizar(base.replace(/_/g, ' ')), color: 'slate', Icono: Package, detalle }
+  }
+
+  // "transferencia" a secas: el signo dice si esta fila es la salida o la entrada
+  const label = clave === 'transferencia' && delta !== 0
+    ? (delta > 0 ? 'Transferencia entrada' : 'Transferencia salida')
+    : cfg.label
+
+  return { ...cfg, label, detalle: detalle && capitalizar(detalle) }
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 const POR_PAGINA = 50
 
 export default function HistorialInventarioPage() {
-  const { empresa, sucursales } = useApp()
+  const { empresa, sucursales, tz } = useApp()
 
   const [registros,    setRegistros]    = useState([])
   const [cargando,     setCargando]     = useState(true)
@@ -95,8 +153,8 @@ export default function HistorialInventarioPage() {
         .order('creado_en', { ascending: false })
         .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1)
 
-      if (fechaDesde)   q = q.gte('creado_en', fechaDesde + 'T00:00:00')
-      if (fechaHasta)   q = q.lte('creado_en', fechaHasta + 'T23:59:59')
+      if (fechaDesde)   q = q.gte('creado_en', inicioDiaUtc(fechaDesde, tz))
+      if (fechaHasta)   q = q.lte('creado_en', finDiaUtc(fechaHasta, tz))
       if (sucFiltro)    q = q.eq('sucursal_id', sucFiltro)
       if (motivoFiltro) q = q.ilike('motivo', `%${motivoFiltro}%`)
 
@@ -110,7 +168,7 @@ export default function HistorialInventarioPage() {
     } finally {
       setCargando(false)
     }
-  }, [empresa?.id, fechaDesde, fechaHasta, sucFiltro, motivoFiltro])
+  }, [empresa?.id, fechaDesde, fechaHasta, sucFiltro, motivoFiltro, tz])
 
   useEffect(() => { cargar(0) }, [cargar])
   useFocusRefresh(() => cargar(0))
@@ -137,7 +195,6 @@ export default function HistorialInventarioPage() {
   }, {})
 
   const hayFiltros = fechaDesde || fechaHasta || sucFiltro || motivoFiltro
-  const motivosUnicos = [...new Set(Object.keys(MOTIVOS_CFG))]
 
   return (
     <div className="flex flex-col gap-5">
@@ -197,8 +254,8 @@ export default function HistorialInventarioPage() {
             <select value={motivoFiltro} onChange={e => setMotivoFiltro(e.target.value)}
               className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 appearance-none">
               <option value="">Todos los motivos</option>
-              {motivosUnicos.map(m => (
-                <option key={m} value={m}>{MOTIVOS_CFG[m].label}</option>
+              {FILTROS_MOTIVO.map(m => (
+                <option key={m.valor} value={m.valor}>{m.label}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -251,10 +308,16 @@ export default function HistorialInventarioPage() {
                 <div className="divide-y divide-slate-100">
                   {items.map(r => {
                     const delta = r.diferencia ?? (Number(r.cantidad_nueva ?? 0) - Number(r.cantidad_anterior ?? 0))
-                    const cfg   = motivoCfg(r.motivo)
+                    const cfg   = motivoCfg(r.motivo, delta)
                     const { Icono } = cfg
                     const isPos = delta > 0
                     const isNeg = delta < 0
+                    // Línea secundaria: se omiten los campos vacíos para no dejar separadores sueltos
+                    const detalles = [
+                      r.lotes?.codigo_lote && <span className="font-mono">{r.lotes.codigo_lote}</span>,
+                      r.sucursales?.nombre,
+                      r.perfiles?.nombre,
+                    ].filter(Boolean)
 
                     return (
                       <div key={r.id} className="flex items-center gap-4 px-5 py-4">
@@ -267,12 +330,17 @@ export default function HistorialInventarioPage() {
                             {r.lotes?.productos?.nombre ?? '—'}
                           </p>
                           <p className="text-xs text-slate-400 mt-0.5 truncate">
-                            {r.lotes?.codigo_lote && (
-                              <span className="font-mono">{r.lotes.codigo_lote}</span>
-                            )}
-                            {r.sucursales?.nombre && ` · ${r.sucursales.nombre}`}
-                            {r.perfiles?.nombre   && ` · ${r.perfiles.nombre}`}
+                            {/* En móvil el badge de la derecha está oculto: el motivo va aquí */}
+                            <span className="sm:hidden font-semibold text-slate-500">
+                              {cfg.label}{detalles.length > 0 && ' · '}
+                            </span>
+                            {detalles.map((parte, i) => (
+                              <span key={i}>{i > 0 && ' · '}{parte}</span>
+                            ))}
                           </p>
+                          {cfg.detalle && (
+                            <p className="text-xs text-slate-500 mt-0.5 truncate italic">{cfg.detalle}</p>
+                          )}
                         </div>
 
                         {/* Badge motivo — solo en sm+ */}

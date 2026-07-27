@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
-import { formatoMoneda, formatoFechaHora, fechaEnZona, generarFolio } from '@/lib/formatos'
+import { formatoMoneda, formatoFechaHora, fechaEnZona, generarFolio, addDias, inicioDiaUtc } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { invalidarStock } from '@/lib/cache'
+import { emitirAlerta } from '@/lib/alertas'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
@@ -54,6 +56,11 @@ function ModalAprobar({ cancelacion, onClose, onExito }) {
         p_nota:           nota.trim() || null,
       })
       if (error) throw error
+
+      // aprobar_cancelacion devuelve el stock al inventario
+      invalidarStock()
+      // Ya no está pendiente: bajar el badge del menú sin esperar al sondeo
+      emitirAlerta()
 
       await logBitacora({
         empresa_id:    cancelacion.ventas?.empresa_id ?? perfil?.empresa_id,
@@ -169,6 +176,7 @@ function ModalRechazar({ cancelacion, onClose, onExito }) {
         sucursal_id:   cancelacion.ventas?.sucursal_id ?? null,
         referencia_id: String(cancelacion.id),
       })
+      emitirAlerta()
       toast.success('Cancelación rechazada')
       onExito()
     } catch (e) {
@@ -310,15 +318,9 @@ const PERIODOS = [
 
 function fechaDesde(periodo, tz) {
   const hoy = fechaEnZona(tz)
-  if (periodo === 'hoy')    return `${hoy}T00:00:00`
-  if (periodo === 'semana') {
-    const d = new Date(); d.setDate(d.getDate() - 7)
-    return d.toISOString()
-  }
-  if (periodo === 'mes') {
-    const d = new Date(); d.setDate(1); d.setHours(0,0,0,0)
-    return d.toISOString()
-  }
+  if (periodo === 'hoy')    return inicioDiaUtc(hoy, tz)
+  if (periodo === 'semana') return inicioDiaUtc(addDias(hoy, -7), tz)
+  if (periodo === 'mes')    return inicioDiaUtc(hoy.slice(0, 8) + '01', tz)
   return null
 }
 

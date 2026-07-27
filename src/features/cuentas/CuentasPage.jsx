@@ -9,9 +9,10 @@ import { supabase } from '@/lib/supabase'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
-import { formatoMoneda, formatoFecha } from '@/lib/formatos'
+import { formatoMoneda, formatoFecha, fechaEnZona, addDias, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { emitirAlerta } from '@/lib/alertas'
 
 // ─── Tarjeta resumen ──────────────────────────────────────────────────────────
 
@@ -64,6 +65,9 @@ function ModalAbono({ cuenta, liquidarDirecto, onClose, onExito }) {
         .eq('id', cuenta.id)
 
       if (error) throw error
+
+      // Si quedó liquidada, deja de contar en el badge: refrescarlo ya
+      if (pagada) emitirAlerta()
 
       await logBitacora({
         empresa_id:    empresa?.id,
@@ -310,7 +314,7 @@ const ORDEN_OPTS = [
 ]
 
 export default function CuentasPage() {
-  const { esAdmin, sucursalActiva } = useApp()
+  const { esAdmin, sucursalActiva, tz } = useApp()
 
   const [cuentas,      setCuentas]      = useState([])
   const [cargando,     setCargando]     = useState(true)
@@ -336,18 +340,17 @@ export default function CuentasPage() {
       if (filtroEstado === 'pagada')    q = q.eq('pagada', true)
 
       // Filtro de período
+      // Los rangos se calculan sobre el día de la farmacia, no el del navegador
+      const hoyS = fechaEnZona(tz)
       if (periodo === 'hoy') {
-        const hoy = new Date().toISOString().slice(0, 10)
-        q = q.gte('creado_en', `${hoy}T00:00:00`)
+        q = q.gte('creado_en', inicioDiaUtc(hoyS, tz))
       } else if (periodo === 'semana') {
-        const d = new Date(); d.setDate(d.getDate() - 6); d.setHours(0,0,0,0)
-        q = q.gte('creado_en', d.toISOString())
+        q = q.gte('creado_en', inicioDiaUtc(addDias(hoyS, -6), tz))
       } else if (periodo === 'mes') {
-        const hoy = new Date()
-        q = q.gte('creado_en', `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01T00:00:00`)
+        q = q.gte('creado_en', inicioDiaUtc(hoyS.slice(0, 8) + '01', tz))
       } else if (periodo === 'personalizado') {
-        if (fechaDesde) q = q.gte('creado_en', `${fechaDesde}T00:00:00`)
-        if (fechaHasta) q = q.lte('creado_en', `${fechaHasta}T23:59:59`)
+        if (fechaDesde) q = q.gte('creado_en', inicioDiaUtc(fechaDesde, tz))
+        if (fechaHasta) q = q.lte('creado_en', finDiaUtc(fechaHasta, tz))
       }
 
       const { data, error } = await q

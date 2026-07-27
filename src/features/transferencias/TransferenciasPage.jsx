@@ -8,6 +8,7 @@ import { Fab } from '@/components/ui/Fab'
 import { formatoFecha } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { invalidarStock } from '@/lib/cache'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,6 +183,9 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
         referencia_id: String(productoId),
         metadatos: { producto: producto?.nombre, lote: loteObj?.codigo_lote, origen: sucOrigen?.nombre, destino: sucDestino?.nombre, cantidad: cant, nota: nota.trim() || null },
       })
+
+      // El stock cambió de sucursal: que Inventario no siga mostrando el reparto viejo
+      invalidarStock()
 
       toast.success('Transferencia registrada')
       onGuardado()

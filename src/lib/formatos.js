@@ -20,6 +20,39 @@ export function dowEnZona(isoDate) {
   return new Date(isoDate + 'T12:00:00Z').getUTCDay()
 }
 
+// Offset de una zona horaria en minutos para un instante dado.
+// Negativo al oeste de Greenwich: CDMX = -360.
+function offsetZona(instante, tz) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instante)
+  const p = Object.fromEntries(partes.map(x => [x.type, x.value]))
+  const comoUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second)
+  return (comoUtc - instante.getTime()) / 60_000
+}
+
+/**
+ * Instante UTC en que EMPIEZA el día `isoDate` (YYYY-MM-DD) en la zona de la empresa.
+ *
+ * Las columnas de fecha/hora (creado_en, fecha_apertura...) son `timestamptz`. Si se
+ * filtran con la cadena "2026-07-26T00:00:00" —sin zona— Postgres la interpreta como
+ * UTC, y en CDMX (UTC-6) el "día" consultado acaba siendo de AYER 6 p.m. a HOY 5:59 p.m.
+ * Resultado: las ventas de la tarde-noche no aparecen en dashboard ni reportes.
+ * Estos helpers traducen el día local a los instantes UTC que le corresponden.
+ */
+export function inicioDiaUtc(isoDate, tz = TZ_DEFAULT) {
+  const off = offsetZona(new Date(isoDate + 'T12:00:00Z'), tz)
+  return new Date(Date.parse(isoDate + 'T00:00:00Z') - off * 60_000).toISOString()
+}
+
+/** Instante UTC en que TERMINA el día `isoDate` en la zona de la empresa (inclusive). */
+export function finDiaUtc(isoDate, tz = TZ_DEFAULT) {
+  const off = offsetZona(new Date(isoDate + 'T12:00:00Z'), tz)
+  return new Date(Date.parse(isoDate + 'T23:59:59.999Z') - off * 60_000).toISOString()
+}
+
 // ─── Alias legacy — usar fechaEnZona(tz) en su lugar ─────────────────────────
 // Convierte un Date a YYYY-MM-DD usando la zona horaria LOCAL del dispositivo
 export function toLocalIso(d) {
