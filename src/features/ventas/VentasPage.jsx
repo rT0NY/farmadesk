@@ -1381,9 +1381,13 @@ export default function VentasPage() {
   const totalHoy   = ventasResumen.reduce((a, v) => a + (v.total || 0), 0)
   const ticketsHoy = ventasResumen.length
   // Parte de esas ventas se fio: cuenta como venta, pero no como dinero en caja
-  const creditoHoy = ventasResumen
-    .filter(v => idsCredito.has(v.id))
-    .reduce((a, v) => a + (v.total || 0), 0)
+  // Saldo REAL por cobrar: hay que restar lo abonado. Si se sumara el total de
+  // la venta, una cuenta ya liquidada seguiría apareciendo como pendiente.
+  const creditoHoy = ventasResumen.reduce((a, v) => {
+    const c = cuentaPorVenta.get(v.id)
+    if (!c || c.pagada) return a
+    return a + Math.max(0, Number(c.total || 0) - Number(c.abonado || 0))
+  }, 0)
 
   // ── Cambiar sucursal (admin) ──────────────────────────────
   function cambiarSuc(sId) {
@@ -1919,8 +1923,14 @@ export default function VentasPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-bold text-slate-900 font-mono">{generarFolio(v.id, sucursalActual?.nombre)}</p>
+                          {/* Una vez liquidada deja de estar pendiente: el badge
+                              tiene que seguir el estado real de la cuenta */}
                           {cuentaPendiente && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendiente</span>
+                            cuentaPendiente.pagada ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Liquidada</span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendiente</span>
+                            )
                           )}
                           {v.metodo_pago === 'tarjeta' && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 flex items-center gap-0.5">
