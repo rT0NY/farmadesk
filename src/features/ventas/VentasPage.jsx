@@ -530,6 +530,13 @@ export default function VentasPage() {
     () => new Set((cuentasHoy || []).map(c => c.venta_id)),
     [cuentasHoy]
   )
+  // Cuenta por venta, para saber cuánto de lo fiado ya se cobró. Sin esto el
+  // corte mostraba siempre el total original aunque el cliente ya hubiera pagado.
+  const cuentaPorVenta = useMemo(() => {
+    const m = new Map()
+    ;(cuentasHoy || []).forEach(c => m.set(c.venta_id, c))
+    return m
+  }, [cuentasHoy])
   const esEfectivoEnCaja = useCallback(
     (v) => (!v.metodo_pago || v.metodo_pago === 'efectivo') && !idsCredito.has(v.id),
     [idsCredito]
@@ -599,7 +606,7 @@ export default function VentasPage() {
           ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         supabase.rpc('ofertas_vigentes'),
-        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
         // La política ps_select deja leer esta tabla a cualquier empleado de la
         // empresa, cajeros incluidos. Antes se les pasaba un conjunto vacío, y
         // con eso la validación de "producto no disponible" nunca se disparaba:
@@ -647,7 +654,7 @@ export default function VentasPage() {
         supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
-        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
       ])
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
@@ -1364,11 +1371,17 @@ export default function VentasPage() {
   // ── Datos del día ─────────────────────────────────────────
   // Las canceladas no cuentan. Dashboard, Reportes y el corte de caja ya las
   // excluían; este resumen era el único que las seguía sumando.
-  const ventasValidasHoy = ventasHoy.filter(v => v.estado !== 'cancelada')
-  const totalHoy   = ventasValidasHoy.reduce((a, v) => a + (v.total || 0), 0)
-  const ticketsHoy = ventasValidasHoy.length
+  // El cajero solo responde por SU turno. Mostrarle el día completo de la
+  // sucursal contradecía al historial de junto, acotado al turno, y le mezclaba
+  // ventas de otros. Admin y encargado sí ven el día entero.
+  const resumenSoloTurno = esCajero && !!turnoActual
+  const ventasResumen = resumenSoloTurno
+    ? ventasTurno.filter(v => v.estado !== 'cancelada')
+    : ventasHoy.filter(v => v.estado !== 'cancelada')
+  const totalHoy   = ventasResumen.reduce((a, v) => a + (v.total || 0), 0)
+  const ticketsHoy = ventasResumen.length
   // Parte de esas ventas se fio: cuenta como venta, pero no como dinero en caja
-  const creditoHoy = ventasValidasHoy
+  const creditoHoy = ventasResumen
     .filter(v => idsCredito.has(v.id))
     .reduce((a, v) => a + (v.total || 0), 0)
 
@@ -1855,7 +1868,9 @@ export default function VentasPage() {
 
             {/* Mini resumen */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4">
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Resumen del día</div>
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+                {resumenSoloTurno ? 'Resumen de tu turno' : 'Resumen del día'}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-xl p-3">
                   <p className="text-xl font-bold text-primary-700 tabular-nums">{formatoMoneda(totalHoy)}</p>
@@ -1866,7 +1881,10 @@ export default function VentasPage() {
                   <p className="text-xs text-slate-500 mt-0.5">Tickets</p>
                 </div>
               </div>
-              {creditoHoy > 0 && (
+              {/* El cajero no puede fiar ni cobrar abonos: ese dato no le sirve
+                  y le llegaba de ventas ajenas. En el corte sí lo ve, porque ahí
+                  explica por qué el efectivo esperado es menor. */}
+              {!esCajero && creditoHoy > 0 && (
                 <p className="text-xs font-semibold text-amber-600 mt-2">
                   Por cobrar: {formatoMoneda(creditoHoy)} — no entra a caja
                 </p>
@@ -1939,9 +1957,12 @@ export default function VentasPage() {
         const totalSal = salidas.reduce((s, m) => s + Number(m.monto || 0), 0)
         const apertura = Number(turnoActual?.monto_apertura || 0)
         const esperado = apertura + totalEf + totalEnt - totalSal
-        const creditoTurno = ventasTurno
-          .filter(v => idsCredito.has(v.id))
-          .reduce((s, v) => s + Number(v.total || 0), 0)
+        const ventasFiadas  = ventasTurno.filter(v => idsCredito.has(v.id))
+        const creditoTurno  = ventasFiadas.reduce((s, v) => s + Number(v.total || 0), 0)
+        // Lo que el cliente ya pagó (al dueño, no al cajón) se descuenta del aviso
+        const creditoCobrado = ventasFiadas.reduce(
+          (s, v) => s + Number(cuentaPorVenta.get(v.id)?.abonado || 0), 0)
+        const creditoPendiente = Math.max(0, creditoTurno - creditoCobrado)
         const diasTurno = turnoActual?.fecha_apertura
           ? Math.ceil((Date.now() - new Date(turnoActual.fecha_apertura).getTime()) / 86400000)
           : 0
@@ -2025,7 +2046,14 @@ export default function VentasPage() {
                     </div>
                     <div>
                       <span className="text-sm text-amber-800 font-medium">Ventas a crédito</span>
-                      <p className="text-xs text-amber-600">No entra a caja — el cliente paga después</p>
+                      <p className="text-xs text-amber-600">
+                        No entra a caja
+                        {creditoCobrado > 0 && creditoPendiente === 0
+                          ? ' — ya liquidada, se cobró fuera del cajón'
+                          : creditoCobrado > 0
+                            ? ` — ${formatoMoneda(creditoCobrado)} ya abonados, quedan ${formatoMoneda(creditoPendiente)}`
+                            : ' — el cliente paga después'}
+                      </p>
                     </div>
                   </div>
                   <span className="text-sm font-semibold text-amber-700 tabular-nums">{formatoMoneda(creditoTurno)}</span>
