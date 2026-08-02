@@ -426,6 +426,19 @@ function ModalCierreTurno({ turnoActual, resumenTurno, sucursalNombre, onImprimi
                 ))}
               </div>
 
+              {/* Se vendió, pero ese dinero no está en el cajón */}
+              {Number(resultado.credito) > 0 && (
+                <div className="rounded-2xl bg-amber-50 border border-amber-200 px-3 py-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-amber-800">Ventas a crédito</span>
+                    <span className="text-sm font-bold text-amber-800 tabular-nums">{formatoMoneda(resultado.credito)}</span>
+                  </div>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    No entra al corte: el cliente todavía no paga.
+                  </p>
+                </div>
+              )}
+
               <div className="border-t border-slate-200 pt-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-slate-900">Esperado</span>
@@ -510,6 +523,17 @@ export default function VentasPage() {
   const [ventasHoy, setVentasHoy] = useState([])
   const [detallesHoy, setDetallesHoy] = useState([])
   const [cuentasHoy, setCuentasHoy] = useState([])
+  // Una venta a crédito NO mete dinero al cajón: el cliente paga después. Si se
+  // cuenta como efectivo, el corte pide dinero que nunca entró y el cajero
+  // aparece con faltante. El cobro se registra el día que realmente ocurre.
+  const idsCredito = useMemo(
+    () => new Set((cuentasHoy || []).map(c => c.venta_id)),
+    [cuentasHoy]
+  )
+  const esEfectivoEnCaja = useCallback(
+    (v) => (!v.metodo_pago || v.metodo_pago === 'efectivo') && !idsCredito.has(v.id),
+    [idsCredito]
+  )
   const [turnoActual, setTurnoActual] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -576,9 +600,11 @@ export default function VentasPage() {
           : Promise.resolve({ data: null, error: null }),
         supabase.rpc('ofertas_vigentes'),
         supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
-        esCajero
-          ? Promise.resolve({ data: [] })
-          : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
+        // La política ps_select deja leer esta tabla a cualquier empleado de la
+        // empresa, cajeros incluidos. Antes se les pasaba un conjunto vacío, y
+        // con eso la validación de "producto no disponible" nunca se disparaba:
+        // el cajero podía vender productos deshabilitados en su sucursal.
+        supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
       ])
       const disabledSet = new Set((prodSuc || []).map(ps => ps.producto_id))
       setDeshabilitados(disabledSet)
@@ -938,8 +964,9 @@ export default function VentasPage() {
       return (codigosPorProducto.get(p.id) || []).some(c => c.includes(q2))
     })
 
-    // Resultados para esta sucursal (no deshabilitados)
-    const disponibles = todos.filter(p => !deshabilitados.has(p.id)).slice(0, 8)
+    // Se muestran también los deshabilitados, pero marcados: "sin stock aquí" y
+    // "no se vende aquí" son cosas distintas y el mostrador necesita verlas.
+    const disponibles = todos.slice(0, 8)
     setResultados(disponibles)
 
     // Otras sucursales: candidatos = deshabilitado aquí o sin stock local.
@@ -1198,9 +1225,7 @@ export default function VentasPage() {
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
-        esCajero
-          ? Promise.resolve({ data: [] })
-          : supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucId).eq('habilitado', false),
+        supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucId).eq('habilitado', false),
       ])
       const vts2 = (ventasConDet2 ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det2 = (ventasConDet2 ?? []).flatMap(v => v.detalle_ventas ?? [])
@@ -1234,7 +1259,7 @@ export default function VentasPage() {
         .select('tipo, descripcion, monto')
         .eq('turno_id', turnoActual.id)
 
-      const ventasEf  = ventasTurno.filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo').reduce((s, v) => s + Number(v.total || 0), 0)
+      const ventasEf  = ventasTurno.filter(esEfectivoEnCaja).reduce((s, v) => s + Number(v.total || 0), 0)
       const ventasTar = ventasTurno.filter(v => v.metodo_pago === 'tarjeta').reduce((s, v) => s + Number(v.total || 0), 0)
       const entradas  = (movs || []).filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.monto || 0), 0)
       const salidas   = (movs || []).filter(m => m.tipo === 'salida').reduce((s, m) => s + Number(m.monto || 0), 0)
@@ -1269,7 +1294,7 @@ export default function VentasPage() {
 
   // ── Imprimir corte de turno ───────────────────────────────
   function imprimirCorte() {
-    const ef       = ventasTurno.filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo')
+    const ef       = ventasTurno.filter(esEfectivoEnCaja)
     const tar      = ventasTurno.filter(v => v.metodo_pago === 'tarjeta')
     const totalEf  = ef.reduce((s, v) => s + Number(v.total || 0), 0)
     const totalTar = tar.reduce((s, v) => s + Number(v.total || 0), 0)
@@ -1337,8 +1362,15 @@ export default function VentasPage() {
   }
 
   // ── Datos del día ─────────────────────────────────────────
-  const totalHoy = ventasHoy.reduce((a, v) => a + (v.total || 0), 0)
-  const ticketsHoy = ventasHoy.length
+  // Las canceladas no cuentan. Dashboard, Reportes y el corte de caja ya las
+  // excluían; este resumen era el único que las seguía sumando.
+  const ventasValidasHoy = ventasHoy.filter(v => v.estado !== 'cancelada')
+  const totalHoy   = ventasValidasHoy.reduce((a, v) => a + (v.total || 0), 0)
+  const ticketsHoy = ventasValidasHoy.length
+  // Parte de esas ventas se fio: cuenta como venta, pero no como dinero en caja
+  const creditoHoy = ventasValidasHoy
+    .filter(v => idsCredito.has(v.id))
+    .reduce((a, v) => a + (v.total || 0), 0)
 
   // ── Cambiar sucursal (admin) ──────────────────────────────
   function cambiarSuc(sId) {
@@ -1474,11 +1506,13 @@ export default function VentasPage() {
                 <div className="space-y-1.5">
                   {resultados.map(p => {
                     const stock = stockEnSucursal(p.id)
+                    const noSeVende = deshabilitados.has(p.id)
                     const sinStock = stock === 0
+                    const bloqueado = noSeVende || sinStock
                     const tieneMayoreo = Number(p.precio_mayoreo) > 0
                     return (
-                      <button key={p.id} onClick={() => !sinStock && agregarAlCarrito(p)} disabled={sinStock}
-                        className={cn('w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between', sinStock ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50' : 'border-slate-200 hover:border-primary-300 bg-white')}>
+                      <button key={p.id} onClick={() => !bloqueado && agregarAlCarrito(p)} disabled={bloqueado}
+                        className={cn('w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between', bloqueado ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50' : 'border-slate-200 hover:border-primary-300 bg-white')}>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-semibold text-slate-900 truncate">{p.nombre}</p>
@@ -1500,7 +1534,13 @@ export default function VentasPage() {
                             })()}
                           </p>
                         </div>
-                        <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0', sinStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700')}>{stock} uds</span>
+                        {noSeVende ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 bg-slate-200 text-slate-600 text-center leading-tight">
+                            No disponible<br />en esta sucursal
+                          </span>
+                        ) : (
+                          <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0', sinStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700')}>{stock} uds</span>
+                        )}
                       </button>
                     )
                   })}
@@ -1826,6 +1866,11 @@ export default function VentasPage() {
                   <p className="text-xs text-slate-500 mt-0.5">Tickets</p>
                 </div>
               </div>
+              {creditoHoy > 0 && (
+                <p className="text-xs font-semibold text-amber-600 mt-2">
+                  Por cobrar: {formatoMoneda(creditoHoy)} — no entra a caja
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -1884,7 +1929,7 @@ export default function VentasPage() {
 
       {/* ══ TAB CORTE ══ */}
       {tab === 'corte' && (() => {
-        const ef       = ventasTurno.filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo')
+        const ef       = ventasTurno.filter(esEfectivoEnCaja)
         const tar      = ventasTurno.filter(v => v.metodo_pago === 'tarjeta')
         const totalEf  = ef.reduce((s, v) => s + Number(v.total || 0), 0)
         const totalTar = tar.reduce((s, v) => s + Number(v.total || 0), 0)
@@ -1894,6 +1939,9 @@ export default function VentasPage() {
         const totalSal = salidas.reduce((s, m) => s + Number(m.monto || 0), 0)
         const apertura = Number(turnoActual?.monto_apertura || 0)
         const esperado = apertura + totalEf + totalEnt - totalSal
+        const creditoTurno = ventasTurno
+          .filter(v => idsCredito.has(v.id))
+          .reduce((s, v) => s + Number(v.total || 0), 0)
         const diasTurno = turnoActual?.fecha_apertura
           ? Math.ceil((Date.now() - new Date(turnoActual.fecha_apertura).getTime()) / 86400000)
           : 0
@@ -1966,6 +2014,23 @@ export default function VentasPage() {
                 </div>
                 <span className="text-sm font-semibold text-sky-700 tabular-nums">+{formatoMoneda(totalTar)}</span>
               </div>
+
+              {/* Ventas fiadas: se listan para que cuadre con el historial, pero
+                  no suman al esperado porque ese dinero no llegó al cajón */}
+              {creditoTurno > 0 && (
+                <div className="flex items-center justify-between px-5 py-3 bg-amber-50/60">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <Receipt className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <span className="text-sm text-amber-800 font-medium">Ventas a crédito</span>
+                      <p className="text-xs text-amber-600">No entra a caja — el cliente paga después</p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold text-amber-700 tabular-nums">{formatoMoneda(creditoTurno)}</span>
+                </div>
+              )}
 
               {/* Entradas manuales — solo si existen */}
               {totalEnt > 0 && (

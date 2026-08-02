@@ -40,7 +40,7 @@ function monedaCorta(v) {
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-function StatCard({ label, valor, sub, extra, color, Icono, negativo }) {
+function StatCard({ label, valor, sub, extra, aviso, color, Icono, negativo }) {
   return (
     <div className="bg-white border border-slate-100 rounded-3xl px-5 py-4 shadow-card flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -54,6 +54,8 @@ function StatCard({ label, valor, sub, extra, color, Icono, negativo }) {
         <p className={`text-2xl font-bold ${negativo ? 'text-red-600' : 'text-slate-900'}`}>
           {negativo ? '–' : ''}{formatoMoneda(Math.abs(valor))}
         </p>
+        {/* Vendido pero no cobrado — arriba del subtítulo */}
+        {aviso && <p className="text-xs font-semibold text-amber-600 mt-0.5">{aviso}</p>}
         {sub   && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
         {extra && <p className="text-sm font-semibold mt-1" style={{ color }}>{extra}</p>}
       </div>
@@ -140,6 +142,7 @@ export default function ReportesPage() {
         { data: gastos,      error: e2 },
         { data: semanas,     error: e3 },
         { data: perfilesData,error: e4 },
+        { data: porCobrarRows },
       ] = await Promise.all([
         supabase.from('ventas')
           .select('id, total, creado_en, sucursal_id')
@@ -158,6 +161,14 @@ export default function ReportesPage() {
         supabase.from('perfiles')
           .select('id, nombre, sucursal_id')
           .eq('empresa_id', empresa.id),
+        // Cuentas del período que siguen sin liquidarse: parte de los ingresos
+        // de arriba todavía no se ha cobrado.
+        supabase.from('cuentas_pendientes')
+          .select('total, abonado')
+          .eq('empresa_id', empresa.id)
+          .eq('pagada', false)
+          .gte('creado_en', inicioDiaUtc(inicio, tz))
+          .lte('creado_en', finDiaUtc(fin, tz)),
       ])
 
       if (e1 || e2 || e4) toast.error('Error al cargar datos del reporte. Algunos números pueden estar incompletos.')
@@ -209,7 +220,9 @@ export default function ReportesPage() {
       for (const s of sucursalesRef.current) {
         sucMap[s.id] = { nombre: s.nombre, ventas: 0, cogs: 0, gastos: 0, salarios: 0 }
       }
-      sucMap['__general__'] = { nombre: 'General (empresa)', ventas: 0, cogs: 0, gastos: 0, salarios: 0 }
+      // Los gastos sin sucursal NO se listan como si fueran una tienda más: la
+      // sección se llama "Desglose por sucursal" y ya salen en su propia tarjeta.
+      let gastosGenerales = 0
       for (const v of (ventas ?? [])) {
         if (sucMap[v.sucursal_id]) sucMap[v.sucursal_id].ventas += v.total ?? 0
       }
@@ -220,8 +233,8 @@ export default function ReportesPage() {
         }
       }
       for (const g of (gastos ?? [])) {
-        const key = (g.sucursal_id && sucMap[g.sucursal_id]) ? g.sucursal_id : '__general__'
-        sucMap[key].gastos += g.monto ?? 0
+        if (g.sucursal_id && sucMap[g.sucursal_id]) sucMap[g.sucursal_id].gastos += g.monto ?? 0
+        else gastosGenerales += g.monto ?? 0
       }
       for (const s of semanasFiltradas) {
         const sid = perfilMap[s.usuario_id]?.sucursal_id
@@ -394,6 +407,9 @@ export default function ReportesPage() {
         gastosCat,
         topProductos,
         sucursalesData,
+        gastosGenerales,
+        porCobrar: (porCobrarRows || [])
+          .reduce((s, c) => s + (Number(c.total || 0) - Number(c.abonado || 0)), 0),
         sucursalesExport,
         salarios:  Object.values(salEmp).sort((a, b) => b.total - a.total),
         numVentas: (ventas ?? []).length,
@@ -638,6 +654,7 @@ export default function ReportesPage() {
           {/* ── Estado de resultados ── */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <StatCard label="Ingresos" valor={datos.totalIngresos}
+              aviso={datos.porCobrar > 0 ? `Por cobrar: ${formatoMoneda(datos.porCobrar)}` : undefined}
               sub={`${datos.numVentas} venta${datos.numVentas !== 1 ? 's' : ''}`}
               color="#10b981" Icono={ShoppingCart} />
             <StatCard label="Costo de ventas" valor={datos.totalCOGS}
@@ -779,6 +796,12 @@ export default function ReportesPage() {
                   </div>
                 ))}
               </div>
+              {datos.gastosGenerales > 0 && (
+                <p className="text-xs text-slate-400 border-t border-slate-100 pt-3">
+                  No incluye {formatoMoneda(datos.gastosGenerales)} de gastos generales de la empresa,
+                  que no pertenecen a ninguna sucursal. Sí están en la tarjeta de Gastos operativos.
+                </p>
+              )}
             </div>
           )}
 

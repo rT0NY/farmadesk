@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { X, BadgeCheck, RefreshCw, Users, Bell, Settings, Check, ChevronRight, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/clases'
@@ -127,7 +128,7 @@ function ModalDiaPago({ empresa, onClose, onGuardado }) {
 // ─── Modal: detalle semanal del empleado ──────────────────────────────────────
 
 function ModalSalario({ empleado, onClose }) {
-  const { empresa, tz } = useApp()
+  const { empresa, tz, perfil } = useApp()
   const [salarioDia,      setSalarioDia]      = useState('')
   const [salarioId,       setSalarioId]       = useState(null)
   const [semanas,         setSemanas]         = useState([])
@@ -247,6 +248,17 @@ function ModalSalario({ empleado, onClose }) {
     setSemanas((prev) => prev.map((s) => s.id === semana.id ? { ...s, pagado } : s))
     try {
       await supabase.from('semanas_salario').update({ pagado }).eq('id', semana.id)
+      // Queda constancia de a quién se le pagó y cuándo: el pago de nómina no
+      // genera ningún otro registro en el sistema.
+      await logBitacora({
+        empresa_id:    empresa?.id,
+        tipo:          pagado ? 'salario_pagado' : 'salario_pago_revertido',
+        descripcion:   pagado
+          ? `Salario pagado a ${empleado?.nombre ?? 'empleado'} · semana del ${semana.semana_inicio} · ${formatoMoneda(semana.total_calculado)}`
+          : `Se revirtió el pago de salario a ${empleado?.nombre ?? 'empleado'} · semana del ${semana.semana_inicio}`,
+        usuario_id:    perfil?.id ?? null,
+        referencia_id: String(semana.id),
+      })
     } catch { /* revert on error */
       setSemanas((prev) => prev.map((s) => s.id === semana.id ? { ...s, pagado: !pagado } : s))
     } finally {

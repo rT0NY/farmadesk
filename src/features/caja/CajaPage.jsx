@@ -960,7 +960,7 @@ export default function CajaPage() {
       for (const turno of todosTurnos) {
         const [{ data: ventas }, { data: movs }] = await Promise.all([
           supabase.from('ventas')
-            .select('total, metodo_pago')
+            .select('id, total, metodo_pago')
             .eq('turno_id', turno.id)
             .neq('estado', 'cancelada'),
           supabase.from('movimientos_caja')
@@ -968,8 +968,21 @@ export default function CajaPage() {
             .eq('turno_id', turno.id)
             .order('creado_en', { ascending: false }),
         ])
+
+        // Las ventas a crédito no dejaron dinero en el cajón: si se cuentan como
+        // efectivo, el corte exige un monto que nunca entró y el cajero cuadra
+        // con faltante. El cobro se registra aparte, cuando el cliente paga.
+        const idsVenta = (ventas || []).map(v => v.id)
+        const { data: creditos } = idsVenta.length
+          ? await supabase.from('cuentas_pendientes').select('venta_id').in('venta_id', idsVenta)
+          : { data: [] }
+        const idsCredito = new Set((creditos || []).map(c => c.venta_id))
+
+        const ventasCredito = (ventas || [])
+          .filter(v => idsCredito.has(v.id))
+          .reduce((s, v) => s + Number(v.total || 0), 0)
         const ventasEfectivo = (ventas || [])
-          .filter(v => !v.metodo_pago || v.metodo_pago === 'efectivo')
+          .filter(v => (!v.metodo_pago || v.metodo_pago === 'efectivo') && !idsCredito.has(v.id))
           .reduce((s, v) => s + Number(v.total || 0), 0)
         const ventasTarjeta = (ventas || [])
           .filter(v => v.metodo_pago === 'tarjeta')
@@ -982,7 +995,7 @@ export default function CajaPage() {
           .reduce((s, m) => s + Number(m.monto || 0), 0)
         const esperado = Number(turno.monto_apertura || 0) + ventasEfectivo + entradas - salidas
         resumenes[turno.id] = {
-          ventasEfectivo, ventasTarjeta, entradas, salidas, esperado,
+          ventasEfectivo, ventasTarjeta, ventasCredito, entradas, salidas, esperado,
           movimientos: movs || [],
         }
       }

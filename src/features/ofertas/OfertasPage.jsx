@@ -27,6 +27,10 @@ const TIPOS_OFERTA = [
   { valor: 'nxm', etiqueta: 'NxM (2x1, 3x2...)', desc: 'Compra N, paga M', icono: Gift },
 ]
 
+// La bitácora guarda texto libre: sin esto quedaba "tipo descuento_porcentaje"
+const etiquetaTipo = (tipo) =>
+  TIPOS_OFERTA.find(t => t.valor === tipo)?.etiqueta ?? tipo
+
 const DIAS = [
   { valor: 0, etiqueta: 'Dom' }, { valor: 1, etiqueta: 'Lun' }, { valor: 2, etiqueta: 'Mar' },
   { valor: 3, etiqueta: 'Mié' }, { valor: 4, etiqueta: 'Jue' }, { valor: 5, etiqueta: 'Vie' }, { valor: 6, etiqueta: 'Sáb' },
@@ -347,7 +351,7 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
         await logBitacora({
           empresa_id:    empresa.id,
           tipo:          'oferta_creada',
-          descripcion:   `Oferta creada: "${form.nombre.trim()}" · tipo ${form.tipo}`,
+          descripcion:   `Oferta creada: "${form.nombre.trim()}" · ${etiquetaTipo(form.tipo)}`,
           usuario_id:    perfil?.id ?? null,
           referencia_id: nueva?.id ?? null,
         })

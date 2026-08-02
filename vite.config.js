@@ -28,8 +28,44 @@ function versionPlugin() {
   }
 }
 
+// Content-Security-Policy: se inyecta SOLO en el build de producción (web y Electron).
+// No se aplica en dev para no romper el HMR inline de Vite/React Refresh.
+// connect-src incluye Supabase (REST + Realtime por WebSocket).
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+].join('; ')
+
+function cspPlugin() {
+  return {
+    name: 'farmadesk-csp',
+    apply: 'build',
+    transformIndexHtml() {
+      // head-prepend: la CSP debe ir ANTES de los <script>/<link> del bundle,
+      // porque un <meta> CSP solo gobierna los recursos declarados después de él.
+      return [
+        {
+          tag: 'meta',
+          attrs: {
+            'http-equiv': 'Content-Security-Policy',
+            content: CSP,
+          },
+          injectTo: 'head-prepend',
+        },
+      ]
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), versionPlugin()],
+  plugins: [react(), tailwindcss(), versionPlugin(), cspPlugin()],
   define: {
     // Disponible en el código como __APP_VERSION__ (string literal en tiempo de build)
     __APP_VERSION__: JSON.stringify(BUILD_VERSION),

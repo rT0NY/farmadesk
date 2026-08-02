@@ -72,11 +72,19 @@ Deno.serve(async (req) => {
         password,
         email_confirm: true,
       })
-      if (createError) throw createError
+      if (createError) {
+        return new Response(JSON.stringify({ error: createError.message }), {
+          status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+        })
+      }
       newUserId = created.user.id
     } else {
       const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email)
-      if (inviteError) throw inviteError
+      if (inviteError) {
+        return new Response(JSON.stringify({ error: inviteError.message }), {
+          status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+        })
+      }
       newUserId = invited.user.id
     }
 
@@ -95,14 +103,17 @@ Deno.serve(async (req) => {
 
     if (perfilError) {
       await admin.auth.admin.deleteUser(newUserId)
-      throw perfilError
+      return new Response(JSON.stringify({ error: perfilError.message }), {
+        status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+      })
     }
 
     return new Response(JSON.stringify({ ok: true, userId: newUserId }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
+    console.error('invitar-empleado error:', e)
+    return new Response(JSON.stringify({ error: 'Error interno del servidor' }), {
       status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }

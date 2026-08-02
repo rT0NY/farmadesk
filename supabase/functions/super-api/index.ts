@@ -109,12 +109,24 @@ Deno.serve(async (req) => {
         return json({ error: `Crear perfil: ${perfErr.message}` }, 400)
       }
 
-      // 4. Crear sucursal inicial si viene
+      // 4. Crear sucursal inicial si viene.
+      // El formulario manda la dirección DESGLOSADA (calle/colonia/ciudad/estado/CP),
+      // no un campo `direccion`. Antes solo se guardaba el nombre y por eso la
+      // primera sucursal de cada empresa quedaba siempre sin dirección — las
+      // demás sí, porque el cliente las inserta aparte con todos los campos.
       if (sucursal_inicial?.nombre?.trim()) {
+        const limpiar = (v: unknown) =>
+          typeof v === "string" && v.trim() ? v.trim() : null
+
         await supabaseAdmin.from("sucursales").insert([{
-          empresa_id: empresa.id,
-          nombre: sucursal_inicial.nombre.trim(),
-          direccion: sucursal_inicial.direccion?.trim() || null,
+          empresa_id:    empresa.id,
+          nombre:        sucursal_inicial.nombre.trim(),
+          direccion:     limpiar(sucursal_inicial.direccion),
+          calle:         limpiar(sucursal_inicial.calle),
+          colonia:       limpiar(sucursal_inicial.colonia),
+          ciudad:        limpiar(sucursal_inicial.ciudad),
+          estado:        limpiar(sucursal_inicial.estado),
+          codigo_postal: limpiar(sucursal_inicial.codigo_postal),
         }])
       }
 

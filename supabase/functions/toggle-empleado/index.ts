@@ -80,7 +80,11 @@ Deno.serve(async (req) => {
     if (activo) {
       // Reactivar: quitar ban
       const { error } = await admin.auth.admin.updateUserById(user_id, { ban_duration: 'none' })
-      if (error) throw error
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+        })
+      }
     } else {
       // Eliminar: liberar el email para que pueda reutilizarse
       const placeholder = `eliminado_${user_id}@eliminado.local`
@@ -88,21 +92,30 @@ Deno.serve(async (req) => {
         email: placeholder,
         ban_duration: '876600h',
       })
-      if (error) throw error
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     const { error: perfilError } = await admin
       .from('perfiles')
       .update({ activo })
       .eq('id', user_id)
-    if (perfilError) throw perfilError
+    if (perfilError) {
+      return new Response(JSON.stringify({ error: perfilError.message }), {
+        status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
 
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 400,
+    console.error('toggle-empleado error:', e)
+    return new Response(JSON.stringify({ error: 'Error interno del servidor' }), {
+      status: 500,
       headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }

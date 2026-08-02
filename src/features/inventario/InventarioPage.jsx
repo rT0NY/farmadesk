@@ -230,6 +230,29 @@ export default function InventarioPage() {
   // si los datos ya tienen rato, se recargan solos.
   useFocusRefresh(cargar)
 
+  // Productos deshabilitados en la sucursal del usuario. Sirve para distinguir
+  // "0 uds" (se vende aquí, hay que resurtir) de "no se vende en esta sucursal",
+  // que son cosas muy distintas para quien está en el mostrador.
+  // Clave `${producto_id}|${sucursal_id}`. Se cargan TODAS las sucursales para
+  // que también la tabla del admin pueda marcar dónde no se vende cada producto.
+  const [noDisponibles, setNoDisponibles] = useState(new Set())
+  useEffect(() => {
+    if (!empresa?.id) return
+    let cancelado = false
+    supabase.from('productos_sucursales')
+      .select('producto_id, sucursal_id')
+      .eq('habilitado', false)
+      .then(({ data }) => {
+        if (!cancelado) setNoDisponibles(new Set((data || []).map(r => `${r.producto_id}|${r.sucursal_id}`)))
+      })
+    return () => { cancelado = true }
+  }, [empresa?.id])
+
+  const noSeVendeEn = useCallback(
+    (productoId, sucursalId) => noDisponibles.has(`${productoId}|${sucursalId}`),
+    [noDisponibles]
+  )
+
   const cargarCaducidad = useCallback(async () => {
     setCargandoCad(true)
     try {
@@ -524,15 +547,21 @@ export default function InventarioPage() {
                     {esCajero ? (
                       // Cajero: solo su sucursal
                       sucursalPropia && (
-                        <span className={cn(
-                          'inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border mt-1.5',
-                          Number(stockSuc[sucursalPropia.id] || 0) > 0
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                            : 'bg-red-50 border-red-200 text-red-600'
-                        )}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                          {Number(stockSuc[sucursalPropia.id] || 0)} uds
-                        </span>
+                        noSeVendeEn(p.producto_id, sucursalPropia?.id) ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border mt-1.5 bg-slate-100 border-slate-200 text-slate-500">
+                            No disponible aquí
+                          </span>
+                        ) : (
+                          <span className={cn(
+                            'inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border mt-1.5',
+                            Number(stockSuc[sucursalPropia.id] || 0) > 0
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              : 'bg-red-50 border-red-200 text-red-600'
+                          )}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            {Number(stockSuc[sucursalPropia.id] || 0)} uds
+                          </span>
+                        )
                       )
                     ) : sucursales.length > 1 && (
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -637,6 +666,9 @@ export default function InventarioPage() {
                         // Cajero: solo su sucursal
                         <td className="px-3 py-2.5 text-right bg-emerald-50/30">
                           {(() => {
+                            if (noSeVendeEn(p.producto_id, sucursalPropia?.id)) {
+                              return <span className="text-xs font-semibold text-slate-400">No disponible aquí</span>
+                            }
                             const cant = sucursalPropia ? Number(stockSuc[sucursalPropia.id] || 0) : p.stock_total
                             const bajo = sucursalPropia && cant < (p.stock_minimo ?? 0) && (p.stock_minimo ?? 0) > 0
                             return (
@@ -653,6 +685,14 @@ export default function InventarioPage() {
                           {sucursales.map(s => {
                             const cant = Number(stockSuc[s.id] || 0)
                             const esMia = sucursalPropia?.id === s.id
+                            if (noSeVendeEn(p.producto_id, s.id)) {
+                              return (
+                                <td key={s.id} className={cn('px-3 py-2.5 text-right', esMia && 'bg-primary-50/40')}
+                                  title="No se vende en esta sucursal">
+                                  <span className="text-xs font-semibold text-slate-300">n/d</span>
+                                </td>
+                              )
+                            }
                             return (
                               <td key={s.id} className={cn('px-3 py-2.5 text-right text-sm tabular-nums', esMia && 'bg-primary-50/40')}>
                                 <span className={cn(

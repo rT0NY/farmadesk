@@ -153,7 +153,10 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
             nombre_admin:     nombreAdmin,
             correo_admin:     correo,
             password_admin:   form.password_admin,
-            sucursal_inicial: sucursalesValidas[0],
+            // No se manda `sucursal_inicial`: la Edge Function solo guardaba el
+            // nombre y descartaba la dirección desglosada, por eso la primera
+            // sucursal siempre quedaba sin domicilio. Todas se insertan abajo
+            // por el mismo camino, que sí guarda los campos completos.
           }),
         }
       )
@@ -175,19 +178,18 @@ export default function ModalCrearEmpresa({ abierto, onCerrar, onExito }) {
         p_precio_mensual:   parseFloat(billing.precio_mensual),
       })
 
-      if (sucursalesValidas.length > 1) {
-        const restantes = sucursalesValidas.slice(1).map(s => ({
-          empresa_id:    empresaId,
-          nombre:        s.nombre,
-          calle:         s.calle,
-          colonia:       s.colonia,
-          ciudad:        s.ciudad,
-          estado:        s.estado,
-          codigo_postal: s.codigo_postal,
-        }))
-        const { error: errSuc } = await supabase.from('sucursales').insert(restantes)
-        if (errSuc) toast.warning(`Empresa creada, pero algunas sucursales fallaron: ${errSuc.message}`)
-      }
+      // TODAS las sucursales, incluida la primera
+      const filasSucursales = sucursalesValidas.map(s => ({
+        empresa_id:    empresaId,
+        nombre:        s.nombre,
+        calle:         s.calle,
+        colonia:       s.colonia,
+        ciudad:        s.ciudad,
+        estado:        s.estado,
+        codigo_postal: s.codigo_postal,
+      }))
+      const { error: errSuc } = await supabase.from('sucursales').insert(filasSucursales)
+      if (errSuc) toast.warning(`Empresa creada, pero algunas sucursales fallaron: ${errSuc.message}`)
 
       toast.success(`Empresa creada con ${sucursalesValidas.length} sucursal(es)`)
       resetForm()

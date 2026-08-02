@@ -20,3 +20,7 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
+
+      # Falla el build ante vulnerabilidades high/critical en dependencias de producción
+      - name: Auditoría de dependencias
+        run: npm audit --audit-level=high --omit=dev

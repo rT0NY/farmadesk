@@ -14,7 +14,7 @@ import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor, hero = false }) {
+function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor, aviso, hero = false }) {
   const iconos = {
     primary: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-md shadow-blue-500/30',
     emerald: 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-md shadow-emerald-500/30',
@@ -38,6 +38,10 @@ function KpiCard({ titulo, valor, sub, color, Icono, enlace, badge, badgeColor, 
         </div>
       </div>
       <p className={cn('text-xl sm:text-2xl font-bold leading-none', hero ? 'text-white' : 'text-slate-900')}>{valor}</p>
+      {/* Dinero vendido pero todavía no cobrado — va arriba del subtítulo */}
+      {aviso && (
+        <p className={cn('text-xs font-semibold', hero ? 'text-amber-200' : 'text-amber-600')}>{aviso}</p>
+      )}
       <div className="flex items-center gap-2 flex-wrap min-h-[18px]">
         {badge && (
           <span className={cn(
@@ -155,6 +159,7 @@ export default function DashboardAdmin() {
         { data: productosData },
         { data: gastosHoy },
         { count: cancelacionesPend },
+        { data: cuentasPorCobrar },
       ] = await Promise.all([
         supabase.from('ventas')
           .select('id, total, sucursal_id, creado_en')
@@ -186,6 +191,11 @@ export default function DashboardAdmin() {
           .select('*', { count: 'exact', head: true })
           .eq('empresa_id', empresa.id)
           .eq('estado', 'pendiente'),
+        // Saldo vivo de cuentas por cobrar — no es de hoy, es lo que te deben
+        supabase.from('cuentas_pendientes')
+          .select('total, abonado')
+          .eq('empresa_id', empresa.id)
+          .eq('pagada', false),
       ])
 
       // Detalle ventas hoy → ganancia + top productos
@@ -204,6 +214,8 @@ export default function DashboardAdmin() {
       ;(ventasHoy || []).forEach(v => { ventaMap[v.id] = v.sucursal_id })
 
       // ── Métricas globales ──────────────────────────────────────────────────
+      const porCobrar = (cuentasPorCobrar || [])
+        .reduce((s, c) => s + (Number(c.total || 0) - Number(c.abonado || 0)), 0)
       const montoHoy  = (ventasHoy  || []).reduce((s, v) => s + Number(v.total || 0), 0)
       const montoAyer = (ventasAyer || []).reduce((s, v) => s + Number(v.total || 0), 0)
       const varPct    = montoAyer > 0 ? ((montoHoy - montoAyer) / montoAyer) * 100 : null
@@ -385,7 +397,7 @@ export default function DashboardAdmin() {
       }
 
       setDatos({
-        montoHoy, montoAyer, varPct,
+        montoHoy, montoAyer, varPct, porCobrar,
         ventasCount: (ventasHoy || []).length,
         gananciaHoy, gananciaNeta, margenHoy,
         totalGastosHoy,
@@ -468,6 +480,7 @@ export default function DashboardAdmin() {
             <KpiCard
               titulo="Ventas hoy" Icono={ShoppingCart} color="primary" enlace="/ventas" hero
               valor={formatoMoneda(d.montoHoy)}
+              aviso={d.porCobrar > 0 ? `Por cobrar: ${formatoMoneda(d.porCobrar)}` : undefined}
               sub={`${d.ventasCount} venta${d.ventasCount !== 1 ? 's' : ''}`}
               badge={d.varPct !== null ? `${d.varPct >= 0 ? '+' : ''}${d.varPct.toFixed(0)}% vs ayer` : undefined}
               badgeColor={d.varPct === null ? 'neutral' : d.varPct >= 0 ? 'green' : 'red'}
