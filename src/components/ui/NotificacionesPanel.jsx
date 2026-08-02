@@ -12,89 +12,42 @@ import { invalidarStock } from '@/lib/cache'
 import { cn } from '@/lib/clases'
 import { Link, useNavigate } from 'react-router-dom'
 
-// ─── Hook de conteo (ligero, para el badge) ───────────────────────────────────
-// eslint-disable-next-line react-refresh/only-export-components
-export function useAlertaConteo() {
-  const { empresa, tz, esAdmin, esEncargado } = useApp()
-  const [total, setTotal] = useState(0)
+// ─── Contadores de alertas ────────────────────────────────────────────────────
+// Una sola consulta al RPC `contadores_alertas`, que agrega del lado del
+// servidor. Antes esto eran 5 consultas, y una de ellas se descargaba la tabla
+// `inventario` COMPLETA cada minuto para contar en memoria del navegador.
+//
+// El aviso llega por Realtime (evento EVENTO_ALERTA); el sondeo es solo la red
+// de seguridad por si el WebSocket se cayó, y se pausa con la pestaña oculta.
+const SONDEO_MS = 150_000   // 2.5 min
+
+function useContadores() {
+  const { empresa } = useApp()
+  const [datos, setDatos] = useState({
+    lotes_por_caducar: 0, agotados: 0, stock_bajo: 0,
+    cancelaciones_pendientes: 0, cuentas_por_cobrar: 0,
+  })
+  const enVueloRef = useRef(false)
 
   const calcular = useCallback(async () => {
-    if (!empresa?.id) return
+    if (!empresa?.id || enVueloRef.current) return
+    if (typeof document !== 'undefined' && document.hidden) return
+    enVueloRef.current = true
     try {
-      const en90S = addDias(fechaEnZona(tz), 90)
-      const tieneAcceso = esAdmin || esEncargado
-      const queries = [
-        supabase.from('lotes').select('id').eq('activo', true).not('fecha_caducidad', 'is', null).lte('fecha_caducidad', en90S),
-        supabase.from('inventario').select('lote_id, cantidad, lotes!inner(producto_id)'),
-        supabase.from('productos').select('id, stock_minimo').eq('empresa_id', empresa.id).eq('activo', true),
-      ]
-      if (tieneAcceso) {
-        queries.push(
-          supabase.from('cancelaciones').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id).eq('estado', 'pendiente'),
-          supabase.from('cuentas_pendientes').select('id', { count: 'exact', head: true }).eq('empresa_id', empresa.id).eq('pagada', false),
-        )
-      }
-      const results = await Promise.all(queries)
-      const [{ data: lotes }, { data: inv }, { data: prods }] = results
-      const cancelCount  = tieneAcceso ? (results[3]?.count ?? 0) : 0
-      const cuentasCount = tieneAcceso ? (results[4]?.count ?? 0) : 0
-
-      const stockMap  = {}
-      const loteMap   = {}
-      ;(inv || []).forEach(i => {
-        const pid = i.lotes?.producto_id
-        if (pid) stockMap[pid] = (stockMap[pid] || 0) + Number(i.cantidad || 0)
-        loteMap[i.lote_id] = (loteMap[i.lote_id] || 0) + Number(i.cantidad || 0)
-      })
-      const lotesConStock = (lotes || []).filter(l => (loteMap[l.id] || 0) > 0).length
-      const agotados  = (prods || []).filter(p => p.id in stockMap && stockMap[p.id] === 0).length
-      const stockBajo = (prods || []).filter(p => {
-        const s = stockMap[p.id]; return s !== undefined && s > 0 && s < (p.stock_minimo ?? 10)
-      }).length
-      setTotal(lotesConStock + agotados + stockBajo + cancelCount + cuentasCount)
-    } catch { /* silencioso */ }
-  }, [empresa?.id, esAdmin, esEncargado, tz])
-
-  useEffect(() => {
-    calcular()
-    // Consulta pesada (lotes + inventario + productos): sondeo espaciado.
-    const t = setInterval(calcular, 60_000)
-    window.addEventListener(EVENTO_ALERTA, calcular)
-    return () => {
-      clearInterval(t)
-      window.removeEventListener(EVENTO_ALERTA, calcular)
+      const { data, error } = await supabase.rpc('contadores_alertas')
+      if (error) return
+      const fila = Array.isArray(data) ? data[0] : data
+      if (fila) setDatos(fila)
+    } catch { /* silencioso */ } finally {
+      enVueloRef.current = false
     }
-  }, [calcular])
-
-  return total
-}
-
-// ─── Hook de badges por item del menú ────────────────────────────────────────
-// eslint-disable-next-line react-refresh/only-export-components
-export function useBadgesMenu() {
-  const { empresa, esAdmin, esEncargado } = useApp()
-  const tieneAcceso = esAdmin || esEncargado
-  const [badges, setBadges] = useState({ cancelaciones: 0, cuentas: 0 })
-
-  const calcular = useCallback(async () => {
-    if (!empresa?.id || !tieneAcceso) { setBadges({ cancelaciones: 0, cuentas: 0 }); return }
-    try {
-      const [{ count: cancelCount }, { count: cuentasCount }] = await Promise.all([
-        supabase.from('cancelaciones').select('id', { count: 'exact', head: true })
-          .eq('empresa_id', empresa.id).eq('estado', 'pendiente'),
-        supabase.from('cuentas_pendientes').select('id', { count: 'exact', head: true })
-          .eq('empresa_id', empresa.id).eq('pagada', false),
-      ])
-      setBadges({ cancelaciones: cancelCount ?? 0, cuentas: cuentasCount ?? 0 })
-    } catch { /* silencioso */ }
-  }, [empresa?.id, tieneAcceso])
+  }, [empresa?.id])
 
   useEffect(() => {
     calcular()
-    // Son dos COUNT con head:true (no traen filas), así que se puede sondear
-    // seguido: es la red de seguridad por si Realtime no está activo en la tabla.
-    const t = setInterval(calcular, 20_000)
-    // Al volver a la ventana/pestaña, recalcular de inmediato
+    const t = setInterval(calcular, SONDEO_MS)
+    // Al recuperar el foco se resincroniza: si la pestaña estuvo oculta o
+    // congelada, es el momento de ponerse al día.
     const alVolver = () => { if (!document.hidden) calcular() }
     window.addEventListener(EVENTO_ALERTA, calcular)
     window.addEventListener('focus', calcular)
@@ -107,7 +60,20 @@ export function useBadgesMenu() {
     }
   }, [calcular])
 
-  return badges
+  return datos
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAlertaConteo() {
+  const d = useContadores()
+  return d.lotes_por_caducar + d.agotados + d.stock_bajo
+       + d.cancelaciones_pendientes + d.cuentas_por_cobrar
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useBadgesMenu() {
+  const d = useContadores()
+  return { cancelaciones: d.cancelaciones_pendientes, cuentas: d.cuentas_por_cobrar }
 }
 
 // ─── Hook de realtime (toasts automáticos) ────────────────────────────────────
@@ -143,6 +109,17 @@ export function useRealtimeAlertas(onCambio) {
     // window.location.href rompe el HashRouter de Electron: navegar por el router
     const irA = (ruta) => ({ label: 'Ver', onClick: () => navRef.current(ruta) })
 
+    // Mientras el WebSocket estuvo caído no llegó ningún evento. Al reconectar
+    // hay que ponerse al día: sin esto, una cancelación pedida durante la caída
+    // no aparecía hasta el siguiente sondeo. La primera suscripción no cuenta,
+    // porque el montaje ya carga los datos.
+    const yaSuscrito = new Set()
+    const alEstado = (nombre) => (estado) => {
+      if (estado !== 'SUBSCRIBED') return
+      if (yaSuscrito.has(nombre)) notificar()
+      else yaSuscrito.add(nombre)
+    }
+
     // ── Admin/Encargado: cancelaciones ──────────────────────────────────────
     // El badge del menú lo ven ambos roles, así que ambos necesitan el realtime.
     // Se escucha INSERT (nueva solicitud) y UPDATE/DELETE (ya se atendió): sin el
@@ -170,7 +147,7 @@ export function useRealtimeAlertas(onCambio) {
           .on('postgres_changes', {
             event: 'DELETE', schema: 'public', table: 'cancelaciones',
           }, notificar)
-          .subscribe()
+          .subscribe(alEstado('cancel'))
       )
     }
 
@@ -195,7 +172,7 @@ export function useRealtimeAlertas(onCambio) {
             event: 'UPDATE', schema: 'public', table: 'cuentas_pendientes',
             filter: `empresa_id=eq.${empresa.id}`,
           }, notificar)
-          .subscribe()
+          .subscribe(alEstado('cuentas'))
       )
     }
 
@@ -218,7 +195,7 @@ export function useRealtimeAlertas(onCambio) {
               notificar()
             }
           })
-          .subscribe()
+          .subscribe(alEstado('pedidos'))
       )
     }
 
@@ -265,7 +242,7 @@ export function useRealtimeAlertas(onCambio) {
           } catch { /* silencioso */ }
           notificar()
         })
-        .subscribe()
+        .subscribe(alEstado('inv'))
     )
 
     return () => {

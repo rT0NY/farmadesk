@@ -419,10 +419,19 @@ export default function DashboardAdmin() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  // Polling cada 30s como fallback
+  // Red de seguridad, no el mecanismo principal: las ventas y cancelaciones
+  // llegan por Realtime (abajo). Cada pasada son ~8 consultas, así que se
+  // espacia a 3 min y se detiene con la pestaña oculta — no tiene sentido
+  // recargar un tablero que nadie está viendo.
   useEffect(() => {
-    intervaloRef.current = setInterval(cargar, 30_000)
-    return () => clearInterval(intervaloRef.current)
+    const cargarSiVisible = () => { if (!document.hidden) cargar() }
+    intervaloRef.current = setInterval(cargarSiVisible, 180_000)
+    // Al volver a la pestaña se refresca de inmediato
+    document.addEventListener('visibilitychange', cargarSiVisible)
+    return () => {
+      clearInterval(intervaloRef.current)
+      document.removeEventListener('visibilitychange', cargarSiVisible)
+    }
   }, [cargar])
 
   // Realtime: actualizar al instante cuando llegan ventas o cancelaciones nuevas
