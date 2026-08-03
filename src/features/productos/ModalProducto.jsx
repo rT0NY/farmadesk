@@ -349,8 +349,41 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
     return true
   }
 
+  // Un código de barras solo puede pertenecer a un producto dentro de la empresa
+  // (restricción UNIQUE (empresa_id, codigo)). Antes, al chocar, la inserción se
+  // descartaba en silencio con ON CONFLICT DO NOTHING: el producto se creaba
+  // igual pero sin su código, y el usuario se enteraba mucho después.
+  //
+  // Se consulta con los valores EXACTOS que se van a insertar, sin normalizar,
+  // para que este chequeo prediga lo mismo que decidirá la base de datos.
+  const codigosLibres = async () => {
+    const codigos = (form.codigos || []).filter(Boolean)
+    if (codigos.length === 0) return true
+
+    const { data, error } = await supabase
+      .from('codigos_barras')
+      .select('codigo, producto_id, productos(nombre)')
+      .in('codigo', codigos)
+
+    // Si la consulta falla no se bloquea el guardado: la restricción de la base
+    // sigue siendo la última palabra.
+    if (error) return true
+
+    // En edición, los códigos del propio producto no son conflicto
+    const ajeno = (data || []).find(c => c.producto_id !== productoEditar?.id)
+    if (ajeno) {
+      toast.error(
+        `El código ${ajeno.codigo} ya pertenece a "${ajeno.productos?.nombre ?? 'otro producto'}". Cámbialo para continuar.`,
+        { duration: 6000 }
+      )
+      return false
+    }
+    return true
+  }
+
   const guardar = async () => {
     if (!validarPaso1()) return
+    if (!(await codigosLibres())) return
     if (cargandoRef.current) return
     cargandoRef.current = true
     setCargando(true)
