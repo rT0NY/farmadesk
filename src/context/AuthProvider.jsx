@@ -13,8 +13,18 @@ export function AuthProvider({ children }) {
   // getSession() lee solo localStorage (sin red). refreshSession() sí hace
   // llamada de red y adquiere un lock interno de Supabase — por eso se
   // envuelve en try-catch y solo se llama si ya hay sesión activa.
+  const ultimoRefrescoRef = useRef(0)
+
   useEffect(() => {
+    // El cliente ya renueva solo (`autoRefreshToken`). Este refresco manual es
+    // el seguro para una terminal encendida todo el día sin que nadie la toque.
+    // Con enfriamiento: sin él, cada foco y cada reconexión disparaba una llamada
+    // de red, y con el servicio de Auth lento los reintentos se acumulaban.
+    const ENFRIAMIENTO_MS = 10 * 60 * 1000
+
     const refrescar = async () => {
+      if (Date.now() - ultimoRefrescoRef.current < ENFRIAMIENTO_MS) return
+      ultimoRefrescoRef.current = Date.now()
       try {
         const { data } = await supabase.auth.getSession()
         if (data?.session) await supabase.auth.refreshSession()
@@ -121,7 +131,11 @@ export function AuthProvider({ children }) {
 
     verificarAcceso()                       // al entrar, sin esperar al intervalo
 
-    const t = setInterval(verificarAcceso, 15_000)
+    // 60 s, no 15: el corte real lo hace RLS en el instante de la suspensión
+    // (el usuario se queda sin datos de inmediato). Este sondeo solo adelanta el
+    // mensaje, y a 15 s costaba ~5,760 peticiones diarias por sesión abierta.
+    // Los disparos por foco y por cambio de pantalla cubren el caso realista.
+    const t = setInterval(verificarAcceso, 60_000)
     const alVolver = () => { if (!document.hidden) verificarAcceso() }
     window.addEventListener('focus', verificarAcceso)
     document.addEventListener('visibilitychange', alVolver)
