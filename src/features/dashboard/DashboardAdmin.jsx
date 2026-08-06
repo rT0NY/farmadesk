@@ -437,15 +437,31 @@ export default function DashboardAdmin() {
   // Realtime: actualizar al instante cuando llegan ventas o cancelaciones nuevas
   useEffect(() => {
     if (!empresa?.id) return
+
+    // Agrupado a propósito: una sola cancelación dispara UPDATE en ventas más
+    // INSERT y UPDATE en cancelaciones, y en hora pico las ventas entran en
+    // ráfaga. Como cada `cargar()` son ~8 consultas, sin agrupar una ráfaga de
+    // cinco eventos costaba 40. Con la pestaña oculta ni se recarga: el
+    // listener de `visibilitychange` de arriba lo pone al día al volver.
+    let temporizador = null
+    const recargarAgrupado = () => {
+      clearTimeout(temporizador)
+      temporizador = setTimeout(() => { if (!document.hidden) cargar() }, 1200)
+    }
+
     const channel = supabase
       .channel('dashboard-sync')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ventas' }, cargar)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ventas' }, cargar)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cancelaciones' }, cargar)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cancelaciones' }, cargar)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gastos' }, cargar)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ventas' }, recargarAgrupado)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ventas' }, recargarAgrupado)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cancelaciones' }, recargarAgrupado)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cancelaciones' }, recargarAgrupado)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gastos' }, recargarAgrupado)
       .subscribe()
-    return () => supabase.removeChannel(channel)
+
+    return () => {
+      clearTimeout(temporizador)
+      supabase.removeChannel(channel)
+    }
   }, [empresa?.id, cargar])
 
   const nombreCorto = perfil?.nombre?.split(' ')[0] || 'usuario'

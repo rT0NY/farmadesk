@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell, X, CalendarX, Package, AlertTriangle,
   Clock, DollarSign, ArrowRight, RefreshCw, Ban, CreditCard,
@@ -21,46 +22,47 @@ import { Link, useNavigate } from 'react-router-dom'
 // de seguridad por si el WebSocket se cayó, y se pausa con la pestaña oculta.
 const SONDEO_MS = 150_000   // 2.5 min
 
+const CLAVE_CONTADORES = ['contadores_alertas']
+const CONTADORES_VACIO = {
+  lotes_por_caducar: 0, agotados: 0, stock_bajo: 0,
+  cancelaciones_pendientes: 0, cuentas_por_cobrar: 0,
+}
+
+// Va por React Query a propósito. El Sidebar usa los dos hooks de abajo, y con
+// estado local cada uno mantenía su propio intervalo y sus propios listeners:
+// el RPC se pedía DOS veces, con milisegundos de diferencia, en cada disparo.
+// Compartiendo `queryKey`, los dos observadores se sirven de una sola petición.
 function useContadores() {
   const { empresa } = useApp()
-  const [datos, setDatos] = useState({
-    lotes_por_caducar: 0, agotados: 0, stock_bajo: 0,
-    cancelaciones_pendientes: 0, cuentas_por_cobrar: 0,
-  })
-  const enVueloRef = useRef(false)
+  const queryClient = useQueryClient()
 
-  const calcular = useCallback(async () => {
-    if (!empresa?.id || enVueloRef.current) return
-    if (typeof document !== 'undefined' && document.hidden) return
-    enVueloRef.current = true
-    try {
+  const { data = CONTADORES_VACIO } = useQuery({
+    queryKey: [...CLAVE_CONTADORES, empresa?.id],
+    queryFn: async () => {
       const { data, error } = await supabase.rpc('contadores_alertas')
-      if (error) return
+      if (error) throw error
       const fila = Array.isArray(data) ? data[0] : data
-      if (fila) setDatos(fila)
-    } catch { /* silencioso */ } finally {
-      enVueloRef.current = false
-    }
-  }, [empresa?.id])
+      return fila ?? CONTADORES_VACIO
+    },
+    enabled:   !!empresa?.id,
+    staleTime: SONDEO_MS,
+    // El sondeo es la red de seguridad por si el WebSocket se cayó; el aviso
+    // real llega por Realtime. `refetchIntervalInBackground` en false hace que
+    // se detenga solo con la pestaña oculta.
+    refetchInterval: SONDEO_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,   // el default global del cliente es false
+  })
 
+  // Realtime avisa por este evento; invalidar dispara UNA refetch aunque los
+  // dos hooks estén montados.
   useEffect(() => {
-    calcular()
-    const t = setInterval(calcular, SONDEO_MS)
-    // Al recuperar el foco se resincroniza: si la pestaña estuvo oculta o
-    // congelada, es el momento de ponerse al día.
-    const alVolver = () => { if (!document.hidden) calcular() }
-    window.addEventListener(EVENTO_ALERTA, calcular)
-    window.addEventListener('focus', calcular)
-    document.addEventListener('visibilitychange', alVolver)
-    return () => {
-      clearInterval(t)
-      window.removeEventListener(EVENTO_ALERTA, calcular)
-      window.removeEventListener('focus', calcular)
-      document.removeEventListener('visibilitychange', alVolver)
-    }
-  }, [calcular])
+    const invalidar = () => queryClient.invalidateQueries({ queryKey: CLAVE_CONTADORES })
+    window.addEventListener(EVENTO_ALERTA, invalidar)
+    return () => window.removeEventListener(EVENTO_ALERTA, invalidar)
+  }, [queryClient])
 
-  return datos
+  return data
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

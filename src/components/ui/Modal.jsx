@@ -1,10 +1,16 @@
 import { X } from 'lucide-react'
 import { cn } from '@/lib/clases'
 
-function Modal({ children, onClose, maxWidth = 'sm:max-w-md' }) {
+// `cerrarAlTocarFuera` viene en true para no cambiar el comportamiento de las
+// ventanas que ya existen. Se pone en false donde un clic afuera por descuido
+// costaria una captura larga.
+function Modal({ children, onClose, maxWidth = 'sm:max-w-md', cerrarAlTocarFuera = true }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
+        onClick={cerrarAlTocarFuera ? onClose : undefined}
+      />
       <div className={cn(
         'relative w-full bg-white rounded-none sm:rounded-3xl shadow-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[92dvh]',
         maxWidth

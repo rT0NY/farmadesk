@@ -192,7 +192,19 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!empresa?.id) return
     const tzEmp = empresa.zona_horaria || 'America/Mexico_City'
+
+    // Con enfriamiento: iba pegado al evento `focus` sin límite, así que cada
+    // alt-tab disparaba una escritura. La condición que detecta (caja abierta
+    // 1h+ después de que arrancó el turno 2) no se va a ningún lado: si un
+    // foco cae dentro del enfriamiento, el siguiente la registra igual.
+    // La variable vive en el closure a propósito — se reinicia sola cuando
+    // cambia la empresa, que es justo cuando debe reiniciarse.
+    const ENFRIAMIENTO_MS = 5 * 60 * 1000
+    let ultimoRegistro = 0
+
     const registrar = async () => {
+      if (Date.now() - ultimoRegistro < ENFRIAMIENTO_MS) return
+      ultimoRegistro = Date.now()
       try {
         await supabase.rpc('registrar_activos_turno2', {
           p_empresa_id: empresa.id,

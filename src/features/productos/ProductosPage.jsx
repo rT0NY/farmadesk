@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Package, Filter, RefreshCw, Archive,
   AlertTriangle, ChevronDown, X, Check, CircleCheck,
-  ShoppingBag, Wallet,
+  ShoppingBag, Wallet, Layers,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatoMoneda } from '@/lib/formatos'
@@ -17,6 +17,7 @@ import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { invalidarStock } from '@/lib/cache'
 import ModalProducto from './ModalProducto'
+import ModalIngresoMasivo from './ModalIngresoMasivo'
 import FilaProducto from './FilaProducto'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 
@@ -74,6 +75,7 @@ export default function ProductosPage() {
   const [filtroEstado, setFiltroEstado] = useState('activos')
   const [categoriaSel, setCategoriaSel] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
+  const [modalMasivo,  setModalMasivo]  = useState(false)
   const [productoEditar, setProductoEditar] = useState(null)
 
   const { data: productos = [], isLoading: cargando, refetch: cargar } = useQuery({
@@ -181,6 +183,14 @@ export default function ProductosPage() {
         <div className="flex gap-2">
           {!esCajero && (
             <>
+              <Button
+                variante="secundario"
+                onClick={() => setModalMasivo(true)}
+                iconoIzq={<Layers className="w-4 h-4" />}
+              >
+                <span className="hidden sm:inline">Ingreso masivo</span>
+                <span className="sm:hidden">Masivo</span>
+              </Button>
               <Button onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
                 <span className="hidden sm:inline">Nuevo producto</span>
                 <span className="sm:hidden">Nuevo</span>
@@ -473,6 +483,13 @@ export default function ProductosPage() {
         onExito={invalidar}
         productoEditar={productoEditar}
       />
+
+      {modalMasivo && (
+        <ModalIngresoMasivo
+          onCerrar={() => setModalMasivo(false)}
+          onExito={invalidar}
+        />
+      )}
 
       <Fab onClick={abrirNuevo} label="Nuevo producto" />
 

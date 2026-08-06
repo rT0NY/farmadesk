@@ -23,6 +23,17 @@ import { emitirAlerta } from '@/lib/alertas'
 // Solo trae lo que tiene existencias aquí (no todo el inventario histórico).
 const SELECT_INV_LOTES = 'id, lote_id, sucursal_id, cantidad, lotes!inner(id, producto_id, codigo_lote, fecha_caducidad, activo)'
 
+// Columnas explícitas en vez de `*`. Con `*` la respuesta incluía
+// `precio_compra`, así que el cajero recibía el costo de todo el catálogo en el
+// navegador aunque la interfaz nunca se lo mostrara. Solo lo necesitan quienes
+// pueden mover precios: el aviso de "precio menor al costo" es de admin y
+// encargado. RLS es por fila, no por columna — esto se decide aquí.
+const COLS_PRODUCTO       = 'id, nombre, categoria, precio_venta, precio_mayoreo, cantidad_mayoreo, activo'
+const COLS_PRODUCTO_COSTO = `${COLS_PRODUCTO}, precio_compra`
+
+// Cada cuánto se vuelve a bajar el catálogo completo estando la página abierta
+const CATALOGO_MS = 15 * 60_000
+
 // Deriva los arrays planos de inventario y lotes desde la consulta embebida
 function derivarInvLotes(rows) {
   const inv = []
@@ -508,6 +519,7 @@ export default function VentasPage() {
   const { perfil, empresa, sucursales, sucursalActiva, turnoActivo, cambiarSucursal, recargarTurno, tz, esRotativo, resetSucursal } = useApp()
   const esAdmin   = perfil?.rol === 'admin'
   const esCajero  = perfil?.rol === 'cajero'
+  const colsProducto = esCajero ? COLS_PRODUCTO : COLS_PRODUCTO_COSTO
 
   // Sucursal seleccionada — rotativos empiezan sin sucursal hasta que eligen en el selector
   const [sucursalId, setSucursalId] = useState(
@@ -557,6 +569,7 @@ export default function VentasPage() {
   const [procesando, setProcesando] = useState(false)
   const procesandoRef  = useRef(false)
   const refreshingRef  = useRef(false)   // guard para refreshDynamic
+  const ultimoCatalogoRef = useRef(0)    // última carga del catálogo (ver refrescarEnFoco)
   const [ofertasVigentes, setOfertasVigentes] = useState([])
 
   // Cobro
@@ -598,7 +611,7 @@ export default function VentasPage() {
     try {
       const hoy = fechaEnZona(tz)
       const [{ data: prod }, { data: invRows }, { data: cod }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
-        supabase.from('productos').select('*').eq('activo', true).order('nombre'),
+        supabase.from('productos').select(colsProducto).eq('activo', true).order('nombre'),
         supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
@@ -639,8 +652,8 @@ export default function VentasPage() {
         setVentasTurno([])
       }
     } catch (err) { console.error(err) }
-    finally { setLoading(false) }
-  }, [sucursalId, tz, perfilId])
+    finally { setLoading(false); ultimoCatalogoRef.current = Date.now() }
+  }, [sucursalId, tz, perfilId, colsProducto])
 
   // Recarga ligera post-venta: solo datos que cambian con cada operación.
   // No recarga catálogo estático (productos, lotes, codigos_barras).
@@ -680,7 +693,21 @@ export default function VentasPage() {
 
   // Recargar al volver a la pestaña para detectar turnos abiertos/cerrados
   // desde otra pestaña o dispositivo. Cooldown de 3 min para no repetir fetches.
-  useFocusRefresh(fetchData, 3 * 60_000)
+  //
+  // Al volver el foco basta con lo volátil —inventario, ventas, turno, cuentas—,
+  // que es justo lo que hace refreshDynamic. Antes se llamaba fetchData, y eso
+  // arrastraba el catálogo entero (productos + códigos de barras) cada 3
+  // minutos por cada caja abierta, cuando ese catálogo casi no cambia durante
+  // un turno. Se sigue recargando completo cada 15 min para no quedarse ciego
+  // ante un producto que un admin dio de alta desde otro dispositivo.
+  const refrescarEnFoco = useCallback(() => {
+    const catalogoViejo = Date.now() - ultimoCatalogoRef.current > CATALOGO_MS
+    // Sin perfilId, refreshDynamic se sale sin hacer nada: ahí sí va la completa.
+    if (catalogoViejo || !perfilId) fetchData()
+    else refreshDynamic()
+  }, [perfilId, fetchData, refreshDynamic])
+
+  useFocusRefresh(refrescarEnFoco, 3 * 60_000)
 
   // Actualizar ofertas en tiempo real cuando un admin crea, edita o elimina una oferta
   // desde otro dispositivo, sin necesidad de recargar la página.
@@ -1227,7 +1254,7 @@ export default function VentasPage() {
       // Recargar datos de la sucursal
       const hoy = fechaEnZona(tz)
       const [{ data: prod }, { data: invRows }, { data: cod }, { data: ventasConDet2 }, { data: ofVig }, { data: ps2 }] = await Promise.all([
-        supabase.from('productos').select('*').eq('activo', true).order('nombre'),
+        supabase.from('productos').select(colsProducto).eq('activo', true).order('nombre'),
         supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucId).gt('cantidad', 0).eq('lotes.activo', true),
         supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),

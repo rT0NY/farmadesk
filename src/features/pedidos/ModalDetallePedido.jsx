@@ -18,8 +18,15 @@ import { cn } from '@/lib/clases'
 import { generarPDF } from './pedidoPDF'
 import { BadgeEstado } from './BadgeEstado'
 
+// Campos que la vista muestra siempre. Los costos van aparte porque en modo
+// solo lectura —o sea, cuando el que abre es cajero— la pantalla ya los oculta
+// (el precio por unidad y el total estimado están detrás de `!soloLectura`).
+// Pedirlos igual significaba mandárselos al navegador de todos modos.
+const COLS_ITEM = 'id, nombre_producto, cantidad_pedida, cantidad_recibida, fecha_caducidad'
+
 function ModalDetallePedido({ pedido, empresa, onClose, onEliminado, onRecibir, onEditar, soloLectura = false }) {
   const { perfil } = useApp()
+  const colsItems = soloLectura ? COLS_ITEM : `${COLS_ITEM}, precio_recibido, productos(precio_compra)`
   const [items,       setItems]       = useState([])
   const [cargando,    setCargando]    = useState(true)
   const [confirmando, setConfirmando] = useState(false)
@@ -30,7 +37,7 @@ function ModalDetallePedido({ pedido, empresa, onClose, onEliminado, onRecibir, 
     const fetch = async () => {
       try {
         const [{ data: itemsData, error }, { data: bitData }] = await Promise.all([
-          supabase.from('pedido_items').select('*, productos(precio_compra)').eq('pedido_id', pedido.id).order('nombre_producto'),
+          supabase.from('pedido_items').select(colsItems).eq('pedido_id', pedido.id).order('nombre_producto'),
           // Cargar la bitácora de recepción para ver dónde llegó y distribución
           supabase.from('bitacora')
             .select('metadatos, creado_en')
@@ -50,7 +57,7 @@ function ModalDetallePedido({ pedido, empresa, onClose, onEliminado, onRecibir, 
       }
     }
     fetch()
-  }, [pedido.id])
+  }, [pedido.id, colsItems])
 
   const cancelarPedido = async () => {
     setEliminando(true)

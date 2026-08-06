@@ -92,10 +92,20 @@ export function AuthProvider({ children }) {
   // hasta su propio perfil, así que una consulta normal no podría distinguir
   // "cuenta desactivada" de "empresa suspendida".
   const verificandoRef = useRef(false)
+  const ultimaVerificacionRef = useRef(0)
+  // Intervalo mínimo entre comprobaciones. Los disparadores son varios (sondeo,
+  // foco, y un cambio de pantalla en AppLayout), y navegando rápido entre
+  // secciones salían varias llamadas en pocos segundos. El corte real lo hace
+  // RLS al instante; esto solo adelanta el mensaje, así que espaciarlo no
+  // debilita nada.
+  const MIN_ENTRE_VERIFICACIONES_MS = 30_000
+
   const verificarAcceso = useCallback(async () => {
     if (!sesion?.user) return
     if (typeof window !== 'undefined' && window.__creandoUsuario) return
     if (verificandoRef.current) return
+    if (Date.now() - ultimaVerificacionRef.current < MIN_ENTRE_VERIFICACIONES_MS) return
+    ultimaVerificacionRef.current = Date.now()
     verificandoRef.current = true
     try {
       const { data, error } = await supabase.rpc('estado_sesion')
@@ -129,6 +139,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!sesion?.user) return
 
+    ultimaVerificacionRef.current = 0       // usuario nuevo: sin herencia del enfriamiento
     verificarAcceso()                       // al entrar, sin esperar al intervalo
 
     // 60 s, no 15: el corte real lo hace RLS en el instante de la suspensión
