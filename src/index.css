@@ -85,7 +85,68 @@ body {
     radial-gradient(circle at 95% 10%, rgba(103, 232, 249, 0.14) 0%, transparent 35%),
     linear-gradient(180deg, #fbfcfe 0%, #f1f5fb 100%);
   background-attachment: fixed;
+  /* 100vh mide la pantalla CON la barra del navegador incluida, así que en el
+     teléfono la página queda más alta que el hueco visible y el último renglón
+     se corta. dvh mide el hueco real. El 100vh queda de respaldo para
+     navegadores viejos que no entienden dvh. */
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* En iOS, un campo con letra menor a 16px hace que el navegador acerque la
+   pantalla solo al tocarlo, y ya no vuelve a su lugar: la ventana queda
+   descuadrada y recortada. Subirlos a 16px en pantallas chicas lo evita, sin
+   tocar cómo se ven en computadora. */
+@media (max-width: 640px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+/* Ninguna zona con scroll propio le pasa el gesto a la de atrás */
+@media (pointer: coarse) {
+  .overflow-y-auto, .overflow-auto, .overflow-x-auto {
+    overscroll-behavior: contain;
+  }
+
+  /* Hay 28 ventanas emergentes escritas a mano que no usan el componente
+     compartido, así que no reciben el bloqueo por JavaScript. Todas comparten
+     la misma estructura —una capa `fixed inset-0`— y eso alcanza para
+     atajarlas aquí sin tocar 28 archivos.
+     `touch-action: none` corta el arrastre sobre la capa y sobre el fondo
+     oscuro, que es donde el gesto se colaba a la página de atrás. */
+  .fixed.inset-0 {
+    touch-action: none;
+  }
+
+  /* Pero eso solo no sirve: dejaría muerto también el scroll DE ADENTRO de la
+     ventana. Se le devuelve el gesto vertical a las zonas que sí deben
+     desplazarse, que es la advertencia clásica de esta técnica. */
+  .fixed.inset-0 .overflow-y-auto,
+  .fixed.inset-0 .overflow-auto,
+  .fixed.inset-0 textarea {
+    touch-action: pan-y;
+  }
+  .fixed.inset-0 .overflow-x-auto {
+    touch-action: pan-x pan-y;
+  }
+}
+
+/* Con viewport-fit=cover el contenido llega hasta el borde físico, así que en
+   horizontal el notch se come una franja lateral. Esto la devuelve. */
+@media (orientation: landscape) {
+  body {
+    padding-left:  env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Nada debe poder empujar la página a lo ancho. Si una tabla o un nombre largo
+   se pasa, que se resuelva dentro de su contenedor y no moviendo la pantalla
+   entera de lado, que es lo que hace que se vean cosas cortadas. */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
 }
 
 /* Fuente Inter desde Google Fonts */

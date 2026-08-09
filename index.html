@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon-logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover es lo que activa env(safe-area-inset-*). Sin él esas
+         medidas valen SIEMPRE cero, así que el margen contra el notch y contra
+         la barra de gestos que ya estaba escrito en el código nunca se aplicó. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="application-name" content="Farmadesk" />
     <title>Farmadesk</title>

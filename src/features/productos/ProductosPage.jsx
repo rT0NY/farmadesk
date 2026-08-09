@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Plus, Search, Package, Filter, RefreshCw, Archive,
+  Plus, Search, Package, Filter, RefreshCw,
   AlertTriangle, ChevronDown, X, Check, CircleCheck,
-  ShoppingBag, Wallet, Layers,
+  ShoppingBag, Wallet, Layers, PencilLine,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatoMoneda } from '@/lib/formatos'
@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { invalidarStock } from '@/lib/cache'
 import ModalProducto from './ModalProducto'
 import ModalIngresoMasivo from './ModalIngresoMasivo'
+import ModalEdicionMasiva from './ModalEdicionMasiva'
 import FilaProducto from './FilaProducto'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 
@@ -76,12 +77,16 @@ export default function ProductosPage() {
   const [categoriaSel, setCategoriaSel] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [modalMasivo,  setModalMasivo]  = useState(false)
+  const [modalEdicion, setModalEdicion] = useState(false)
   const [productoEditar, setProductoEditar] = useState(null)
 
   const { data: productos = [], isLoading: cargando, refetch: cargar } = useQuery({
     queryKey:  ['productos', empresa?.id],
     queryFn:   async () => {
-      const { data, error } = await supabase.rpc('listar_productos_completo', { p_solo_activos: false })
+      // Solo activos. Un producto eliminado no debe volver a aparecer por
+      // ningún camino, y la forma segura de garantizarlo es que ni siquiera
+      // llegue al navegador — así ningún filtro lo puede mostrar por descuido.
+      const { data, error } = await supabase.rpc('listar_productos_completo', { p_solo_activos: true })
       if (error) throw error
       return data || []
     },
@@ -106,10 +111,11 @@ export default function ProductosPage() {
   }, [productos])
 
   const productosFiltrados = useMemo(() => {
+    // Los eliminados ya no llegan desde el servidor, así que "todos" y
+    // "activos" son lo mismo. Se conservan los dos porque el desplegable los
+    // distingue por stock, no por estado.
     let r = productos
-    if (filtroEstado === 'activos') r = r.filter(p => p.activo)
-    else if (filtroEstado === 'archivados') r = r.filter(p => !p.activo)
-    else if (filtroEstado === 'bajo_stock') r = r.filter(p => p.activo && p.bajo_stock)
+    if (filtroEstado === 'bajo_stock') r = r.filter(p => p.bajo_stock)
 
     if (categoriaSel) r = r.filter(p => p.categoria === categoriaSel)
 
@@ -140,15 +146,15 @@ export default function ProductosPage() {
       activos:        activos.length,
       bajo_stock:     activos.filter(p => p.bajo_stock).length,
       agotados:       activos.filter(p => p.stock_total === 0).length,
-      archivados:     productos.filter(p => !p.activo).length,
       valorInventario: valorTotal,
     }
   }, [productos])
 
+  // Sin "Archivados": un producto eliminado no vuelve. Y "Todos" ya no puede
+  // colar eliminados porque no llegan.
   const FILTROS_ESTADO = [
     { v: 'activos', etiqueta: 'Activos', icono: CircleCheck, cantidad: conteos.activos, clase: 'text-emerald-600' },
     { v: 'bajo_stock', etiqueta: 'Stock bajo', icono: AlertTriangle, cantidad: conteos.bajo_stock, clase: 'text-amber-600' },
-    { v: 'archivados', etiqueta: 'Archivados', icono: Archive, cantidad: conteos.archivados, clase: 'text-slate-600' },
     { v: 'todos', etiqueta: 'Todos', icono: Package, cantidad: productos.length, clase: 'text-slate-600' },
   ]
 
@@ -183,6 +189,14 @@ export default function ProductosPage() {
         <div className="flex gap-2">
           {!esCajero && (
             <>
+              <Button
+                variante="secundario"
+                onClick={() => setModalEdicion(true)}
+                iconoIzq={<PencilLine className="w-4 h-4" />}
+              >
+                <span className="hidden sm:inline">Edición masiva</span>
+                <span className="sm:hidden">Editar</span>
+              </Button>
               <Button
                 variante="secundario"
                 onClick={() => setModalMasivo(true)}
@@ -455,7 +469,7 @@ export default function ProductosPage() {
           }
         />
       ) : (
-        <Table>
+        <Table anchoFijo>
           <Table.Head>
             <Table.HeadCell className="w-[40%]">Producto</Table.HeadCell>
             <Table.HeadCell align="right" className="w-[14%]">Costo</Table.HeadCell>
@@ -487,6 +501,14 @@ export default function ProductosPage() {
       {modalMasivo && (
         <ModalIngresoMasivo
           onCerrar={() => setModalMasivo(false)}
+          onExito={invalidar}
+        />
+      )}
+
+      {modalEdicion && (
+        <ModalEdicionMasiva
+          productos={productos}
+          onCerrar={() => setModalEdicion(false)}
           onExito={invalidar}
         />
       )}

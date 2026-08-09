@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   History, ShoppingCart, Receipt, Wallet, ArrowLeftRight,
   Package, Ban, Check, X, ClipboardList, BadgeCheck,
@@ -129,15 +129,27 @@ export default function BitacoraPage() {
     return () => clearTimeout(t)
   }, [busqueda])
 
+  // Instante de corte. Bitácora crece mientras se lee —cada venta mete un
+  // renglón— y al pedir "de la 50 a la 99" se cuenta por posición: si entran
+  // tres registros nuevos mientras se ve la página 1, todo se recorre y los
+  // últimos tres reaparecen al inicio de la página 2. Fijando el corte al abrir,
+  // la lista deja de moverse mientras se hojea. Lo nuevo entra al recargar.
+  const anclaRef = useRef(null)
+
   const cargar = useCallback(async (pg = 0) => {
     if (!empresa?.id) return
+    if (pg === 0 || !anclaRef.current) anclaRef.current = new Date().toISOString()
     setCargando(true)
     try {
       let q = supabase
         .from('bitacora')
         .select('*, perfiles(nombre), sucursales(nombre)', { count: 'exact' })
         .eq('empresa_id', empresa.id)
+        .lte('creado_en', anclaRef.current)
+        // El id desempata las fechas idénticas: sin él, dos registros del mismo
+        // instante pueden intercambiarse entre páginas.
         .order('creado_en', { ascending: false })
+        .order('id', { ascending: false })
         .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1)
 
       if (busquedaDB) q = q.ilike('descripcion', `%${busquedaDB}%`)

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { traerTodoPorParLlave } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -239,12 +240,19 @@ export default function InventarioPage() {
   useEffect(() => {
     if (!empresa?.id) return
     let cancelado = false
-    supabase.from('productos_sucursales')
-      .select('producto_id, sucursal_id')
-      .eq('habilitado', false)
-      .then(({ data }) => {
-        if (!cancelado) setNoDisponibles(new Set((data || []).map(r => `${r.producto_id}|${r.sucursal_id}`)))
+    // Por tandas: son 1,926 filas y llegaban solo 1,000. Las 926 que faltaban
+    // no salían como error — el producto simplemente se pintaba disponible en
+    // sucursales donde no lo está.
+    traerTodoPorParLlave(
+      () => supabase.from('productos_sucursales'),
+      'producto_id, sucursal_id',
+      q => q.eq('habilitado', false),
+      'producto_id', 'sucursal_id',
+    )
+      .then(filas => {
+        if (!cancelado) setNoDisponibles(new Set(filas.map(r => `${r.producto_id}|${r.sucursal_id}`)))
       })
+      .catch(e => console.error('Disponibilidad por sucursal:', e))
     return () => { cancelado = true }
   }, [empresa?.id])
 
@@ -611,13 +619,18 @@ export default function InventarioPage() {
             })}
           </div>
           {/* Tabla desktop */}
+          {/* table-fixed a proposito: con ancho automatico el navegador ensancha
+              la columna hasta que quepa el nombre completo, y `truncate` nunca
+              actua porque min-w es un piso, no un techo. Un solo producto de
+              nombre largo empujaba las columnas de sucursal fuera de la vista.
+              Con ancho fijo, las sucursales mandan y el nombre se recorta. */}
           <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-fixed min-w-[560px]">
               <thead className="bg-slate-50/70 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider min-w-[200px]">Producto</th>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Producto</th>
                   {esCajero ? (
-                    <th className="px-3 py-2.5 text-right text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/50 min-w-[100px]">
+                    <th className="px-3 py-2.5 text-right text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/50 w-[110px]">
                       {sucursalPropia?.nombre ?? 'Tu sucursal'}
                     </th>
                   ) : (
@@ -626,14 +639,14 @@ export default function InventarioPage() {
                         const esMia = sucursalPropia?.id === s.id
                         return (
                           <th key={s.id} className={cn(
-                            'px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider min-w-[90px]',
+                            'px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider w-[100px]',
                             esMia ? 'text-primary-700 bg-primary-50/60' : 'text-slate-500'
                           )}>
                             {esMia && <span className="mr-1">★</span>}{s.nombre}
                           </th>
                         )
                       })}
-                      <th className="px-3 py-2.5 text-right text-[11px] font-bold text-primary-700 uppercase tracking-wider bg-primary-50/50 min-w-[90px]">Total</th>
+                      <th className="px-3 py-2.5 text-right text-[11px] font-bold text-primary-700 uppercase tracking-wider bg-primary-50/50 w-[90px]">Total</th>
                       <th className="px-3 py-2.5 w-20"></th>
                     </>
                   )}
@@ -646,7 +659,11 @@ export default function InventarioPage() {
                     <tr key={p.producto_id} className={cn('transition-colors hover:bg-slate-50/60', bordeIzq(p))}>
                       <td className="px-3 py-2.5">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{p.producto_nombre}</p>
+                          {/* El title deja ver el nombre completo al pasar el
+                              cursor, ya que ahora se recorta. */}
+                          <p className="text-sm font-semibold text-slate-900 truncate" title={p.producto_nombre}>
+                            {p.producto_nombre}
+                          </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             {p.categoria && (
                               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary-50 text-primary-600">{p.categoria}</span>

@@ -76,9 +76,13 @@ function ModalDiaPago({ empresa, onClose, onGuardado }) {
     guardandoRef.current = true
     setGuardando(true)
     try {
-      const { error } = await supabase.from('empresas')
-        .update({ dia_pago: dia }).eq('id', empresa.id)
+      // El `.select()` no es decorativo: sin él, un UPDATE que no alcanza a
+      // ninguna fila —porque RLS lo filtró— vuelve SIN error, y el aviso de
+      // "guardado" salía igual mientras el dato seguía como estaba.
+      const { data, error } = await supabase.from('empresas')
+        .update({ dia_pago: dia }).eq('id', empresa.id).select('id')
       if (error) throw error
+      if (!data?.length) throw new Error('No se pudo guardar: no tienes permiso para cambiar este dato')
       toast.success(`Día de pago: ${DIA_NOMBRE[dia]}`)
       onGuardado(dia)
     } catch (e) {

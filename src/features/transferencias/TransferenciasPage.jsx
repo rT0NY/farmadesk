@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeftRight, Plus, X, Search, ArrowRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { traerTodo, traerTodoPorParLlave } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { Fab } from '@/components/ui/Fab'
@@ -81,11 +82,19 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
 
   useEffect(() => {
     const cargar = async () => {
-      const [{ data: prods }, { data: lots }, { data: inv }, { data: ps }] = await Promise.all([
-        supabase.from('productos').select('id, nombre, categoria').eq('activo', true).order('nombre'),
-        supabase.from('lotes').select('id, producto_id, codigo_lote, fecha_caducidad').eq('activo', true),
-        supabase.from('inventario').select('id, lote_id, sucursal_id, cantidad').gt('cantidad', 0),
-        supabase.from('productos_sucursales').select('producto_id, sucursal_id').eq('habilitado', false),
+      // Todas por tandas: productos va en 961 y disponibilidad en 1,926, o sea
+      // que esta última ya llegaba cortada. Lotes e inventario todavía son
+      // pocos, pero crecen con cada recepción y el corte no avisa.
+      const [prods, lots, inv, ps] = await Promise.all([
+        traerTodo(() => supabase.from('productos'),
+          'id, nombre, categoria', q => q.eq('activo', true)),
+        traerTodo(() => supabase.from('lotes'),
+          'id, producto_id, codigo_lote, fecha_caducidad', q => q.eq('activo', true)),
+        traerTodo(() => supabase.from('inventario'),
+          'id, lote_id, sucursal_id, cantidad', q => q.gt('cantidad', 0)),
+        traerTodoPorParLlave(() => supabase.from('productos_sucursales'),
+          'producto_id, sucursal_id', q => q.eq('habilitado', false),
+          'producto_id', 'sucursal_id'),
       ])
       // Construir mapa de deshabilitados
       const map = {}
@@ -94,12 +103,17 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
         map[r.producto_id].add(r.sucursal_id)
       })
       setDeshabMap(map)
-      setProductos(prods ?? [])
+      // El orden alfabético se aplica aquí y no en la consulta: por allá se
+      // pagina por id, que es lo único único y estable. Ordenar por nombre
+      // dentro de la consulta haría que dos productos homónimos pudieran
+      // cambiar de tanda a media descarga.
+      setProductos((prods ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre)))
       setLotes(lots ?? [])
       setInventario(inv ?? [])
-      setCargando(false)
     }
     cargar()
+      .catch(e => console.error('Error cargando transferencias:', e))
+      .finally(() => setCargando(false))
   }, [])
 
   // Derivados

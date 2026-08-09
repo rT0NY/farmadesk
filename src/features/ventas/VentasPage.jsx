@@ -18,6 +18,7 @@ import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { invalidarStock } from '@/lib/cache'
 import { emitirAlerta } from '@/lib/alertas'
+import { traerTodo } from '@/lib/paginado'
 
 // Consulta embebida reutilizable: inventario CON stock en una sucursal + su lote.
 // Solo trae lo que tiene existencias aquí (no todo el inventario histórico).
@@ -610,10 +611,17 @@ export default function VentasPage() {
     setLoading(true)
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: invRows }, { data: cod }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, { data: prodSuc }] = await Promise.all([
-        supabase.from('productos').select(colsProducto).eq('activo', true).order('nombre'),
-        supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
-        supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
+      const [prod, invRows, cod, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, prodSuc] = await Promise.all([
+        // Catálogo por tandas. Los códigos de barras iban en 966 de un tope de
+        // 1,000: al cruzarlo, la pistola dejaría de encontrar productos en caja
+        // sin dar un solo error. El orden alfabético se aplica más abajo, en
+        // memoria — aquí se pagina por id, que es lo único estable.
+        traerTodo(() => supabase.from('productos'), colsProducto,
+          q => q.eq('activo', true)),
+        traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
+          q => q.eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true)),
+        traerTodo(() => supabase.from('codigos_barras'),
+          'producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         perfilId
           ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
@@ -624,14 +632,19 @@ export default function VentasPage() {
         // empresa, cajeros incluidos. Antes se les pasaba un conjunto vacío, y
         // con eso la validación de "producto no disponible" nunca se disparaba:
         // el cajero podía vender productos deshabilitados en su sucursal.
-        supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucursalId).eq('habilitado', false),
+        // Filtrada por sucursal, así que producto_id no se repite y sirve de
+        // llave para avanzar.
+        traerTodo(() => supabase.from('productos_sucursales'), 'producto_id',
+          q => q.eq('sucursal_id', sucursalId).eq('habilitado', false),
+          'producto_id'),
       ])
       const disabledSet = new Set((prodSuc || []).map(ps => ps.producto_id))
       setDeshabilitados(disabledSet)
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
       const { inv, lot } = derivarInvLotes(invRows)
-      setProductos(prod || []); setLotes(lot); setInventario(inv)
+      setProductos((prod ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+      setLotes(lot); setInventario(inv)
       setCodigosCat(cod || []); setVentasHoy(vts); setDetallesHoy(det)
       setCuentasHoy(cuentas || [])
       // Solo actualizar turnoActual si la query fue exitosa y tenemos usuario identificado.
@@ -663,8 +676,9 @@ export default function VentasPage() {
     refreshingRef.current = true
     try {
       const hoy = fechaEnZona(tz)
-      const [{ data: invRows }, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
-        supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true),
+      const [invRows, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
+        traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
+          q => q.eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true)),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
         supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
@@ -1253,19 +1267,26 @@ export default function VentasPage() {
       }
       // Recargar datos de la sucursal
       const hoy = fechaEnZona(tz)
-      const [{ data: prod }, { data: invRows }, { data: cod }, { data: ventasConDet2 }, { data: ofVig }, { data: ps2 }] = await Promise.all([
-        supabase.from('productos').select(colsProducto).eq('activo', true).order('nombre'),
-        supabase.from('inventario').select(SELECT_INV_LOTES).eq('sucursal_id', sucId).gt('cantidad', 0).eq('lotes.activo', true),
-        supabase.from('codigos_barras').select('producto_id, codigo, unidades_por_empaque'),
+      const [prod, invRows, cod, { data: ventasConDet2 }, { data: ofVig }, ps2] = await Promise.all([
+        // Mismo criterio que fetchData: el catálogo va por tandas.
+        traerTodo(() => supabase.from('productos'), colsProducto,
+          q => q.eq('activo', true)),
+        traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
+          q => q.eq('sucursal_id', sucId).gt('cantidad', 0).eq('lotes.activo', true)),
+        traerTodo(() => supabase.from('codigos_barras'),
+          'producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
-        supabase.from('productos_sucursales').select('producto_id').eq('sucursal_id', sucId).eq('habilitado', false),
+        traerTodo(() => supabase.from('productos_sucursales'), 'producto_id',
+          q => q.eq('sucursal_id', sucId).eq('habilitado', false),
+          'producto_id'),
       ])
       const vts2 = (ventasConDet2 ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det2 = (ventasConDet2 ?? []).flatMap(v => v.detalle_ventas ?? [])
       const { inv, lot } = derivarInvLotes(invRows)
       setDeshabilitados(new Set((ps2 || []).map(p => p.producto_id)))
-      setProductos(prod || []); setLotes(lot); setInventario(inv)
+      setProductos((prod ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+      setLotes(lot); setInventario(inv)
       setCodigosCat(cod || []); setVentasHoy(vts2); setDetallesHoy(det2)
       setOfertasVigentes(ofVig || [])
       recargarTurno()

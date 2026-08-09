@@ -7,7 +7,12 @@ const TableContext = createContext({ modo: 'tabla' })
 /**
  * Tabla responsive: desktop muestra tabla, móvil convierte en tarjetas apiladas.
  */
-export function Table({ children, className }) {
+// `anchoFijo` hace que manden los anchos declarados en las HeadCell. Sin él, el
+// navegador dimensiona las columnas segun su contenido y `truncate` no puede
+// actuar: un solo nombre largo ensancha su columna y empuja al resto fuera de la
+// vista. Va apagado por defecto para no alterar las tablas que no declaran
+// anchos — ahi todas las columnas quedarian iguales.
+export function Table({ children, className, anchoFijo = false }) {
   return (
     <div className={cn(
       'bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card',
@@ -16,7 +21,7 @@ export function Table({ children, className }) {
       {/* Desktop: tabla real */}
       <div className="hidden md:block overflow-x-auto">
         <TableContext.Provider value={{ modo: 'tabla' }}>
-          <table className="w-full">
+          <table className={cn('w-full', anchoFijo && 'table-fixed min-w-[620px]')}>
             {children}
           </table>
         </TableContext.Provider>
