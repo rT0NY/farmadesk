@@ -90,9 +90,17 @@ export const formatoMoneda = (n) =>
     minimumFractionDigits: 2,
   }).format(Number(n) || 0)
 
+// Una fecha suelta como '2026-09-09' la interpreta JavaScript como medianoche
+// UTC, y al mostrarla en horario de México (UTC-6) retrocede al día anterior:
+// las caducidades salían siempre un día antes de lo guardado. Anclarla al
+// mediodía UTC la deja en el mismo día calendario en cualquier zona horaria.
+// Los timestamps completos (con hora) se dejan tal cual.
+const soloFecha = /^\d{4}-\d{2}-\d{2}$/
+const aFecha = (v) => new Date(soloFecha.test(v) ? `${v}T12:00:00Z` : v)
+
 export const formatoFecha = (fecha) => {
   if (!fecha) return ''
-  const d = new Date(fecha)
+  const d = aFecha(fecha)
   return d.toLocaleDateString('es-MX', {
     day: '2-digit',
     month: 'short',

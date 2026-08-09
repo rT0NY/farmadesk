@@ -47,7 +47,13 @@ export const Button = forwardRef(function Button(
       disabled={disabled || cargando}
       className={cn(
         'inline-flex items-center justify-center gap-2 font-medium',
-        'transition-all duration-200 ease-out',
+        // Antes era `transition-all`, que anima TODA propiedad que cambie. Al
+        // pasar el cursor cambian el degradado y la sombra a la vez, y animar
+        // una sombra grande y difusa obliga a repintar el área alrededor del
+        // botón: eso es el temblorcito al entrar y al salir. Aquí se enumeran
+        // solo las tres que importan, y `transform-gpu` le da su propia capa
+        // para que el repintado no arrastre a lo que tiene al lado.
+        'transition-[background-color,background-image,box-shadow,transform,color] duration-200 ease-out transform-gpu',
         'focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-1',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none',
         'active:scale-[0.98]',

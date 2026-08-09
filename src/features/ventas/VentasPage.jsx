@@ -915,6 +915,11 @@ export default function VentasPage() {
     setCarrito(nuevoCarrito)
     setPrecios(nuevosPrecios)
     setResultados([]); setBusqueda('')
+    // Al elegir producto también hay que apagar la búsqueda de otras sucursales:
+    // limpiar la lista visible no bastaba, la consulta seguía en camino.
+    if (otrasSucRef.current) clearTimeout(otrasSucRef.current)
+    busquedaVigenteRef.current = ''
+    setResultadosOtras([])
   }
 
   function setCantidadItem(prodId, val) {
@@ -1002,9 +1007,15 @@ export default function VentasPage() {
   }, [codigosCat])
 
   const otrasSucRef = useRef(null)
+  // Qué se está buscando ahora mismo. La consulta de otras sucursales tarda
+  // ~300 ms más la red, y sin este testigo su respuesta se pintaba aunque el
+  // usuario ya hubiera elegido el producto: por eso "En otras sucursales"
+  // aparecía de la nada con el carrito lleno y la búsqueda vacía.
+  const busquedaVigenteRef = useRef('')
 
   function buscarProducto(q) {
     if (otrasSucRef.current) clearTimeout(otrasSucRef.current)
+    busquedaVigenteRef.current = q
     if (!q.trim()) { setResultados([]); setResultadosOtras([]); return }
     const q2 = q.toLowerCase()
     const todos = productos.filter(p => {
@@ -1020,9 +1031,13 @@ export default function VentasPage() {
     // Otras sucursales: candidatos = deshabilitado aquí o sin stock local.
     // El stock de OTRAS sucursales ya no está precargado → se consulta bajo demanda (debounced).
     if (sucursales.length <= 1) { setResultadosOtras([]); return }
-    const idsYaMostrados = new Set(disponibles.map(p => p.id))
+    // Sin excluir los que ya salieron arriba. Antes se descartaban, y como la
+    // lista principal muestra los primeros 8, un producto sin stock aquí casi
+    // siempre caía ahí: la pantalla avisaba "no disponible en esta sucursal" y
+    // enseguida se negaba a decir dónde sí estaba. Justo lo que hay que saber
+    // en el mostrador con el cliente enfrente.
     const candidatos = todos
-      .filter(p => (deshabilitados.has(p.id) || stockEnSucursal(p.id) === 0) && !idsYaMostrados.has(p.id))
+      .filter(p => deshabilitados.has(p.id) || stockEnSucursal(p.id) === 0)
       .slice(0, 12)
     if (candidatos.length === 0) { setResultadosOtras([]); return }
     const candIds = candidatos.map(p => p.id)
@@ -1049,6 +1064,9 @@ export default function VentasPage() {
         }))
         .filter(p => p.sucursalesConStock.length > 0)
         .slice(0, 3)
+      // Si mientras viajaba la consulta el usuario ya eligió producto o cambió
+      // lo que busca, este resultado es viejo y no se pinta.
+      if (busquedaVigenteRef.current !== q) return
       setResultadosOtras(otras)
     }, 300)
   }
@@ -1137,7 +1155,11 @@ export default function VentasPage() {
       invalidarStock()
 
       const folio = generarFolio(data?.venta_id, sucursalActual?.nombre)
-      await logBitacora({
+      // Sin `await` a propósito: la bitácora es un registro lateral, nada de lo
+      // que sigue depende de ella y ya se traga sus propios errores. Esperarla
+      // le sumaba un viaje de red completo al tiempo que el cajero ve entre
+      // apretar "Confirmar" y que salga el ticket, en cada venta.
+      logBitacora({
         empresa_id:    empresa.id,
         tipo:          esCuentaPendiente ? 'venta_cuenta_pendiente' : 'venta_completada',
         descripcion:   esCuentaPendiente
