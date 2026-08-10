@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Barcode, Store, Layers, Search, X, Check,
@@ -102,6 +102,32 @@ function validarFila(f) {
   if (pc > 0 && pv > 0 && pv < pc) avisos.push('el precio de venta es menor al de compra')
 
   return { errores, avisos }
+}
+
+// Campo de nombre que crece hacia abajo en vez de recortar. Un `input` de una
+// sola línea escondía la mayor parte de nombres como "A-MIGDOBIS BISMUTA 2
+// SUPOSITORIOS ADULTO", y ensanchar la columna habría empujado los precios
+// fuera de la vista. Así se acomoda en varias líneas, igual que los códigos.
+function CampoNombre({ valor, onChange, className }) {
+  const ref = useRef(null)
+
+  const ajustar = (el) => {
+    if (!el) return
+    el.style.height = 'auto'                    // primero encoge, si no nunca baja
+    el.style.height = `${el.scrollHeight}px`
+  }
+
+  useEffect(() => { ajustar(ref.current) }, [valor])
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={valor}
+      onChange={e => onChange(e.target.value.toUpperCase())}
+      className={className}
+    />
+  )
 }
 
 // ── Ventana ──────────────────────────────────────────────────────────────────
@@ -364,8 +390,10 @@ export default function ModalEdicionMasiva({ productos, onCerrar, onExito }) {
   // ── Paso 2 ────────────────────────────────────────────────────────────────
   // Las celdas modificadas se resaltan. Con 50 filas precargadas, es lo único
   // que distingue lo que el usuario tocó de lo que solo está de paso.
-  const claseCelda = (cambiada) => cn(
-    'w-full h-10 px-3 rounded-xl border text-sm transition-all',
+  // `alto` se separa para que el campo de nombre pueda crecer con su contenido
+  // mientras el resto de celdas conserva su altura fija.
+  const claseCelda = (cambiada, alto = 'h-10') => cn(
+    'w-full px-3 rounded-xl border text-sm transition-colors', alto,
     'focus:outline-none focus:ring-2 focus:ring-primary-500/25 focus:bg-white',
     cambiada ? 'bg-amber-50 border-amber-300 font-semibold' : 'bg-slate-100/70 border-transparent'
   )
@@ -417,10 +445,11 @@ export default function ModalEdicionMasiva({ productos, onCerrar, onExito }) {
                     </td>
 
                     <td className="px-2 py-2 border-b border-slate-100">
-                      <input
-                        value={f.nombre}
-                        onChange={e => actualizar(f.id, { nombre: e.target.value.toUpperCase() })}
-                        className={claseCelda('nombre' in cam)}
+                      <CampoNombre
+                        valor={f.nombre}
+                        onChange={v => actualizar(f.id, { nombre: v })}
+                        className={claseCelda('nombre' in cam,
+                          'min-h-10 py-2 leading-snug resize-none overflow-hidden')}
                       />
                     </td>
 
