@@ -3,7 +3,7 @@ import {
   History, ShoppingCart, Receipt, Wallet, ArrowLeftRight,
   Package, Ban, Check, X, ClipboardList, BadgeCheck,
   LogIn, LogOut, Search, Calendar, ChevronDown, Filter,
-  Tag, CreditCard, Archive, PackageCheck, Truck,
+  Tag, CreditCard, Archive, PackageCheck, Truck, Trash2, Layers, PencilLine,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
@@ -62,6 +62,9 @@ const TIPOS = {
   producto_editado:         { label: 'Producto editado',       color: '#0087c6', bg: '#dbeafe', borde: '#0087c6', Icono: Package        },
   producto_archivado:       { label: 'Producto archivado',     color: '#64748b', bg: '#f1f5f9', borde: '#94a3b8', Icono: Archive        },
   producto_reactivado:      { label: 'Producto reactivado',    color: '#10b981', bg: '#d1fae5', borde: '#10b981', Icono: Archive        },
+  producto_eliminado:       { label: 'Producto eliminado',     color: '#ef4444', bg: '#fee2e2', borde: '#ef4444', Icono: Trash2         },
+  ingreso_masivo:           { label: 'Ingreso masivo',         color: '#0087c6', bg: '#dbeafe', borde: '#0087c6', Icono: Layers         },
+  edicion_masiva:           { label: 'Edición masiva',         color: '#8b5cf6', bg: '#ede9fe', borde: '#8b5cf6', Icono: PencilLine     },
 
   // ── Ofertas ─────────────────────────────────────────────────────────────────
   oferta_creada:            { label: 'Oferta creada',          color: '#8b5cf6', bg: '#ede9fe', borde: '#8b5cf6', Icono: Tag            },
