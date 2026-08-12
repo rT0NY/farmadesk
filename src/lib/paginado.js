@@ -59,9 +59,31 @@ export async function traerPorTandas(construir, clave = f => f.id) {
 export function traerTodo(tabla, columnas, afinar = q => q, llave = 'id') {
   return traerPorTandas((tam, ultimo) => {
     let q = afinar(tabla().select(columnas)).order(llave).limit(tam)
-    if (ultimo) q = q.gt(llave, ultimo[llave])
+    if (ultimo) q = q.gt(llave, exigirCursor(ultimo, llave, columnas))
     return q
   }, f => f[llave])
+}
+
+/**
+ * Si la llave del cursor no viene entre las columnas pedidas, el avance se
+ * arma con `undefined` y Supabase responde 400 — pero eso solo pasa al pedir la
+ * SEGUNDA tanda, o sea únicamente cuando la tabla cruza las mil filas. Hasta ese
+ * día todo funciona y de pronto la lista aparece vacía.
+ *
+ * Nos mordió con los códigos de barras: se pedían `producto_id, codigo` pero se
+ * paginaba por `id`. Al pasar de mil códigos, el escáner dejó de reconocerlos.
+ *
+ * Por eso el error se lanza aquí, nombrando la columna que falta.
+ */
+function exigirCursor(fila, llave, columnas) {
+  const valor = fila?.[llave]
+  if (valor === undefined) {
+    throw new Error(
+      `Paginado: falta la columna "${llave}" en el select ("${columnas}"). ` +
+      `Es la llave del cursor y sin ella no se puede pedir la siguiente tanda.`
+    )
+  }
+  return valor
 }
 
 /**
@@ -77,7 +99,9 @@ export function traerTodoPorParLlave(tabla, columnas, afinar = q => q, a = 'id',
   return traerPorTandas((tam, ultimo) => {
     let q = afinar(tabla().select(columnas)).order(a).order(b).limit(tam)
     if (ultimo) {
-      q = q.or(`${a}.gt.${ultimo[a]},and(${a}.eq.${ultimo[a]},${b}.gt.${ultimo[b]})`)
+      const va = exigirCursor(ultimo, a, columnas)
+      const vb = exigirCursor(ultimo, b, columnas)
+      q = q.or(`${a}.gt.${va},and(${a}.eq.${va},${b}.gt.${vb})`)
     }
     return q
   }, f => `${f[a]}|${f[b]}`)

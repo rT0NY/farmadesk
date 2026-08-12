@@ -621,7 +621,7 @@ export default function VentasPage() {
         traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
           q => q.eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true)),
         traerTodo(() => supabase.from('codigos_barras'),
-          'producto_id, codigo, unidades_por_empaque'),
+          'id, producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         perfilId
           ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
@@ -1296,7 +1296,7 @@ export default function VentasPage() {
         traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
           q => q.eq('sucursal_id', sucId).gt('cantidad', 0).eq('lotes.activo', true)),
         traerTodo(() => supabase.from('codigos_barras'),
-          'producto_id, codigo, unidades_por_empaque'),
+          'id, producto_id, codigo, unidades_por_empaque'),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.rpc('ofertas_vigentes'),
         traerTodo(() => supabase.from('productos_sucursales'), 'producto_id',

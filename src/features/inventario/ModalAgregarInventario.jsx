@@ -174,7 +174,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   const { data: codigosCat = [] } = useQuery({
     queryKey: ['inv_codigos', empresa?.id],
     queryFn: () => traerTodo(() => supabase.from('codigos_barras'),
-      'producto_id, codigo'),
+      'id, producto_id, codigo'),
     enabled: catalogoActivo,
     staleTime: 10 * 60_000,
   })
