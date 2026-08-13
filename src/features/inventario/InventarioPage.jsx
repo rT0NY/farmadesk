@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { traerTodoPorParLlave } from '@/lib/paginado'
+import { traerTodo, traerTodoPorParLlave } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -99,21 +99,50 @@ function TarjetaResumen({ titulo, valor, icono: Icono, color, activa, onClick })
 
 // ─── Grupo de caducidad ───────────────────────────────────────────────────────
 
-function GrupoCaducidad({ titulo, items, color, hoy }) {
+function GrupoCaducidad({ titulo, subtitulo, items, color, hoy }) {
   if (!items.length) return null
+  // Mismo lenguaje visual que las tarjetas de arriba: cuadro con degradado y
+  // sombra en su color, en vez del puntito suelto que se veía deslavado.
   const cls = {
-    red:    { header: 'bg-red-50 border-red-200',    badge: 'bg-red-100 text-red-700',    dot: 'bg-red-500'    },
-    orange: { header: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
-    amber:  { header: 'bg-amber-50 border-amber-200',  badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
+    red: {
+      header: 'bg-gradient-to-r from-red-50 to-transparent border-red-100',
+      icono:  'bg-gradient-to-br from-red-500 to-rose-600 shadow-md shadow-red-500/30',
+      badge:  'bg-white text-red-700 ring-1 ring-red-200',
+      Icono:  CalendarX,
+    },
+    orange: {
+      header: 'bg-gradient-to-r from-orange-50 to-transparent border-orange-100',
+      icono:  'bg-gradient-to-br from-orange-400 to-orange-600 shadow-md shadow-orange-500/30',
+      badge:  'bg-white text-orange-700 ring-1 ring-orange-200',
+      Icono:  AlertTriangle,
+    },
+    amber: {
+      header: 'bg-gradient-to-r from-amber-50 to-transparent border-amber-100',
+      icono:  'bg-gradient-to-br from-amber-400 to-amber-500 shadow-md shadow-amber-500/30',
+      badge:  'bg-white text-amber-700 ring-1 ring-amber-200',
+      Icono:  Clock,
+    },
   }[color]
+  const Icono = cls.Icono
+
   return (
     <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
-      <div className={`flex items-center justify-between px-4 py-3 border-b ${cls.header}`}>
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${cls.dot}`} />
-          <p className="text-sm font-bold text-slate-800">{titulo}</p>
+      <div className={cn('flex items-center justify-between gap-3 px-4 py-3.5 border-b', cls.header)}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={cn('w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0', cls.icono)}>
+            <Icono className="w-4 h-4 text-white" strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-800 leading-tight truncate">{titulo}</p>
+            {subtitulo && <p className="text-xs text-slate-400 mt-0.5 truncate">{subtitulo}</p>}
+          </div>
         </div>
-        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${cls.badge}`}>{items.length} lote{items.length !== 1 ? 's' : ''}</span>
+        <span className={cn(
+          'text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap flex-shrink-0 tabular-nums',
+          cls.badge
+        )}>
+          {items.length} lote{items.length !== 1 ? 's' : ''}
+        </span>
       </div>
       <div className="divide-y divide-slate-50">
         {items.map(l => {
@@ -180,15 +209,18 @@ function VistaCaducidad({ lotes, cargando }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <GrupoCaducidad titulo="Caducados" items={caducados} color="red" hoy={hoy} />
-      <GrupoCaducidad titulo="Caducan en menos de 30 días" items={criticos} color="orange" hoy={hoy} />
-      <GrupoCaducidad titulo="Caducan en 31–90 días" items={proximos} color="amber" hoy={hoy} />
+      <GrupoCaducidad titulo="Caducados"  subtitulo="Retirar del anaquel"
+                      items={caducados} color="red"    hoy={hoy} />
+      <GrupoCaducidad titulo="Críticos"   subtitulo="Vencen en menos de 30 días"
+                      items={criticos}  color="orange" hoy={hoy} />
+      <GrupoCaducidad titulo="Próximos"   subtitulo="Vencen entre 31 y 90 días"
+                      items={proximos}  color="amber"  hoy={hoy} />
     </div>
   )
 }
 
 export default function InventarioPage() {
-  const { sucursales, perfil, sucursalActiva, turnoActivo, empresa } = useApp()
+  const { sucursales, perfil, sucursalActiva, turnoActivo, empresa, tz } = useApp()
   const esCajero  = perfil?.rol === 'cajero'
   // Admin y propietario son globales — no tienen "su" sucursal
   const esGlobal  = perfil?.rol === 'admin' || perfil?.id === empresa?.propietario
@@ -262,32 +294,47 @@ export default function InventarioPage() {
   )
 
   const cargarCaducidad = useCallback(async () => {
+    // La dependencia vacía de antes congelaba `empresa` como estaba en el primer
+    // render —o sea nula, porque llega después—, y `empresa.id` reventaba. El
+    // error se lo tragaba el catch y la lista quedaba vacía aunque la tarjeta
+    // contara 6.
+    if (!empresa?.id) return
+
     setCargandoCad(true)
     try {
-      const { data: lotes } = await supabase
-        .from('lotes')
-        .select('id, fecha_caducidad, producto_id, productos(nombre, categoria)')
-        .eq('empresa_id', empresa.id)
-        .eq('activo', true)
-        .not('fecha_caducidad', 'is', null)
-        .order('fecha_caducidad', { ascending: true })
-      if (!lotes?.length) { setLotesCaducidad([]); return }
+      const hoy    = fechaEnZona(tz)
+      const limite = addDias(hoy, 90)
 
-      const { data: inv } = await supabase
-        .from('inventario')
-        .select('lote_id, cantidad')
-        .in('lote_id', lotes.map(l => l.id))
+      // Acotado a 90 días, que es justo lo que agrupa la vista. Antes traía TODO
+      // lote con fecha, sin límite ni paginación, y con el tope de mil filas de
+      // Supabase los cercanos podían quedar fuera del corte.
+      const lotes = await traerTodo(() => supabase.from('lotes'),
+        'id, fecha_caducidad, producto_id, productos(nombre, categoria)',
+        q => q.eq('empresa_id', empresa.id)
+              .eq('activo', true)
+              .not('fecha_caducidad', 'is', null)
+              .lte('fecha_caducidad', limite))
+
+      if (!lotes.length) { setLotesCaducidad([]); return }
+
+      const inv = await traerTodo(() => supabase.from('inventario'),
+        'id, lote_id, cantidad', q => q.in('lote_id', lotes.map(l => l.id)))
 
       const cantMap = {}
-      ;(inv || []).forEach(i => { cantMap[i.lote_id] = (cantMap[i.lote_id] || 0) + Number(i.cantidad || 0) })
+      inv.forEach(i => { cantMap[i.lote_id] = (cantMap[i.lote_id] || 0) + Number(i.cantidad || 0) })
 
-      setLotesCaducidad(lotes.map(l => ({ ...l, cantidad: cantMap[l.id] || 0 })).filter(l => l.cantidad > 0))
-    } catch {
+      setLotesCaducidad(
+        lotes.map(l => ({ ...l, cantidad: cantMap[l.id] || 0 }))
+             .filter(l => l.cantidad > 0)
+             .sort((a, b) => a.fecha_caducidad.localeCompare(b.fecha_caducidad))
+      )
+    } catch (e) {
+      console.error('Caducidades en Inventario:', e)
       toast.error('No se pudieron cargar las caducidades.')
     } finally {
       setCargandoCad(false)
     }
-  }, [])
+  }, [empresa?.id, tz])
 
   useEffect(() => { if (filtroEstado === 'por_caducar') cargarCaducidad() }, [filtroEstado, cargarCaducidad])
 

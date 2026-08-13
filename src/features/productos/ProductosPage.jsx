@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Package, Filter, RefreshCw,
-  AlertTriangle, ChevronDown, X, Check, CircleCheck,
+  AlertTriangle, ChevronDown, X, Check, PackageX,
   ShoppingBag, Wallet, Layers, PencilLine,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -73,7 +73,7 @@ export default function ProductosPage() {
   const { empresa, perfil } = useApp()
   const esCajero = perfil?.rol === 'cajero'
   const [busqueda, setBusqueda] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState('activos')
+  const [filtroEstado, setFiltroEstado] = useState('todos')
   const [categoriaSel, setCategoriaSel] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [modalMasivo,  setModalMasivo]  = useState(false)
@@ -111,11 +111,11 @@ export default function ProductosPage() {
   }, [productos])
 
   const productosFiltrados = useMemo(() => {
-    // Los eliminados ya no llegan desde el servidor, así que "todos" y
-    // "activos" son lo mismo. Se conservan los dos porque el desplegable los
-    // distingue por stock, no por estado.
+    // Los tres filtros son por STOCK, no por estado: un producto eliminado ya no
+    // llega desde el servidor, así que no hay nada que filtrar por ahí.
     let r = productos
     if (filtroEstado === 'bajo_stock') r = r.filter(p => p.bajo_stock)
+    if (filtroEstado === 'agotados')   r = r.filter(p => p.stock_total === 0)
 
     if (categoriaSel) r = r.filter(p => p.categoria === categoriaSel)
 
@@ -150,12 +150,13 @@ export default function ProductosPage() {
     }
   }, [productos])
 
-  // Sin "Archivados": un producto eliminado no vuelve. Y "Todos" ya no puede
-  // colar eliminados porque no llegan.
+  // Antes había un "Activos" que mostraba exactamente lo mismo que "Todos":
+  // desde que los eliminados dejaron de llegar, los dos daban 982. Ahora los
+  // tres filtran por stock y corresponden uno a uno con las tarjetas de arriba.
   const FILTROS_ESTADO = [
-    { v: 'activos', etiqueta: 'Activos', icono: CircleCheck, cantidad: conteos.activos, clase: 'text-emerald-600' },
-    { v: 'bajo_stock', etiqueta: 'Stock bajo', icono: AlertTriangle, cantidad: conteos.bajo_stock, clase: 'text-amber-600' },
-    { v: 'todos', etiqueta: 'Todos', icono: Package, cantidad: productos.length, clase: 'text-slate-600' },
+    { v: 'todos',      etiqueta: 'Todos',      icono: Package,        cantidad: productos.length,   clase: 'text-slate-600' },
+    { v: 'agotados',   etiqueta: 'Agotados',   icono: PackageX,       cantidad: conteos.agotados,   clase: 'text-red-600'   },
+    { v: 'bajo_stock', etiqueta: 'Stock bajo', icono: AlertTriangle,  cantidad: conteos.bajo_stock, clase: 'text-amber-600' },
   ]
 
   const estadoActivoInfo = FILTROS_ESTADO.find(f => f.v === filtroEstado)
@@ -173,10 +174,10 @@ export default function ProductosPage() {
   const limpiarFiltros = () => {
     setBusqueda('')
     setCategoriaSel('')
-    setFiltroEstado('activos')
+    setFiltroEstado('todos')
   }
 
-  const hayFiltrosActivos = busqueda || categoriaSel || filtroEstado !== 'activos'
+  const hayFiltrosActivos = busqueda || categoriaSel || filtroEstado !== 'todos'
 
   return (
     <div className="space-y-5">
@@ -219,12 +220,12 @@ export default function ProductosPage() {
       {!cargando && productos.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
 
-          {/* Activos */}
+          {/* Todos */}
           <button
-            onClick={() => setFiltroEstado('activos')}
+            onClick={() => setFiltroEstado('todos')}
             className={cn(
               'bg-white border rounded-3xl p-4 text-left transition-all duration-200',
-              filtroEstado === 'activos'
+              filtroEstado === 'todos'
                 ? 'border-primary-200 ring-2 ring-primary-500/20 shadow-card-hover'
                 : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
             )}
@@ -233,7 +234,7 @@ export default function ProductosPage() {
               <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-md shadow-blue-500/30 flex items-center justify-center">
                 <ShoppingBag className="w-5 h-5 text-white" strokeWidth={2} />
               </div>
-              {filtroEstado === 'activos' && (
+              {filtroEstado === 'todos' && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-current" />
                   Activo
@@ -244,10 +245,15 @@ export default function ProductosPage() {
             <p className="text-xs text-slate-400 mt-0.5">en catálogo</p>
           </button>
 
-          {/* Agotados */}
+          {/* Agotados — antes mandaba a 'activos' y por eso no seleccionaba nada */}
           <button
-            onClick={() => setFiltroEstado('activos')}
-            className="bg-white border border-slate-100 rounded-3xl p-4 text-left transition-all duration-200 shadow-card hover:shadow-card-hover hover:-translate-y-0.5"
+            onClick={() => setFiltroEstado('agotados')}
+            className={cn(
+              'bg-white border rounded-3xl p-4 text-left transition-all duration-200',
+              filtroEstado === 'agotados'
+                ? 'border-red-200 ring-2 ring-red-500/20 shadow-card-hover'
+                : 'border-slate-100 shadow-card hover:shadow-card-hover hover:-translate-y-0.5'
+            )}
           >
             <div className="flex items-start justify-between mb-3">
               <div className={cn(
@@ -344,7 +350,7 @@ export default function ProductosPage() {
           <DropdownFiltro
             label={estadoActivoInfo?.etiqueta || 'Estado'}
             icono={estadoActivoInfo?.icono}
-            activo={filtroEstado !== 'activos'}
+            activo={filtroEstado !== 'todos'}
           >
             {(cerrar) => (
               <>
