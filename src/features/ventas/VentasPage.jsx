@@ -1395,6 +1395,9 @@ export default function VentasPage() {
     ).join('')
     const aperturaDt = turnoActual?.fecha_apertura ? new Date(turnoActual.fecha_apertura) : new Date()
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      /* margin:0 evita que el navegador imprima sus encabezados —fecha, titulo y
+         about:blank— igual que ya lo hacia el ticket de venta. */
+      @page{size:80mm auto;margin:0}
       *{margin:0;padding:0;box-sizing:border-box}
       body{font-family:'Courier New',monospace;font-size:11px;width:80mm;padding:8px}
       h2{text-align:center;font-size:13px;margin-bottom:2px}

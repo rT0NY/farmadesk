@@ -2,15 +2,24 @@ import { useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   CalendarX, RefreshCw, ChevronDown, ArrowRight,
-  AlertTriangle, Timer, Store, Filter, Flame, Clock,
+  AlertTriangle, Timer, Store, Filter, Flame, Clock, Printer,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { fechaEnZona, addDias } from '@/lib/formatos'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { Button } from '@/components/ui/Button'
+import ModalReporteCaducidades from './ModalReporteCaducidades'
+
+// El reporte imprimible queda oculto mientras se termina de pulir. NADA se
+// borró: el modal, el armado del documento y la impresión siguen completos en
+// ModalReporteCaducidades.jsx y lib/documento.js. Para devolverlo a la vista
+// basta poner esto en true — no hay que reescribir nada más.
+const REPORTE_HABILITADO = false
 
 // ─── Fila individual de lote ──────────────────────────────────────────────────
 function FilaLote({ lote, sucursales, hoy }) {
@@ -123,6 +132,7 @@ export default function CaducidadesPage() {
   const [diasAlerta,  setDiasAlerta]  = useState(90)
   const [sucFiltro,   setSucFiltro]   = useState('')
   const [catFiltro,   setCatFiltro]   = useState('')
+  const [modalReporte, setModalReporte] = useState(false)
   const [grupoActivo, setGrupoActivo] = useState('')   // '' | 'caducados' | 'criticos' | 'proximos'
 
   const cargar = useCallback(async () => {
@@ -132,25 +142,28 @@ export default function CaducidadesPage() {
       const hoy    = fechaEnZona(tz)
       const limite = addDias(hoy, diasAlerta)
 
-      const { data: lotesData, error } = await supabase
-        .from('lotes')
-        .select('id, codigo_lote, fecha_caducidad, producto_id, productos(nombre, categoria)')
-        .eq('empresa_id', empresa.id)
-        .eq('activo', true)
-        .not('fecha_caducidad', 'is', null)
-        .lte('fecha_caducidad', limite)
-        .order('fecha_caducidad', { ascending: true })
+      // Por tandas. Sin esto, un rango amplio en una empresa con catálogo grande
+      // cruza las mil filas que Supabase devuelve como máximo, y los lotes que
+      // quedan fuera del corte llegan sin su inventario: cuentan cero y se
+      // descartan más abajo. Desaparecen sin ningún aviso.
+      const lotesData = await traerTodo(() => supabase.from('lotes'),
+        'id, codigo_lote, fecha_caducidad, producto_id, productos(nombre, categoria)',
+        q => q.eq('empresa_id', empresa.id)
+              .eq('activo', true)
+              .not('fecha_caducidad', 'is', null)
+              .lte('fecha_caducidad', limite))
 
-      if (error) throw error
-      if (!lotesData?.length) { setLotes([]); return }
+      if (!lotesData.length) { setLotes([]); return }
 
-      const { data: inv } = await supabase
-        .from('inventario')
-        .select('lote_id, cantidad, sucursal_id')
-        .in('lote_id', lotesData.map(l => l.id))
+      // Se pide por empresa en vez de `.in('lote_id', […])`: con cientos de
+      // lotes esa lista de identificadores arma una dirección enorme que el
+      // navegador puede rechazar. El cruce con los lotes se hace en memoria.
+      const inv = await traerTodo(() => supabase.from('inventario'),
+        'id, lote_id, cantidad, sucursal_id',
+        q => q.eq('empresa_id', empresa.id).gt('cantidad', 0))
 
       const stockMap = {}
-      ;(inv || []).forEach(i => {
+      inv.forEach(i => {
         if (!stockMap[i.lote_id]) stockMap[i.lote_id] = { total: 0 }
         if (i.sucursal_id) {
           stockMap[i.lote_id][i.sucursal_id] = (stockMap[i.lote_id][i.sucursal_id] || 0) + Number(i.cantidad || 0)
@@ -162,6 +175,10 @@ export default function CaducidadesPage() {
         lotesData
           .map(l => ({ ...l, stock: stockMap[l.id] ?? { total: 0 } }))
           .filter(l => l.stock.total > 0)
+          // El orden se aplica aquí: la consulta pagina por id, que es lo único
+          // estable para avanzar. Antes lo ordenaba la base y la lista depende
+          // de que lo más urgente quede arriba.
+          .sort((a, b) => a.fecha_caducidad.localeCompare(b.fecha_caducidad))
       )
     } catch {
       toast.error('No se pudieron cargar las caducidades. Verifica la conexión.')
@@ -227,10 +244,18 @@ export default function CaducidadesPage() {
               : 'Control de vencimientos de inventario'}
           </p>
         </div>
-        <button onClick={cargar} disabled={cargando}
-          className="w-9 h-9 rounded-full bg-white border border-slate-100 shadow-card flex items-center justify-center text-slate-500 hover:text-slate-700 hover:shadow-card-hover transition-all disabled:opacity-40 flex-shrink-0">
-          <RefreshCw className={cn('w-4 h-4', cargando && 'animate-spin')} />
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {REPORTE_HABILITADO && (
+            <Button variante="secundario" onClick={() => setModalReporte(true)}
+              iconoIzq={<Printer className="w-4 h-4" />}>
+              <span className="hidden sm:inline">Reporte</span>
+            </Button>
+          )}
+          <button onClick={cargar} disabled={cargando}
+            className="w-9 h-9 rounded-full bg-white border border-slate-100 shadow-card flex items-center justify-center text-slate-500 hover:text-slate-700 hover:shadow-card-hover transition-all disabled:opacity-40 flex-shrink-0">
+            <RefreshCw className={cn('w-4 h-4', cargando && 'animate-spin')} />
+          </button>
+        </div>
       </div>
 
       {/* Tarjetas resumen */}
@@ -370,6 +395,13 @@ export default function CaducidadesPage() {
           <SeccionGrupo titulo={`Próximos — hasta ${diasAlerta} días`} Icono={Clock}
             lotes={visibles.proximos} color="amber" sucursales={sucursales} hoy={hoy} />
         </div>
+      )}
+
+      {/* El reporte hace su propia consulta: no depende de los filtros de esta
+          pantalla, porque el rango que se elija ahí puede ser más amplio que el
+          que está cargado aquí. */}
+      {REPORTE_HABILITADO && modalReporte && (
+        <ModalReporteCaducidades abierto onCerrar={() => setModalReporte(false)} />
       )}
     </div>
   )
