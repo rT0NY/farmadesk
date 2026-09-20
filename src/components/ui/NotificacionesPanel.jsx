@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
 import { EVENTO_ALERTA, emitirAlerta } from '@/lib/alertas'
@@ -306,15 +307,28 @@ export function NotificacionesDrawer({ abierto, onClose }) {
       const en30S = addDias(hoyS, 30)
       const en90S = addDias(hoyS, 90)
 
+      // Las tres de base van por tandas. Inventario tiene 2,567 filas y
+      // productos 2,403: Supabase devolvía mil de cada una, o sea poco más de
+      // un tercio, y TODAS las alertas de stock bajo y caducidad se calculaban
+      // sobre ese pedazo. Para la mayoría del catálogo sencillamente no sonaban.
+      //
+      // Y como ninguna llevaba orden explícito, PostgREST resolvía por ctid —la
+      // posición física en disco, que cambia cada vez que se actualiza una
+      // fila—, así que cuáles mil llegaban variaba solo: una alerta podía
+      // aparecer un día y desaparecer al siguiente sin que cambiara nada.
       const baseQueries = [
-        supabase.from('lotes')
-          .select('id, fecha_caducidad, producto_id, productos(nombre)')
-          .eq('activo', true)
-          .not('fecha_caducidad', 'is', null)
-          .lte('fecha_caducidad', en90S)
-          .order('fecha_caducidad', { ascending: true }),
-        supabase.from('inventario').select('lote_id, cantidad, lotes!inner(producto_id)'),
-        supabase.from('productos').select('id, nombre, stock_minimo').eq('empresa_id', empresa.id).eq('activo', true),
+        traerTodo(() => supabase.from('lotes'),
+          'id, fecha_caducidad, producto_id, productos(nombre)',
+          q => q.eq('empresa_id', empresa.id)
+                .eq('activo', true)
+                .not('fecha_caducidad', 'is', null)
+                .lte('fecha_caducidad', en90S)),
+        traerTodo(() => supabase.from('inventario'),
+          'id, lote_id, cantidad, lotes!inner(producto_id)',
+          q => q.eq('empresa_id', empresa.id)),
+        traerTodo(() => supabase.from('productos'),
+          'id, nombre, stock_minimo',
+          q => q.eq('empresa_id', empresa.id).eq('activo', true)),
       ]
       const tieneAcceso = esAdmin || esEncargado
       if (tieneAcceso) {
@@ -335,7 +349,11 @@ export function NotificacionesDrawer({ abierto, onClose }) {
       }
 
       const results = await Promise.all(baseQueries)
-      const [{ data: lotes }, { data: inv }, { data: prods }] = results
+      const [lotesSinOrden, inv, prods] = results
+      // El orden se aplica aquí: las tandas avanzan por id, que es lo único
+      // estable para paginar, y la lista necesita lo más urgente arriba.
+      const lotes = [...lotesSinOrden].sort(
+        (a, b) => (a.fecha_caducidad ?? '9999-12-31').localeCompare(b.fecha_caducidad ?? '9999-12-31'))
       const cancelaciones = tieneAcceso ? (results[3]?.data ?? []) : []
       const cuentasPend   = tieneAcceso ? (results[4]?.data ?? []) : []
 

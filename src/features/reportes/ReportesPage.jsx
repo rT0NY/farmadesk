@@ -8,6 +8,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { formatoMoneda, isoEnZona, fechaEnZona, addDias, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
@@ -138,18 +139,23 @@ export default function ReportesPage() {
     const run = async () => {
     try {
       const [
-        { data: ventas,      error: e1 },
+        ventas,
         { data: gastos,      error: e2 },
         { data: semanas,     error: e3 },
         { data: perfilesData,error: e4 },
         { data: porCobrarRows },
       ] = await Promise.all([
-        supabase.from('ventas')
-          .select('id, total, creado_en, sucursal_id')
-          .eq('empresa_id', empresa.id)
-          .neq('estado', 'cancelada')
-          .gte('creado_en', inicioDiaUtc(inicio, tz))
-          .lte('creado_en', finDiaUtc(fin, tz)),
+        // Por tandas. Sin esto Supabase cortaba en 1,000 ventas sin avisar, y
+        // como la consulta tampoco llevaba orden explícito, PostgREST resolvía
+        // por ctid —la posición física en disco, que cambia al actualizar una
+        // fila—: no solo faltaban ventas, faltaban unas distintas en cada
+        // corrida del mismo reporte.
+        traerTodo(() => supabase.from('ventas'),
+          'id, total, creado_en, sucursal_id',
+          q => q.eq('empresa_id', empresa.id)
+                .neq('estado', 'cancelada')
+                .gte('creado_en', inicioDiaUtc(inicio, tz))
+                .lte('creado_en', finDiaUtc(fin, tz))),
         supabase.from('gastos')
           .select('monto, categoria, sucursal_id')
           .eq('empresa_id', empresa.id)
@@ -171,7 +177,7 @@ export default function ReportesPage() {
           .lte('creado_en', finDiaUtc(fin, tz)),
       ])
 
-      if (e1 || e2 || e4) toast.error('Error al cargar datos del reporte. Algunos números pueden estar incompletos.')
+      if (e2 || e4) toast.error('Error al cargar datos del reporte. Algunos números pueden estar incompletos.')
       if (e3) toast.warning('No se pudieron cargar los salarios. Los costos de nómina no estarán incluidos.')
 
       // Mapa de perfil por usuario_id
@@ -186,16 +192,29 @@ export default function ReportesPage() {
         return s.semana_inicio <= fin && isoEnZona(semFin, tz) >= inicio
       })
 
-      // Detalles con costo
-      const ventaIds = (ventas ?? []).map(v => v.id)
-      let detalles   = []
-      if (ventaIds.length > 0) {
-        const { data: det } = await supabase
-          .from('detalle_ventas')
-          .select('venta_id, producto_id, cantidad, precio_unitario, costo_unitario, productos(nombre, precio_compra)')
-          .in('venta_id', ventaIds)
-        detalles = det ?? []
-      }
+      // Detalles con costo.
+      //
+      // Dos cosas cambiaron. Antes se mandaba la lista completa de venta_id en
+      // un .in(...): con miles de ventas eso arma una dirección enorme que el
+      // servidor puede rechazar. Ahora se filtra por la venta padre con un
+      // join interno, que además viaja corto.
+      //
+      // Y se trae por tandas. Este era el error más caro del reporte: mil
+      // ventas producen del orden de dos mil quinientos renglones de detalle,
+      // así que el corte de mil dejaba fuera la mayoría del costo AUNQUE las
+      // ventas cupieran. El margen salía inflado.
+      //
+      // Los filtros son los MISMOS que los de las ventas de arriba —igual
+      // rango, igual exclusión de canceladas— para que el costo corresponda
+      // exactamente a los ingresos contra los que se compara.
+      const detalles = ventas.length === 0 ? [] : await traerTodo(
+        () => supabase.from('detalle_ventas'),
+        'id, venta_id, producto_id, cantidad, precio_unitario, costo_unitario, ' +
+          'productos(nombre, precio_compra), ventas!inner(estado, creado_en)',
+        q => q.eq('empresa_id', empresa.id)
+              .neq('ventas.estado', 'cancelada')
+              .gte('ventas.creado_en', inicioDiaUtc(inicio, tz))
+              .lte('ventas.creado_en', finDiaUtc(fin, tz)))
 
       // Mapa venta_id → {sucursal_id, creado_en}
       const ventaMap = {}

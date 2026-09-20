@@ -31,7 +31,16 @@ function ModalEditarLote({ lote, onCerrar, onGuardar }) {
     guardandoRef.current = true
     setGuardando(true)
     const { error } = await supabase.from('lotes').update({ codigo_lote: codigoLote.trim(), fecha_caducidad: fechaCad }).eq('id', lote.lote_id)
-    if (error) { toast.error(error.message); guardandoRef.current = false; setGuardando(false); return }
+    if (error) {
+      // 23505 es la violación del índice único (empresa_id, codigo_lote), que
+      // ahora impide repetir códigos. El mensaje crudo de Postgres viene en
+      // inglés y nombra el índice; eso no le dice nada a quien está en el
+      // mostrador, así que aquí se traduce a lo que de verdad pasó.
+      toast.error(error.code === '23505'
+        ? `Ya existe otro lote con el código "${codigoLote.trim()}". Usa uno distinto.`
+        : error.message)
+      guardandoRef.current = false; setGuardando(false); return
+    }
     toast.success('Lote actualizado'); guardandoRef.current = false; setGuardando(false); onGuardar()
   }
   return (

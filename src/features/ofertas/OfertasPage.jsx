@@ -7,6 +7,7 @@ import {
   ArrowRight, ChevronDown,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/paginado'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, formatoFecha, fechaEnZona } from '@/lib/formatos'
@@ -268,8 +269,21 @@ function ModalOferta({ abierto, onCerrar, onExito, ofertaEditar }) {
   }, [abierto, ofertaEditar, esEdicion])
 
   async function cargarProductos() {
-    const { data } = await supabase.from('productos').select('id, nombre, categoria, precio_venta, precio_compra').eq('activo', true).order('nombre')
-    setProductos(data || [])
+    // Por tandas: el catálogo pasa de 2,400 productos y Supabase devolvía mil
+    // sin avisar. Ordenados por nombre, eso dejaba fuera todo lo que cae de
+    // cierta letra en adelante: no se podía crear una oferta para más de la
+    // mitad del catálogo.
+    try {
+      const data = await traerTodo(() => supabase.from('productos'),
+        'id, nombre, categoria, precio_venta, precio_compra',
+        q => q.eq('empresa_id', empresa.id).eq('activo', true))
+      // El orden va aquí porque las tandas avanzan por id, que es lo único
+      // estable para paginar.
+      setProductos(data.sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    } catch (e) {
+      toast.error('No se pudo cargar el catálogo de productos')
+      console.error(e)
+    }
   }
 
   const prodsFiltrados = busquedaProd.trim()

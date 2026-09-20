@@ -543,7 +543,13 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
       onExito?.()
       onCerrar()
     } catch (err) {
-      toast.error(err.message || 'Error al guardar producto')
+      // 23505 es el índice único (empresa_id, codigo_lote): solo puede saltar
+      // cuando el usuario escribió a mano un código que ya existe, porque si lo
+      // deja vacío lo genera el trigger y ese no repite. El mensaje crudo de
+      // Postgres viene en inglés y nombra el índice.
+      toast.error(err.code === '23505' && String(err.message || '').includes('lotes_codigo_unico')
+        ? 'Ese código de lote ya existe. Déjalo vacío para que el sistema genere uno, o escribe otro.'
+        : err.message || 'Error al guardar producto')
     } finally {
       cargandoRef.current = false
       setCargando(false)

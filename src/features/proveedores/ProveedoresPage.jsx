@@ -10,6 +10,7 @@ import {
 import { Table } from '@/components/ui/Table'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { traerTodo } from '@/lib/paginado'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
@@ -41,12 +42,14 @@ function ModalProveedor({ proveedor, empresa, onClose, onGuardado }) {
 
   useEffect(() => {
     if (esEdit || paso !== 2 || productos.length > 0) return
-    supabase.from('productos')
-      .select('id, nombre, categoria')
-      .eq('empresa_id', empresa.id)
-      .eq('activo', true)
-      .order('nombre')
-      .then(({ data }) => setProductos(data ?? []))
+    // Por tandas: son más de 2,400 productos y el corte de mil escondía el
+    // resto sin ningún aviso. El orden se aplica en memoria porque el paginado
+    // avanza por id.
+    traerTodo(() => supabase.from('productos'),
+      'id, nombre, categoria',
+      q => q.eq('empresa_id', empresa.id).eq('activo', true))
+      .then(data => setProductos(data.sort((a, b) => a.nombre.localeCompare(b.nombre))))
+      .catch(e => { toast.error('No se pudo cargar el catálogo'); console.error(e) })
   }, [paso, esEdit, empresa.id, productos.length])
 
   const productosFiltrados = busqProd.trim()
@@ -264,13 +267,18 @@ function ModalProductosProveedor({ proveedor, empresa, onClose, onCambio }) {
   }
 
   const abrirVincular = async () => {
-    const { data } = await supabase.from('productos')
-      .select('id, nombre, categoria')
-      .eq('empresa_id', empresa.id)
-      .eq('activo', true)
-      .order('nombre')
+    let data
+    try {
+      // Por tandas, misma razón que arriba.
+      data = await traerTodo(() => supabase.from('productos'),
+        'id, nombre, categoria',
+        q => q.eq('empresa_id', empresa.id).eq('activo', true))
+      data.sort((a, b) => a.nombre.localeCompare(b.nombre))
+    } catch (e) {
+      toast.error('No se pudo cargar el catálogo'); console.error(e); return
+    }
     const yaIds = new Set(productos.map(v => v.id))
-    setCandidatos((data ?? []).filter(p => !yaIds.has(p.id)))
+    setCandidatos(data.filter(p => !yaIds.has(p.id)))
     setSeleccion({})
     setBusqueda('')
     setVinculando(true)

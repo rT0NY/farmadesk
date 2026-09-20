@@ -622,19 +622,34 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const POR_PAGINA = 50
+
 export default function TransferenciasPage() {
-  const { esAdmin, sucursales, sucursalActiva } = useApp()
+  const { empresa, esAdmin, sucursales, sucursalActiva } = useApp()
 
   const [transferencias, setTransferencias] = useState([])
   const [cargando, setCargando]             = useState(true)
   const [modalAbierto, setModalAbierto]     = useState(false)
+  const [pagina, setPagina]                 = useState(0)
+  const [totalCount, setTotalCount]         = useState(0)
+
+  // Ancla de tiempo: fija el "hasta cuándo" al abrir la primera página. Sin
+  // ella, una transferencia registrada mientras alguien navega el historial
+  // recorre todo hacia abajo y la fila del borde se repite en la página
+  // siguiente o se salta.
+  const anclaRef = useRef(null)
 
   const sucursalIdx = useCallback((id) => sucursales.findIndex((s) => s.id === id), [sucursales])
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (pg = 0) => {
+    if (!empresa?.id) return
+    if (pg === 0 || !anclaRef.current) anclaRef.current = new Date().toISOString()
     setCargando(true)
     try {
-      const { data, error } = await supabase
+      // Paginado de verdad. Antes se pedía el historial completo sin acotar y
+      // Supabase lo cortaba en 1,000 filas sin avisar: de la 1,001 en adelante
+      // las transferencias dejaban de existir para esta pantalla.
+      const { data, error, count } = await supabase
         .from('transferencias')
         .select(`
           *,
@@ -643,20 +658,28 @@ export default function TransferenciasPage() {
           origen:sucursales!origen_id(nombre),
           destino:sucursales!destino_id(nombre),
           usuario:perfiles!usuario_id(nombre)
-        `)
+        `, { count: 'exact' })
+        .eq('empresa_id', empresa.id)
+        .lte('creado_en', anclaRef.current)
+        // El id desempata las fechas idénticas: sin él, dos registros del mismo
+        // instante pueden intercambiarse entre páginas.
         .order('creado_en', { ascending: false })
+        .order('id', { ascending: false })
+        .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1)
 
       if (error) throw error
       setTransferencias(data ?? [])
+      setTotalCount(count ?? 0)
+      setPagina(pg)
     } catch (e) {
       toast.error(e.message ?? 'Error al cargar transferencias')
     } finally {
       setCargando(false)
     }
-  }, [])
+  }, [empresa?.id])
 
-  useEffect(() => { cargar() }, [cargar])
-  useFocusRefresh(cargar)
+  useEffect(() => { cargar(0) }, [cargar])
+  useFocusRefresh(() => cargar(0))
 
   return (
     <div className="flex flex-col gap-6">
@@ -758,6 +781,24 @@ export default function TransferenciasPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Paginación */}
+            {totalCount > POR_PAGINA && (
+              <div className="flex items-center justify-center gap-3 px-4 py-4 border-t border-slate-100">
+                <button disabled={pagina === 0 || cargando} onClick={() => cargar(pagina - 1)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  Anterior
+                </button>
+                <span className="text-xs text-slate-500">
+                  Página {pagina + 1} de {Math.ceil(totalCount / POR_PAGINA)}
+                  <span className="hidden sm:inline"> · {totalCount} transferencias</span>
+                </span>
+                <button disabled={(pagina + 1) * POR_PAGINA >= totalCount || cargando} onClick={() => cargar(pagina + 1)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  Siguiente
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -766,7 +807,7 @@ export default function TransferenciasPage() {
         <ModalTransferencia
           sucursales={sucursales}
           onClose={() => setModalAbierto(false)}
-          onGuardado={() => { setModalAbierto(false); cargar() }}
+          onGuardado={() => { setModalAbierto(false); cargar(0) }}
         />
       )}
 
