@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Package, Filter, RefreshCw,
@@ -20,6 +20,8 @@ import ModalProducto from './ModalProducto'
 import ModalIngresoMasivo from './ModalIngresoMasivo'
 import ModalEdicionMasiva from './ModalEdicionMasiva'
 import FilaProducto from './FilaProducto'
+import { useTandas } from '@/hooks/useTandas'
+import { useEstadoRecordado } from '@/hooks/useEstadoRecordado'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 
 // Dropdown reutilizable para filtros
@@ -73,8 +75,9 @@ export default function ProductosPage() {
   const { empresa, perfil } = useApp()
   const esCajero = perfil?.rol === 'cajero'
   const [busqueda, setBusqueda] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState('todos')
-  const [categoriaSel, setCategoriaSel] = useState('')
+  // Los filtros se quedan puestos al cambiar de sección y regresar
+  const [filtroEstado, setFiltroEstado] = useEstadoRecordado('productos.estado', 'todos')
+  const [categoriaSel, setCategoriaSel] = useEstadoRecordado('productos.categoria', '')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [modalMasivo,  setModalMasivo]  = useState(false)
   const [modalEdicion, setModalEdicion] = useState(false)
@@ -96,7 +99,7 @@ export default function ProductosPage() {
 
   // Archivar o cargar productos en masa también cambia lo que ve Inventario, y
   // el buscador de "Agregar inventario"
-  const invalidar = () => { invalidarStock(); invalidarCatalogo() }
+  const invalidar = useCallback(() => { invalidarStock(); invalidarCatalogo() }, [])
 
   const categorias = useMemo(() => {
     const conteos = new Map()
@@ -111,6 +114,10 @@ export default function ProductosPage() {
       .filter(c => c.total > 0)
   }, [productos])
 
+  // La letra aparece al instante en el buscador; la lista la alcanza un
+  // momento después. Así escribir nunca espera a que se pinten las filas.
+  const busquedaDiferida = useDeferredValue(busqueda)
+
   const productosFiltrados = useMemo(() => {
     // Los tres filtros son por STOCK, no por estado: un producto eliminado ya no
     // llega desde el servidor, así que no hay nada que filtrar por ahí.
@@ -120,8 +127,8 @@ export default function ProductosPage() {
 
     if (categoriaSel) r = r.filter(p => p.categoria === categoriaSel)
 
-    if (busqueda.trim()) {
-      const q = busqueda.toLowerCase().trim()
+    if (busquedaDiferida.trim()) {
+      const q = busquedaDiferida.toLowerCase().trim()
       // Si parece un código de barras (solo dígitos, 6+ caracteres), busca exacto primero
       const esCodigoBarras = /^\d{6,}$/.test(q)
       r = r.filter(p => {
@@ -138,7 +145,12 @@ export default function ProductosPage() {
       })
     }
     return r
-  }, [productos, filtroEstado, categoriaSel, busqueda])
+  }, [productos, filtroEstado, categoriaSel, busquedaDiferida])
+
+  // Se pintan de 50 en 50 y se agregan más al deslizar. Cambiar la búsqueda o
+  // un filtro vuelve a la primera tanda.
+  const { visibles, hayMas, total, centinelaRef } =
+    useTandas(productosFiltrados, `${busquedaDiferida}|${filtroEstado}|${categoriaSel}`)
 
   const conteos = useMemo(() => {
     const activos    = productos.filter(p => p.activo)
@@ -162,10 +174,10 @@ export default function ProductosPage() {
 
   const estadoActivoInfo = FILTROS_ESTADO.find(f => f.v === filtroEstado)
 
-  const abrirEditar = (p) => {
+  const abrirEditar = useCallback((p) => {
     setProductoEditar(p)
     setModalAbierto(true)
-  }
+  }, [])
 
   const abrirNuevo = () => {
     setProductoEditar(null)
@@ -476,26 +488,33 @@ export default function ProductosPage() {
           }
         />
       ) : (
-        <Table anchoFijo>
-          <Table.Head>
-            <Table.HeadCell className="w-[40%]">Producto</Table.HeadCell>
-            <Table.HeadCell align="right" className="w-[14%]">Costo</Table.HeadCell>
-            <Table.HeadCell align="right" className="w-[14%]">Precio</Table.HeadCell>
-            <Table.HeadCell align="right" className="w-[14%]">Margen</Table.HeadCell>
-            <Table.HeadCell align="right" className="w-[14%]">Stock</Table.HeadCell>
-            <Table.HeadCell align="right" className="w-[4%]"></Table.HeadCell>
-          </Table.Head>
-          <Table.Body>
-            {productosFiltrados.map(p => (
-              <FilaProducto
-                key={p.id}
-                producto={p}
-                onEditar={abrirEditar}
-                onCambio={invalidar}
-              />
-            ))}
-          </Table.Body>
-        </Table>
+        <>
+          <Table anchoFijo>
+            <Table.Head>
+              <Table.HeadCell className="w-[40%]">Producto</Table.HeadCell>
+              <Table.HeadCell align="right" className="w-[14%]">Costo</Table.HeadCell>
+              <Table.HeadCell align="right" className="w-[14%]">Precio</Table.HeadCell>
+              <Table.HeadCell align="right" className="w-[14%]">Margen</Table.HeadCell>
+              <Table.HeadCell align="right" className="w-[14%]">Stock</Table.HeadCell>
+              <Table.HeadCell align="right" className="w-[4%]"></Table.HeadCell>
+            </Table.Head>
+            <Table.Body>
+              {visibles.map(p => (
+                <FilaProducto
+                  key={p.id}
+                  producto={p}
+                  onEditar={abrirEditar}
+                  onCambio={invalidar}
+                />
+              ))}
+            </Table.Body>
+          </Table>
+          {hayMas && (
+            <div ref={centinelaRef} className="py-3 text-center text-xs text-slate-400">
+              Mostrando {visibles.length.toLocaleString('es-MX')} de {total.toLocaleString('es-MX')} · desliza para ver más
+            </div>
+          )}
+        </>
       )}
 
       {/* Un producto guardado: solo se vuelve a pedir su renglón, no el catálogo entero */}

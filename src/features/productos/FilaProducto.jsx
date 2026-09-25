@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Edit2, Trash2, AlertTriangle, MoreVertical, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -55,7 +55,7 @@ function ModalConfirmar({ titulo, mensaje, variante = 'warning', onConfirmar, on
   )
 }
 
-export default function FilaProducto({ producto, onEditar, onCambio }) {
+function FilaProducto({ producto, onEditar, onCambio }) {
   const { perfil, empresa } = useApp()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [posMenu, setPosMenu] = useState({ top: 0, right: 0 })
@@ -245,3 +245,8 @@ export default function FilaProducto({ producto, onEditar, onCambio }) {
     </>
   )
 }
+
+// Memorizada: solo se vuelve a pintar si cambia SU producto. Escribir en el
+// buscador o cualquier otro cambio de la página ya no repinta todas las filas.
+// Requiere que onEditar y onCambio no cambien de identidad (useCallback).
+export default memo(FilaProducto)

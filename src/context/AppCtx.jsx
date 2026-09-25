@@ -4,6 +4,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthProvider'
 
 const AppContext = createContext(null)
+// Quién está en línea va aparte: cambia cada vez que alguien se conecta o se
+// desconecta, y dentro de AppContext hacía volver a pintar todas las pantallas
+// que usan useApp() —más de 40 archivos, con listas de miles de filas— aunque
+// solo la Caja lo muestra.
+const NADIE = new Set()
+const PresenciaContext = createContext(NADIE)
 
 export function AppProvider({ children }) {
   const { usuario } = useAuth()
@@ -302,8 +308,11 @@ export function AppProvider({ children }) {
 
     const sincronizar = () => {
       if (cancelado) return
-      const state = canal.presenceState()
-      setUsuariosEnLinea(new Set(Object.keys(state)))
+      const ids = Object.keys(canal.presenceState())
+      // Un aviso que no cambia a nadie conserva el mismo Set: uno nuevo con los
+      // mismos usuarios igual haría volver a pintar a quien lo lee.
+      setUsuariosEnLinea(prev =>
+        prev.size === ids.length && ids.every(id => prev.has(id)) ? prev : new Set(ids))
     }
 
     // try-catch: si el canal ya está suscrito (condición de carrera en login),
@@ -348,17 +357,24 @@ export function AppProvider({ children }) {
     esCajero: perfil?.rol === 'cajero',
     esRotativo: !!(perfil && perfil.rol !== 'admin' && perfil.rol !== 'super_admin' && !perfil.sucursal_id && sucursales.length > 1),
     tz: empresa?.zona_horaria || 'America/Mexico_City',
-    usuariosEnLinea,
     sucursalConfirmada,
     confirmarSucursal,
     resetSucursal,
-  }), [perfil, empresa, sucursales, sucursalActiva, turnoActivo, cargando, cambiarSucursal, recargarTurno, cargarDatosUsuario, usuariosEnLinea, sucursalConfirmada, confirmarSucursal, resetSucursal])
+  }), [perfil, empresa, sucursales, sucursalActiva, turnoActivo, cargando, cambiarSucursal, recargarTurno, cargarDatosUsuario, sucursalConfirmada, confirmarSucursal, resetSucursal])
 
   return (
     <AppContext.Provider value={valor}>
-      {children}
+      <PresenciaContext.Provider value={usuariosEnLinea}>
+        {children}
+      </PresenciaContext.Provider>
     </AppContext.Provider>
   )
+}
+
+/** Ids de los perfiles en línea. Solo re-pinta a quien lo usa (hoy, la Caja). */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useUsuariosEnLinea() {
+  return useContext(PresenciaContext)
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

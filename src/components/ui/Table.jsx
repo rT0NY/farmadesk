@@ -1,8 +1,11 @@
 import { cn } from '@/lib/clases'
 import { createContext, useContext } from 'react'
+import { useMediaQuery, DESDE_MD } from '@/hooks/useMediaQuery'
 
 // Contexto para saber si estamos en "modo tabla" o "modo tarjeta" (móvil)
 const TableContext = createContext({ modo: 'tabla' })
+const MODO_TABLA   = { modo: 'tabla' }
+const MODO_TARJETA = { modo: 'tarjeta' }
 
 /**
  * Tabla responsive: desktop muestra tabla, móvil convierte en tarjetas apiladas.
@@ -12,26 +15,34 @@ const TableContext = createContext({ modo: 'tabla' })
 // actuar: un solo nombre largo ensancha su columna y empuja al resto fuera de la
 // vista. Va apagado por defecto para no alterar las tablas que no declaran
 // anchos — ahi todas las columnas quedarian iguales.
+//
+// Solo se construye la versión que se ve. Antes se armaban las dos y una se
+// escondía con CSS (`hidden md:block` / `md:hidden`): cada fila existía dos
+// veces, y en Productos eso duplicaba 2,900 renglones.
 export function Table({ children, className, anchoFijo = false }) {
+  const escritorio = useMediaQuery(DESDE_MD)
   return (
     <div className={cn(
       'bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card',
       className
     )}>
-      {/* Desktop: tabla real */}
-      <div className="hidden md:block overflow-x-auto">
-        <TableContext.Provider value={{ modo: 'tabla' }}>
-          <table className={cn('w-full', anchoFijo && 'table-fixed min-w-[620px]')}>
+      {escritorio ? (
+        // Desktop: tabla real
+        <div className="overflow-x-auto">
+          <TableContext.Provider value={MODO_TABLA}>
+            <table className={cn('w-full', anchoFijo && 'table-fixed min-w-[620px]')}>
+              {children}
+            </table>
+          </TableContext.Provider>
+        </div>
+      ) : (
+        // Móvil: tarjetas apiladas
+        <div className="divide-y divide-slate-100">
+          <TableContext.Provider value={MODO_TARJETA}>
             {children}
-          </table>
-        </TableContext.Provider>
-      </div>
-      {/* Móvil: tarjetas apiladas */}
-      <div className="md:hidden divide-y divide-slate-100">
-        <TableContext.Provider value={{ modo: 'tarjeta' }}>
-          {children}
-        </TableContext.Provider>
-      </div>
+          </TableContext.Provider>
+        </div>
+      )}
     </div>
   )
 }

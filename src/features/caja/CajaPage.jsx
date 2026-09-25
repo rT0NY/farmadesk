@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
-import { useApp } from '@/context/AppCtx'
+import { useApp, useUsuariosEnLinea } from '@/context/AppCtx'
 import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml, inicioDiaUtc } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -891,7 +891,8 @@ function SeccionSucursal({ sucursal, conteoTurnos, children }) {
 
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function CajaPage() {
-  const { perfil, sucursales, sucursalActiva, tz, usuariosEnLinea, esRotativo, resetSucursal } = useApp()
+  const { perfil, sucursales, sucursalActiva, tz, esRotativo, resetSucursal } = useApp()
+  const usuariosEnLinea = useUsuariosEnLinea()
   const esCajero    = perfil?.rol === 'cajero'
   const esEncargado = perfil?.rol === 'encargado'
   const sucActId    = sucursalActiva?.id ?? perfil?.sucursal_id ?? null

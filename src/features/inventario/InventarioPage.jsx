@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef, useDeferredValue } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Archive, RefreshCw, AlertTriangle,
@@ -20,6 +20,9 @@ import { invalidarStock, actualizarProductos } from '@/lib/cache'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import ModalAgregarInventario from './ModalAgregarInventario'
 import ModalLotes from './ModalLotes'
+import { useTandas } from '@/hooks/useTandas'
+import { useEstadoRecordado } from '@/hooks/useEstadoRecordado'
+import { useMediaQuery, DESDE_SM } from '@/hooks/useMediaQuery'
 
 function DropdownFiltro({ label, icono: Icono, activo, children }) {
   const [abierto, setAbierto] = useState(false)
@@ -229,9 +232,10 @@ export default function InventarioPage() {
   const [lotesCaducidad, setLotesCaducidad] = useState([])
   const [cargandoCad, setCargandoCad] = useState(false)
   const [busqueda, setBusqueda] = useState('')
-  const [filtroEstado, setFiltroEstado] = useState('todos')
-  const [filtroOtrasSuc, setFiltroOtrasSuc] = useState(false)
-  const [categoriaSel, setCategoriaSel] = useState('')
+  // Los filtros se quedan puestos al cambiar de sección y regresar
+  const [filtroEstado, setFiltroEstado] = useEstadoRecordado('inventario.estado', 'todos')
+  const [filtroOtrasSuc, setFiltroOtrasSuc] = useEstadoRecordado('inventario.otrasSuc', false)
+  const [categoriaSel, setCategoriaSel] = useEstadoRecordado('inventario.categoria', '')
   const [modalAgregar,      setModalAgregar]      = useState(false)
   const [productoLotes,     setProductoLotes]     = useState(null)
   const [modalExistencias,  setModalExistencias]  = useState(false)
@@ -352,6 +356,10 @@ export default function InventarioPage() {
     por_caducar: datos.filter(p => p.lotes_por_caducar > 0 || p.lotes_caducados > 0).length,
   }), [datos, esCajero, stockEnMiSuc, sucursalPropia])
 
+  // La letra aparece al instante en el buscador; la lista la alcanza un
+  // momento después. Así escribir nunca espera a que se pinten las filas.
+  const busquedaDiferida = useDeferredValue(busqueda)
+
   const filtrados = useMemo(() => {
     let r = datos
     if (filtroEstado === 'con_stock')   r = r.filter(p => (esCajero ? stockEnMiSuc(p) : p.stock_total) > 0)
@@ -361,8 +369,8 @@ export default function InventarioPage() {
 
     if (categoriaSel) r = r.filter(p => p.categoria === categoriaSel)
 
-    if (busqueda.trim()) {
-      const q = busqueda.toLowerCase().trim()
+    if (busquedaDiferida.trim()) {
+      const q = busquedaDiferida.toLowerCase().trim()
       const esCodigoBarras = /^\d{6,}$/.test(q)
       r = r.filter(p => {
         if (esCodigoBarras) return p.codigos?.some(c => c === q) || p.producto_nombre?.toLowerCase().includes(q)
@@ -370,7 +378,7 @@ export default function InventarioPage() {
       })
     }
     return r
-  }, [datos, filtroEstado, categoriaSel, busqueda])
+  }, [datos, filtroEstado, categoriaSel, busquedaDiferida])
 
   // Filtro extra: productos sin stock en mi sucursal pero con stock en otra
   const filtradosConOtrasSuc = useMemo(() => {
@@ -382,6 +390,15 @@ export default function InventarioPage() {
       return miStock === 0 && hayEnOtra
     })
   }, [filtrados, filtroOtrasSuc, sucursalPropia, sucursales])
+
+  // Se pintan de 50 en 50 y se agregan más al deslizar. Cambiar la búsqueda o
+  // un filtro vuelve a la primera tanda.
+  const { visibles, hayMas, total, centinelaRef } = useTandas(filtradosConOtrasSuc,
+    `${busquedaDiferida}|${filtroEstado}|${categoriaSel}|${filtroOtrasSuc}`)
+
+  // Solo se construye la versión que se ve, tarjetas o tabla. Antes se armaban
+  // las dos y una se escondía con CSS: cada producto existía dos veces.
+  const escritorio = useMediaQuery(DESDE_SM)
 
   const hayFiltros = busqueda || categoriaSel || filtroEstado !== 'todos' || filtroOtrasSuc
 
@@ -586,10 +603,12 @@ export default function InventarioPage() {
           }
         />
       ) : (
+        <>
         <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
           {/* Cards móvil */}
-          <div className="flex flex-col divide-y divide-slate-100 sm:hidden">
-            {filtradosConOtrasSuc.map(p => {
+          {!escritorio && (
+          <div className="flex flex-col divide-y divide-slate-100">
+            {visibles.map(p => {
               const stockSuc = p.stock_por_sucursal || {}
               return (
                 <div key={p.producto_id} className={cn('px-4 py-3 flex items-start justify-between gap-3 hover:bg-slate-50/60 transition-colors', bordeIzq(p))}>
@@ -665,13 +684,15 @@ export default function InventarioPage() {
               )
             })}
           </div>
+          )}
           {/* Tabla desktop */}
           {/* table-fixed a proposito: con ancho automatico el navegador ensancha
               la columna hasta que quepa el nombre completo, y `truncate` nunca
               actua porque min-w es un piso, no un techo. Un solo producto de
               nombre largo empujaba las columnas de sucursal fuera de la vista.
               Con ancho fijo, las sucursales mandan y el nombre se recorta. */}
-          <div className="hidden sm:block overflow-x-auto">
+          {escritorio && (
+          <div className="overflow-x-auto">
             <table className="w-full table-fixed min-w-[560px]">
               <thead className="bg-slate-50/70 border-b border-slate-200">
                 <tr>
@@ -700,7 +721,7 @@ export default function InventarioPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtradosConOtrasSuc.map(p => {
+                {visibles.map(p => {
                   const stockSuc = p.stock_por_sucursal || {}
                   return (
                     <tr key={p.producto_id} className={cn('transition-colors hover:bg-slate-50/60', bordeIzq(p))}>
@@ -787,7 +808,14 @@ export default function InventarioPage() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
+        {hayMas && (
+          <div ref={centinelaRef} className="py-3 text-center text-xs text-slate-400">
+            Mostrando {visibles.length.toLocaleString('es-MX')} de {total.toLocaleString('es-MX')} · desliza para ver más
+          </div>
+        )}
+        </>
       ))}
 
       {/* Alta de stock: solo se vuelve a pedir el renglón del producto, no el inventario entero */}
