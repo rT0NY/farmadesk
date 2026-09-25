@@ -484,7 +484,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
       })
 
       toast.success(`${totalCantidad} unidades agregadas a ${productoSel.nombre}`)
-      onExito?.()
+      onExito?.(productoSel.id)
       onCerrar()
     } catch (err) {
       toast.error(err.message || 'Error al guardar')

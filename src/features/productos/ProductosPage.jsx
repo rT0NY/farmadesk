@@ -15,7 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Fab } from '@/components/ui/Fab'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { invalidarStock } from '@/lib/cache'
+import { invalidarStock, invalidarCatalogo, actualizarProductos } from '@/lib/cache'
 import ModalProducto from './ModalProducto'
 import ModalIngresoMasivo from './ModalIngresoMasivo'
 import ModalEdicionMasiva from './ModalEdicionMasiva'
@@ -94,8 +94,9 @@ export default function ProductosPage() {
     enabled:   !!empresa?.id,
   })
 
-  // Crear/editar/archivar un producto también cambia lo que ve Inventario
-  const invalidar = invalidarStock
+  // Archivar o cargar productos en masa también cambia lo que ve Inventario, y
+  // el buscador de "Agregar inventario"
+  const invalidar = () => { invalidarStock(); invalidarCatalogo() }
 
   const categorias = useMemo(() => {
     const conteos = new Map()
@@ -497,10 +498,11 @@ export default function ProductosPage() {
         </Table>
       )}
 
+      {/* Un producto guardado: solo se vuelve a pedir su renglón, no el catálogo entero */}
       <ModalProducto
         abierto={modalAbierto}
         onCerrar={() => { setModalAbierto(false); setProductoEditar(null) }}
-        onExito={invalidar}
+        onExito={id => actualizarProductos([id], { catalogo: true })}
         productoEditar={productoEditar}
       />
 

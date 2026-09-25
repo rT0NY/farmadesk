@@ -16,7 +16,7 @@ import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 import { fechaEnZona, addDias } from '@/lib/formatos'
-import { invalidarStock } from '@/lib/cache'
+import { invalidarStock, actualizarProductos } from '@/lib/cache'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import ModalAgregarInventario from './ModalAgregarInventario'
 import ModalLotes from './ModalLotes'
@@ -790,7 +790,8 @@ export default function InventarioPage() {
         </div>
       ))}
 
-      <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={invalidarStock} />
+      {/* Alta de stock: solo se vuelve a pedir el renglón del producto, no el inventario entero */}
+      <ModalAgregarInventario abierto={modalAgregar} onCerrar={() => setModalAgregar(false)} onExito={id => actualizarProductos([id])} />
       <ModalLotes producto={productoLotes} onCerrar={() => setProductoLotes(null)} onCambio={invalidarStock} />
       {modalExistencias && <ModalExistenciasInv onCerrar={() => setModalExistencias(false)} />}
     </div>

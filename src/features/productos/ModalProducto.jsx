@@ -387,6 +387,8 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
     if (cargandoRef.current) return
     cargandoRef.current = true
     setCargando(true)
+    // Qué producto se guardó, para que la lista actualice solo ese renglón
+    let idGuardado = productoEditar?.id ?? null
     try {
       if (esEdicion) {
         const { error: errEd } = await supabase.rpc('editar_producto', {
@@ -516,6 +518,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
           p_disponibilidad:   dispArr,
         })
         if (error) throw error
+        idGuardado = nuevoProductoId ?? null
 
         if (nuevoProductoId && provsVinculados.length > 0) {
           const { error: errProv } = await supabase.from('producto_proveedores')
@@ -540,7 +543,7 @@ export default function ModalProducto({ abierto, onCerrar, onExito, productoEdit
         )
       }
 
-      onExito?.()
+      onExito?.(idGuardado)
       onCerrar()
     } catch (err) {
       // 23505 es el índice único (empresa_id, codigo_lote): solo puede saltar

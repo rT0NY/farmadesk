@@ -10,7 +10,7 @@ import { traerTodo } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, fechaEnZona, addDias, dowEnZona } from '@/lib/formatos'
 import { EVENTO_ALERTA, emitirAlerta } from '@/lib/alertas'
-import { invalidarStock } from '@/lib/cache'
+import { invalidarStock, actualizarStockDeLotes } from '@/lib/cache'
 import { cn } from '@/lib/clases'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -98,15 +98,33 @@ export function useRealtimeAlertas(onCambio) {
     // Los eventos llegan en ráfaga (una venta de 5 productos = 5 UPDATE en
     // inventario). Sin agrupar, cada uno dispararía el recálculo completo de
     // alertas en TODAS las terminales conectadas. Se juntan en uno solo.
+    //
+    // Un cambio de inventario trae su lote, y con eso basta para actualizar
+    // solo los productos tocados. Lo demás —cancelaciones, pedidos, una
+    // reconexión en la que pudieron perderse avisos— recarga completo.
     let timerNotif = null
-    const notificar = () => {
+    let recargaCompleta = false
+    const lotesCambiados = new Set()
+    const programar = () => {
       if (timerNotif) clearTimeout(timerNotif)
       timerNotif = setTimeout(() => {
         timerNotif = null
-        invalidarStock()          // el stock cambió en otra terminal
+        const lotes = [...lotesCambiados]
+        const completa = recargaCompleta
+        lotesCambiados.clear()
+        recargaCompleta = false
+        // el stock cambió, en otra terminal o en esta misma
+        if (completa) invalidarStock()
+        else if (lotes.length) actualizarStockDeLotes(lotes)
         emitirAlerta()            // badges del menú
         onCambioRef.current?.()
       }, 1200)
+    }
+    const notificar = () => { recargaCompleta = true; programar() }
+    const notificarLote = (loteId) => {
+      if (loteId) lotesCambiados.add(loteId)
+      else recargaCompleta = true
+      programar()
     }
 
     // window.location.href rompe el HashRouter de Electron: navegar por el router
@@ -211,7 +229,7 @@ export function useRealtimeAlertas(onCambio) {
           filter: `empresa_id=eq.${empresa.id}`,
         }, async (payload) => {
           const nuevaCant = payload.new?.cantidad
-          if (nuevaCant !== 0) { notificar(); return }
+          if (nuevaCant !== 0) { notificarLote(payload.new?.lote_id); return }
 
           // Solo toast si llegó exactamente a 0 en esta sucursal
           const loteId = payload.new?.lote_id
@@ -243,7 +261,7 @@ export function useRealtimeAlertas(onCambio) {
               })
             }
           } catch { /* silencioso */ }
-          notificar()
+          notificarLote(loteId)
         })
         .subscribe(alEstado('inv'))
     )
