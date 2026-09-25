@@ -142,11 +142,12 @@ export function AuthProvider({ children }) {
     ultimaVerificacionRef.current = 0       // usuario nuevo: sin herencia del enfriamiento
     verificarAcceso()                       // al entrar, sin esperar al intervalo
 
-    // 60 s, no 15: el corte real lo hace RLS en el instante de la suspensión
-    // (el usuario se queda sin datos de inmediato). Este sondeo solo adelanta el
-    // mensaje, y a 15 s costaba ~5,760 peticiones diarias por sesión abierta.
-    // Los disparos por foco y por cambio de pantalla cubren el caso realista.
-    const t = setInterval(verificarAcceso, 60_000)
+    // 5 min. El corte real lo hace RLS en el instante de la suspensión (el
+    // usuario se queda sin datos de inmediato); este sondeo solo adelanta el
+    // mensaje. A 60 s sumaba ~30 mil llamadas en pg_stat_statements y el plan
+    // gratuito se quedaba sin presupuesto de disco. Los disparos por foco y por
+    // cambio de pantalla siguen cubriendo el caso realista.
+    const t = setInterval(verificarAcceso, 5 * 60_000)
     const alVolver = () => { if (!document.hidden) verificarAcceso() }
     window.addEventListener('focus', verificarAcceso)
     document.addEventListener('visibilitychange', alVolver)

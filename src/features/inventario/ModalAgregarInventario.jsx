@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -13,6 +13,21 @@ import { formatoMoneda, fechaEnZona } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
+
+// Cuántos productos se pintan por tanda. La lista entera son más de 2,400
+// botones; pintarlos todos al abrir congelaba la ventana un momento y nadie los
+// recorre a mano. Al bajar hasta el final se agrega la siguiente tanda.
+const TANDA = 50
+
+// Separa nombre y códigos dentro del texto de búsqueda. Es un carácter que
+// nadie teclea, así que una búsqueda nunca puede "empatar" cruzando del nombre
+// a un código.
+const SEP = '\u0001'
+
+// Vive fuera del componente porque el índice de búsqueda lo usa al construirse,
+// y ese cálculo corre antes de la línea donde antes estaba declarada.
+// eslint-disable-next-line no-control-regex
+const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1f\x7f]/g, '').trim().toUpperCase()
 
 // Indicador de paso
 function PasoIndicador({ pasos, actual }) {
@@ -64,6 +79,19 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   const [loteSelId, setLoteSelId] = useState('')
   const [caducidad, setCaducidad] = useState('')
 
+  // Los lotes se piden al elegir el producto, no del catálogo entero: antes se
+  // descargaban los ~3,300 lotes de la empresa (4 peticiones) para usar los de
+  // uno solo. El ref descarta la respuesta de una selección que ya no es la
+  // vigente si el usuario cambia de producto rápido.
+  const [lotesProducto, setLotesProducto] = useState([])
+  const [cargandoLotes, setCargandoLotes] = useState(false)
+  const seleccionRef = useRef(0)
+
+  // Lista por tandas
+  const [limite, setLimite] = useState(TANDA)
+  const listaRef = useRef(null)
+  const centinelaRef = useRef(null)
+
   // Paso 3 — Cantidades
   const [cantidades, setCantidades] = useState({})
   const [sucursalesHabilitadas, setSucursalesHabilitadas] = useState([])
@@ -96,6 +124,9 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     setModoLote('nuevo')
     setLoteSelId('')
     setCaducidad('')
+    setLotesProducto([])
+    setCargandoLotes(false)
+    setLimite(TANDA)
     setErrors({})
     setModalAsociar(null)
     setSearchAsociar('')
@@ -146,7 +177,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   // justamente los productos recién capturados.
   const catalogoActivo = abierto && !!empresa?.id
 
-  const { data: productos = [] } = useQuery({
+  const { data: productos = [], isLoading: cargandoProductos } = useQuery({
     queryKey: ['inv_productos', empresa?.id],
     queryFn: async () => {
       // precio_compra alimenta el "valor estimado" del paso 3. Va aquí y no en
@@ -161,17 +192,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     staleTime: 10 * 60_000,
   })
 
-  // Los lotes sí cambian al guardar —cada alta puede crear uno—, por eso se
-  // invalidan explícitamente al terminar.
-  const { data: lotes = [] } = useQuery({
-    queryKey: ['inv_lotes', empresa?.id],
-    queryFn: () => traerTodo(() => supabase.from('lotes'),
-      'id, producto_id, codigo_lote, fecha_caducidad', q => q.eq('activo', true)),
-    enabled: catalogoActivo,
-    staleTime: 60_000,
-  })
-
-  const { data: codigosCat = [] } = useQuery({
+  const { data: codigosCat = [], isLoading: cargandoCodigos } = useQuery({
     queryKey: ['inv_codigos', empresa?.id],
     queryFn: () => traerTodo(() => supabase.from('codigos_barras'),
       'id, producto_id, codigo'),
@@ -180,59 +201,135 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   })
 
   // Derivados
-  const lotesProducto = productoSel ? lotes.filter(l => l.producto_id === productoSel.id) : []
   const tieneLotes = lotesProducto.length > 0
   const loteObj = lotesProducto.find(l => l.id === loteSelId)
   const totalCantidad = sucursalesHabilitadas.reduce((a, s) => a + (Number(cantidades[s.id]) || 0), 0)
 
-  // Productos filtrados por búsqueda
-  const prodFiltrados = busqueda.trim()
-    ? productos.filter(p => {
-        const q = busqueda.toLowerCase()
-        const matchNombre = p.nombre.toLowerCase().includes(q)
-        const matchCodigo = codigosCat.some(bc =>
-          bc.producto_id === p.id && bc.codigo.toLowerCase().includes(q))
-        return matchNombre || matchCodigo
-      })
-    : productos
+  // ─── Índices ───────────────────────────────────────────────────────────────
+  // Antes cada tecla recorría productos × códigos de barras: por cada uno de
+  // los 2,400 productos se revisaban los 2,400 códigos buscando los suyos, y
+  // se pasaba a minúsculas todo otra vez. Medido: ~95 ms por tecla. Estos
+  // mapas se arman una vez cuando llega el catálogo y la búsqueda queda en
+  // ~0.2 ms con los mismos resultados.
+  const { productoPorId, productoPorCodigo, textoBusqueda } = useMemo(() => {
+    const porId = new Map()
+    const texto = new Map()
+    for (const p of productos) {
+      porId.set(p.id, p)
+      texto.set(p.id, (p.nombre || '').toLowerCase())
+    }
+    const porCodigo = new Map()
+    for (const bc of codigosCat) {
+      const t = texto.get(bc.producto_id)
+      if (t !== undefined) texto.set(bc.producto_id, t + SEP + (bc.codigo || '').toLowerCase())
+      // Se queda con la primera coincidencia, como hacía el .find() anterior.
+      const k = normalizarCodigo(bc.codigo)
+      if (k && !porCodigo.has(k)) porCodigo.set(k, bc.producto_id)
+    }
+    return { productoPorId: porId, productoPorCodigo: porCodigo, textoBusqueda: texto }
+  }, [productos, codigosCat])
+
+  const buscarPorCodigo = (valor) => {
+    const id = productoPorCodigo.get(normalizarCodigo(valor))
+    return id ? productoPorId.get(id) ?? null : null
+  }
+
+  // Un código puede existir y pertenecer a un producto archivado: no está en la
+  // lista, pero tampoco es "nuevo". Ofrecer vincularlo chocaría con el registro
+  // que ya tiene.
+  const codigoDeArchivado = (valor) =>
+    productoPorCodigo.has(normalizarCodigo(valor)) && !buscarPorCodigo(valor)
+  const avisarArchivado = () =>
+    toast.info('Ese código pertenece a un producto archivado. Reactívalo en Productos para darle stock.')
+
+  // El texto del buscador responde al instante; el filtrado va un paso atrás
+  // si hace falta, sin trabar la escritura.
+  const busquedaDiferida = useDeferredValue(busqueda)
+  const prodFiltrados = useMemo(() => {
+    const q = busquedaDiferida.trim().toLowerCase()
+    if (!q) return productos
+    return productos.filter(p => textoBusqueda.get(p.id)?.includes(q))
+  }, [productos, textoBusqueda, busquedaDiferida])
+
+  const prodVisibles = prodFiltrados.slice(0, limite)
+  const hayMas = prodVisibles.length < prodFiltrados.length
+
+  // Cuando el renglón centinela del final entra a la vista, se pinta la
+  // siguiente tanda.
+  useEffect(() => {
+    const el = centinelaRef.current
+    if (!el || !hayMas) return
+    const obs = new IntersectionObserver(entradas => {
+      if (entradas[0]?.isIntersecting) setLimite(l => l + TANDA)
+    }, { root: listaRef.current, rootMargin: '150px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [hayMas, paso])
+
+  // Mientras no lleguen los códigos, un escaneo daría "no registrado" y
+  // ofrecería vincular un código que sí existe.
+  const catalogoListo = !cargandoProductos && !cargandoCodigos
+  const avisarCargando = () =>
+    toast.info('El catálogo todavía se está cargando. Vuelve a escanear en un momento.')
+
+  const asociarFiltrados = useMemo(() => {
+    const q = searchAsociar.trim().toLowerCase()
+    return q ? productos.filter(p => p.nombre.toLowerCase().includes(q)) : productos
+  }, [productos, searchAsociar])
 
   async function seleccionarProducto(prod) {
     setProductoSel(prod)
     setErrors({})
-    const lots = lotes.filter(l => l.producto_id === prod.id)
-    if (lots.length > 0) {
-      setModoLote('existente')
-      setLoteSelId(lots[0].id)
-    } else {
-      setModoLote('nuevo')
-      setCaducidad('')
-    }
-    // Filtrar sucursales habilitadas para este producto
-    const { data: ps } = await supabase
-      .from('productos_sucursales')
-      .select('sucursal_id, habilitado')
-      .eq('producto_id', prod.id)
-    const deshabIds = new Set((ps || []).filter(r => !r.habilitado).map(r => r.sucursal_id))
-    setSucursalesHabilitadas(sucursales.filter(s => !deshabIds.has(s.id)))
-  }
+    const token = ++seleccionRef.current
+    setLotesProducto([])
+    setCargandoLotes(true)
+    try {
+      // Lotes y disponibilidad del producto, en paralelo. Los lotes van por
+      // caducidad para que el primero —el que queda preseleccionado— sea el
+      // más próximo a vencer.
+      const [{ data: lots, error: errLotes }, { data: ps }] = await Promise.all([
+        supabase.from('lotes')
+          .select('id, producto_id, codigo_lote, fecha_caducidad')
+          .eq('producto_id', prod.id)
+          .eq('activo', true)
+          .order('fecha_caducidad', { ascending: true, nullsFirst: false }),
+        supabase.from('productos_sucursales')
+          .select('sucursal_id, habilitado')
+          .eq('producto_id', prod.id),
+      ])
+      if (token !== seleccionRef.current) return   // ya eligieron otro producto
+      if (errLotes) toast.error('No se pudieron cargar los lotes de este producto')
 
-  // eslint-disable-next-line no-control-regex
-  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1f\x7f]/g, '').trim().toUpperCase()
+      const lista = lots || []
+      setLotesProducto(lista)
+      if (lista.length > 0) {
+        setModoLote('existente')
+        setLoteSelId(lista[0].id)
+      } else {
+        setModoLote('nuevo')
+        setCaducidad('')
+      }
+      const deshabIds = new Set((ps || []).filter(r => !r.habilitado).map(r => r.sucursal_id))
+      setSucursalesHabilitadas(sucursales.filter(s => !deshabIds.has(s.id)))
+    } finally {
+      if (token === seleccionRef.current) setCargandoLotes(false)
+    }
+  }
 
   function procesarCodigoInventario(val, limpiar) {
     val = normalizarCodigo(val)
     if (!val) return
-    const encontrado = codigosCat.find(bc => normalizarCodigo(bc.codigo) === val)
-    if (encontrado) {
-      const prod = productos.find(p => p.id === encontrado.producto_id)
-      if (prod) {
-        // El escáner solo identifica el producto. La cantidad se captura a mano
-        // en el paso 3: contar escaneando 150 cajas no es realista, y una doble
-        // lectura del lector daba de alta stock que no existía.
-        seleccionarProducto(prod)
-        limpiar()
-        // No auto-avanzar: el usuario confirma con "Siguiente"
-      }
+    if (!catalogoListo) { avisarCargando(); limpiar(); return }
+    const prod = buscarPorCodigo(val)
+    if (prod) {
+      // El escáner solo identifica el producto. La cantidad se captura a mano
+      // en el paso 3: contar escaneando 150 cajas no es realista, y una doble
+      // lectura del lector daba de alta stock que no existía.
+      seleccionarProducto(prod)
+      limpiar()
+      // No auto-avanzar: el usuario confirma con "Siguiente"
+    } else if (codigoDeArchivado(val)) {
+      avisarArchivado(); limpiar()
     } else {
       setModalAsociar(val); limpiar()
     }
@@ -256,13 +353,13 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     if (e.key !== 'Enter') return
     const val = busqueda.trim()
     if (!val) return
-    const encontrado = codigosCat.find(bc => normalizarCodigo(bc.codigo) === normalizarCodigo(val))
-    if (encontrado) {
-      const prod = productos.find(p => p.id === encontrado.producto_id)
-      if (prod) {
-        seleccionarProducto(prod)
-        setBusqueda('')
-      }
+    if (!catalogoListo) { avisarCargando(); return }
+    const prod = buscarPorCodigo(val)
+    if (prod) {
+      seleccionarProducto(prod)
+      setBusqueda('')
+    } else if (codigoDeArchivado(val)) {
+      avisarArchivado()
     } else if (/^\d+$/.test(val)) {
       setModalAsociar(val); setBusqueda('')
     }
@@ -281,8 +378,8 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
         queryClient.setQueryData(['inv_codigos', empresa?.id], (prev = []) =>
           [...prev, { producto_id: data.producto_id, codigo: data.codigo }])
       }
-      const prod = productos.find(p => p.id === prodId)
-      if (prod) seleccionarProducto(prod)
+      const prod = productoPorId.get(prodId)
+      if (prod) await seleccionarProducto(prod)
       setModalAsociar(null)
       setSearchAsociar('')
       setPaso(2)
@@ -303,6 +400,7 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   function validarPaso(p) {
     const e = {}
     if (p === 1 && !productoSel) e.producto = 'Selecciona un producto'
+    if (p === 1 && productoSel && cargandoLotes) e.producto = 'Cargando los lotes del producto…'
     if (p === 2) {
       if (modoLote === 'existente' && !loteSelId) e.lote = 'Selecciona un lote'
       if (modoLote === 'nuevo' && !caducidad) e.caducidad = 'Fecha de caducidad obligatoria'
@@ -312,14 +410,16 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
     return Object.keys(e).length === 0
   }
 
-  function avanzar() {
+  async function avanzar() {
     // En paso 1: si no hay producto seleccionado pero hay texto de búsqueda, intentar como código
     if (paso === 1 && !productoSel && busqueda.trim()) {
       const val = busqueda.trim()
-      const encontrado = codigosCat.find(bc => bc.codigo === val)
-      if (encontrado) {
-        const prod = productos.find(p => p.id === encontrado.producto_id)
-        if (prod) { seleccionarProducto(prod); setBusqueda(''); setPaso(2); return }
+      if (!catalogoListo) { avisarCargando(); return }
+      const prod = buscarPorCodigo(val)
+      if (prod) {
+        await seleccionarProducto(prod); setBusqueda(''); setPaso(2); return
+      } else if (codigoDeArchivado(val)) {
+        avisarArchivado(); return
       } else if (/^\d+$/.test(val)) {
         setModalAsociar(val)
         setBusqueda('')
@@ -382,9 +482,6 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
         usuario_id:    perfil?.id ?? null,
         referencia_id: productoSel.id,
       })
-
-      // El alta pudo crear un lote nuevo: se refresca solo eso, no el catálogo.
-      queryClient.invalidateQueries({ queryKey: ['inv_lotes', empresa?.id] })
 
       toast.success(`${totalCantidad} unidades agregadas a ${productoSel.nombre}`)
       onExito?.()
@@ -463,14 +560,14 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
                 placeholder="Buscar por nombre o código de barras..."
                 iconoIzq={<Search className="w-5 h-5" />}
                 value={busqueda}
-                onChange={e => setBusqueda(e.target.value)}
+                onChange={e => { setBusqueda(e.target.value); setLimite(TANDA) }}
                 onKeyDown={handleSearchKey}
                 onFocus={() => { searchRef.current = true }}
                 onBlur={() => { searchRef.current = false }}
               />
 
-              <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
-                {prodFiltrados.map(p => {
+              <div ref={listaRef} className="space-y-1.5 max-h-[280px] overflow-y-auto">
+                {prodVisibles.map(p => {
                   const sel = productoSel?.id === p.id
                   return (
                     <button
@@ -493,7 +590,17 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
                     </button>
                   )
                 })}
-                {prodFiltrados.length === 0 && (
+                {hayMas && (
+                  <div ref={centinelaRef} className="py-2 text-center text-xs text-slate-400">
+                    Mostrando {prodVisibles.length} de {prodFiltrados.length} · baja para ver más
+                  </div>
+                )}
+                {cargandoProductos ? (
+                  <div className="flex flex-col items-center gap-2 py-6">
+                    <div className="w-6 h-6 border-[3px] border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                    <p className="text-sm text-slate-400">Cargando catálogo…</p>
+                  </div>
+                ) : prodFiltrados.length === 0 && (
                   <div className="text-center py-6">
                     <p className="text-sm text-slate-400">Sin resultados</p>
                   </div>
@@ -760,8 +867,13 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
                 autoFocus
               />
               <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
-                {productos
-                  .filter(p => !searchAsociar.trim() || p.nombre.toLowerCase().includes(searchAsociar.toLowerCase()))
+                {asociarFiltrados.length > TANDA && (
+                  <p className="text-xs text-slate-400 text-center py-1">
+                    {asociarFiltrados.length} productos · escribe para afinar
+                  </p>
+                )}
+                {asociarFiltrados
+                  .slice(0, TANDA)
                   .map(p => (
                     <button
                       key={p.id}
