@@ -210,9 +210,11 @@ export default function GastosPage() {
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Gastos</h1>
           <p className="text-sm text-slate-500 mt-0.5">Gastos generales de la empresa</p>
         </div>
+        {/* En celular lo hace el botón flotante */}
         <Button
           variante="primario"
           tamano="md"
+          className="hidden lg:inline-flex"
           iconoIzq={<Plus className="w-4 h-4" />}
           onClick={() => setModalAbierto(true)}
         >

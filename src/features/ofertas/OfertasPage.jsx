@@ -967,8 +967,9 @@ export default function OfertasPage() {
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Ofertas</h1>
           <p className="text-sm text-slate-500 mt-1">Descuentos y promociones vigentes</p>
         </div>
-        <Button onClick={() => { setOfertaEditar(null); setModalAbierto(true) }} iconoIzq={<Plus className="w-4 h-4" />}>
-          <span className="hidden sm:inline">Nueva oferta</span><span className="sm:hidden">Nueva</span>
+        {/* En celular lo hace el botón flotante */}
+        <Button className="hidden lg:inline-flex" onClick={() => { setOfertaEditar(null); setModalAbierto(true) }} iconoIzq={<Plus className="w-4 h-4" />}>
+          Nueva oferta
         </Button>
       </div>
 

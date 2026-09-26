@@ -35,6 +35,18 @@ const COLS_PRODUCTO_COSTO = `${COLS_PRODUCTO}, precio_compra`
 // Cada cuánto se vuelve a bajar el catálogo completo estando la página abierta
 const CATALOGO_MS = 15 * 60_000
 
+// Cada cuánto se vuelven a pedir las ofertas con la caja abierta. Cambian
+// durante el día (un admin las activa o desactiva, y las que tienen fecha de fin
+// o días de la semana vencen a medianoche) y registrar_venta las revisa al
+// momento del cobro: una oferta vieja en la caja termina en un cobro rechazado.
+const OFERTAS_MS = 5 * 60_000
+
+// Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y
+// convierte a mayúsculas. Va fuera del componente porque el índice del escáner
+// (un useMemo) la necesita antes de donde estaba declarada.
+// eslint-disable-next-line no-control-regex
+const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F]/g, '').trim().toUpperCase()
+
 // Deriva los arrays planos de inventario y lotes desde la consulta embebida
 function derivarInvLotes(rows) {
   const inv = []
@@ -676,12 +688,15 @@ export default function VentasPage() {
     refreshingRef.current = true
     try {
       const hoy = fechaEnZona(tz)
-      const [invRows, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }] = await Promise.all([
+      const [invRows, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }, { data: ofVig, error: errOf }] = await Promise.all([
         traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
           q => q.eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true)),
         supabase.from('ventas').select('*, detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
         supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
+        // Las ofertas también: antes solo se pedían al entrar, y una caja abierta
+        // toda la tarde seguía aplicando las de la mañana.
+        supabase.rpc('ofertas_vigentes'),
       ])
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
@@ -690,6 +705,7 @@ export default function VentasPage() {
       setVentasHoy(vts)
       setDetallesHoy(det)
       setCuentasHoy(cuentas || [])
+      if (!errOf) setOfertasVigentes(ofVig || [])
       if (!errTurnoQ) setTurnoActual(turno)
       if (turno?.id) {
         const { data: vtsTurno } = await supabase
@@ -704,6 +720,25 @@ export default function VentasPage() {
   }, [sucursalId, tz, perfilId])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  const recargarOfertas = useCallback(async () => {
+    const { data, error } = await supabase.rpc('ofertas_vigentes')
+    if (error) return null
+    setOfertasVigentes(data || [])
+    return data || []
+  }, [])
+
+  // Con la caja abierta, las ofertas se refrescan solas cada 5 minutos (solo
+  // con la pestaña visible). Así una oferta que un admin desactivó, o que venció
+  // a medianoche con el turno abierto, deja de aplicarse sin recargar la página.
+  const hayTurno = !!turnoActual
+  useEffect(() => {
+    if (!hayTurno) return
+    const iv = setInterval(() => {
+      if (document.visibilityState === 'visible') recargarOfertas()
+    }, OFERTAS_MS)
+    return () => clearInterval(iv)
+  }, [hayTurno, recargarOfertas])
 
   // Recargar al volver a la pestaña para detectar turnos abiertos/cerrados
   // desde otra pestaña o dispositivo. Cooldown de 3 min para no repetir fetches.
@@ -790,20 +825,42 @@ export default function VentasPage() {
   }, [turnoActual, tab])
 
   // ── Helpers de stock ──────────────────────────────────────
+  // Stock y lote FEFO de cada producto en esta sucursal, calculados UNA vez
+  // cada que llega el inventario. Antes cada consulta recorría todos los lotes y
+  // todo el inventario, y el buscador la hacía por cada coincidencia en cada
+  // tecla: con "p" eran ~1,700 productos × ~6,000 filas, unos 200 ms por letra.
+  // Mismos resultados y mismo orden de lotes: solo se deja de repetir la cuenta.
+  const { stockPorProducto, fefoPorProducto } = useMemo(() => {
+    const cantPorLote = new Map()
+    for (const i of inventario) {
+      if (i.sucursal_id !== sucursalId) continue
+      cantPorLote.set(i.lote_id, (cantPorLote.get(i.lote_id) || 0) + (i.cantidad || 0))
+    }
+    const stock = new Map()
+    const conExistencia = new Map()   // producto → sus lotes con stock, en el orden de `lotes`
+    for (const l of lotes) {
+      const cant = cantPorLote.get(l.id) || 0
+      stock.set(l.producto_id, (stock.get(l.producto_id) || 0) + cant)
+      if (l.activo !== false && cant > 0) {
+        const arr = conExistencia.get(l.producto_id)
+        if (arr) arr.push(l)
+        else conExistencia.set(l.producto_id, [l])
+      }
+    }
+    const fefo = new Map()
+    for (const [pid, arr] of conExistencia) {
+      fefo.set(pid, arr.length === 1 ? arr[0]
+        : [...arr].sort((a, b) => new Date(a.fecha_caducidad) - new Date(b.fecha_caducidad))[0])
+    }
+    return { stockPorProducto: stock, fefoPorProducto: fefo }
+  }, [lotes, inventario, sucursalId])
+
   function stockEnSucursal(productoId) {
-    const loteIds = new Set(lotes.filter(l => l.producto_id === productoId).map(l => l.id))
-    return inventario.filter(i => loteIds.has(i.lote_id) && i.sucursal_id === sucursalId)
-      .reduce((a, i) => a + (i.cantidad || 0), 0)
+    return stockPorProducto.get(productoId) || 0
   }
 
   function loteFEFO(productoId) {
-    return lotes
-      .filter(l => l.producto_id === productoId && l.activo !== false)
-      .filter(l => {
-        const inv = inventario.find(i => i.lote_id === l.id && i.sucursal_id === sucursalId)
-        return (inv?.cantidad || 0) > 0
-      })
-      .sort((a, b) => new Date(a.fecha_caducidad) - new Date(b.fecha_caducidad))[0] || null
+    return fefoPorProducto.get(productoId) || null
   }
   // Obtener oferta vigente para un producto (carritoActual permite pasar estado futuro del carrito)
   function ofertaDeProducto(productoId, categoria, carritoActual = carrito) {
@@ -1006,6 +1063,22 @@ export default function VentasPage() {
     return m
   }, [codigosCat])
 
+  // Nombres ya en minúsculas, una vez por catálogo y no en cada tecla
+  const nombresMin = useMemo(() => new Map(productos.map(p => [p.id, p.nombre.toLowerCase()])), [productos])
+
+  // Índices del escáner: código normalizado → primer registro (lo mismo que
+  // devolvía el .find() de antes) y producto por id. Antes cada lectura
+  // recorría los ~2,400 códigos normalizándolos uno por uno.
+  const codigoPorNormalizado = useMemo(() => {
+    const m = new Map()
+    for (const bc of codigosCat) {
+      const k = normalizarCodigo(bc.codigo)
+      if (k && !m.has(k)) m.set(k, bc)
+    }
+    return m
+  }, [codigosCat])
+  const productoPorId = useMemo(() => new Map(productos.map(p => [p.id, p])), [productos])
+
   const otrasSucRef = useRef(null)
   // Qué se está buscando ahora mismo. La consulta de otras sucursales tarda
   // ~300 ms más la red, y sin este testigo su respuesta se pintaba aunque el
@@ -1019,7 +1092,7 @@ export default function VentasPage() {
     if (!q.trim()) { setResultados([]); setResultadosOtras([]); return }
     const q2 = q.toLowerCase()
     const todos = productos.filter(p => {
-      if (p.nombre.toLowerCase().includes(q2)) return true
+      if ((nombresMin.get(p.id) ?? p.nombre.toLowerCase()).includes(q2)) return true
       return (codigosPorProducto.get(p.id) || []).some(c => c.includes(q2))
     })
 
@@ -1036,9 +1109,13 @@ export default function VentasPage() {
     // siempre caía ahí: la pantalla avisaba "no disponible en esta sucursal" y
     // enseguida se negaba a decir dónde sí estaba. Justo lo que hay que saber
     // en el mostrador con el cliente enfrente.
-    const candidatos = todos
-      .filter(p => deshabilitados.has(p.id) || stockEnSucursal(p.id) === 0)
-      .slice(0, 12)
+    // Se detiene al juntar 12: es todo lo que se consulta
+    const candidatos = []
+    for (const p of todos) {
+      if (!deshabilitados.has(p.id) && stockEnSucursal(p.id) !== 0) continue
+      candidatos.push(p)
+      if (candidatos.length === 12) break
+    }
     if (candidatos.length === 0) { setResultadosOtras([]); return }
     const candIds = candidatos.map(p => p.id)
     otrasSucRef.current = setTimeout(async () => {
@@ -1071,16 +1148,13 @@ export default function VentasPage() {
     }, 300)
   }
 
-  // Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y convierte a mayúsculas
-  // eslint-disable-next-line no-control-regex
-  const normalizarCodigo = (s) => (s || '').replace(/[\x00-\x1F]/g, '').trim().toUpperCase()
-
   function procesarBarcode(val) {
     val = normalizarCodigo(val)
     if (!val) return
-    const bc = codigosCat.find(b => normalizarCodigo(b.codigo) === val)
+    const bc = codigoPorNormalizado.get(val)
     if (bc) {
-      const prod = productos.find(p => p.id === bc.producto_id && !deshabilitados.has(p.id))
+      const p = productoPorId.get(bc.producto_id)
+      const prod = p && !deshabilitados.has(p.id) ? p : null
       if (prod) { agregarAlCarrito(prod, bc.unidades_por_empaque || 1); setBarcodeInput(''); return }
     }
     setBusqueda(val); buscarProducto(val); setBarcodeInput('')
@@ -1199,11 +1273,51 @@ export default function VentasPage() {
       setMontoRecibido(''); setMetodoPago('efectivo'); setEsCuentaPendiente(false); setClienteNombre('')
       refreshDynamic()
     } catch (err) {
-      toast.error(err.message || 'Error al registrar venta')
+      const msg = err.message || ''
+      if (msg.includes('menor al precio permitido')) await corregirPrecioRechazado(msg)
+      else toast.error(msg || 'Error al registrar venta')
     } finally {
       procesandoRef.current = false
       setProcesando(false)
     }
+  }
+
+  // registrar_venta rechazó un precio por debajo del permitido. Casi siempre es
+  // una oferta que la caja todavía tenía pero que ya no está vigente (se
+  // desactivó o venció). Se vuelven a pedir las ofertas y los productos cuya
+  // oferta desapareció regresan a su precio normal —o de mayoreo si aplica—.
+  // Antes el cajero veía el mensaje técnico y ni quitando el producto se
+  // arreglaba, porque la caja seguía con la oferta vieja.
+  async function corregirPrecioRechazado(msg) {
+    const nuevas = await recargarOfertas()
+    const vigentes = new Set((nuevas || []).map(o => o.id))
+    const vencidos = nuevas ? carrito.filter(i => i.oferta && !vigentes.has(i.oferta.id)) : []
+    if (vencidos.length === 0) {
+      // No fue una oferta: un precio escrito a mano por debajo del permitido
+      const m = msg.match(/precio_unitario \(([\d.]+)\) menor al precio permitido \(([\d.]+)\) en (.+)$/)
+      toast.error(m
+        ? `El precio de ${m[3]} (${formatoMoneda(Number(m[1]))}) está por debajo del permitido (${formatoMoneda(Number(m[2]))}).`
+        : msg, { duration: 8000 })
+      return
+    }
+    const nuevosPrecios = { ...precios }
+    const nuevoCarrito = carrito.map(i => {
+      if (!i.oferta || vigentes.has(i.oferta.id)) return i
+      const pm = Number(i.producto.precio_mayoreo) || 0
+      const cm = Number(i.producto.cantidad_mayoreo) || 0
+      if (pm > 0 && cm > 0 && i.cantidad >= cm) {
+        nuevosPrecios[i.producto.id] = String(pm)
+        setModosMayoreo(mm => ({ ...mm, [i.producto.id]: true }))
+      } else {
+        nuevosPrecios[i.producto.id] = String(i.producto.precio_venta)
+      }
+      return { ...i, oferta: null }
+    })
+    setCarrito(nuevoCarrito)
+    setPrecios(nuevosPrecios)
+    toast.warning(
+      `Ya no está vigente la oferta de ${vencidos.map(i => i.producto.nombre).join(', ')}. Se ajustó el precio: revisa el total y cobra de nuevo.`,
+      { duration: 10000 })
   }
 
   // ── Abrir turno ───────────────────────────────────────────

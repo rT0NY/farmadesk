@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon-logo.svg" />
+    <!-- Al instalar la app (Edge/Chrome: "Instalar este sitio como aplicación")
+         el navegador toma el ícono del manifiesto. Sin él usaba una "F" genérica:
+         no convierte el favicon SVG en ícono de aplicación. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- viewport-fit=cover es lo que activa env(safe-area-inset-*). Sin él esas
          medidas valen SIEMPRE cero, así que el margen contra el notch y contra
          la barra de gestos que ya estaba escrito en el código nunca se aplicó. -->

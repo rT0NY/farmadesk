@@ -692,7 +692,8 @@ export default function TransferenciasPage() {
           </p>
         </div>
         {sucursales.length > 1 && (
-          <Button variante="primario" tamano="md" iconoIzq={<Plus className="w-4 h-4" />} onClick={() => setModalAbierto(true)}>
+          // En celular lo hace el botón flotante
+          <Button variante="primario" tamano="md" className="hidden lg:inline-flex" iconoIzq={<Plus className="w-4 h-4" />} onClick={() => setModalAbierto(true)}>
             Nueva transferencia
           </Button>
         )}
@@ -811,7 +812,8 @@ export default function TransferenciasPage() {
         />
       )}
 
-      <Fab onClick={() => setModalAbierto(true)} label="Nueva transferencia" />
+      {/* Con una sola sucursal no hay a dónde transferir: igual que el botón del encabezado */}
+      {sucursales.length > 1 && <Fab onClick={() => setModalAbierto(true)} label="Nueva transferencia" />}
     </div>
   )
 }

@@ -195,7 +195,9 @@ export default function ProductosPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      {/* En celular los botones van debajo del título: al lado no cabían y el
+          último se salía de la pantalla. */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Productos</h1>
           <p className="text-sm text-slate-500 mt-1">Catálogo de productos de la empresa</p>
@@ -219,9 +221,9 @@ export default function ProductosPage() {
                 <span className="hidden sm:inline">Ingreso masivo</span>
                 <span className="sm:hidden">Masivo</span>
               </Button>
-              <Button onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
-                <span className="hidden sm:inline">Nuevo producto</span>
-                <span className="sm:hidden">Nuevo</span>
+              {/* En celular lo hace el botón flotante */}
+              <Button className="hidden lg:inline-flex" onClick={abrirNuevo} iconoIzq={<Plus className="w-4 h-4" />}>
+                Nuevo producto
               </Button>
             </>
           )}

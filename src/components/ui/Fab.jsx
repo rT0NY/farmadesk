@@ -4,9 +4,18 @@ import { cn } from '@/lib/clases'
 /**
  * Botón de acción flotante (solo móvil). Aparece arriba del bottom nav,
  * con gradiente azul y sombra de color, estilo iOS.
+ *
+ * Es la acción principal debajo de `lg`: el botón equivalente del encabezado
+ * debe llevar `hidden lg:inline-flex` para no duplicarlo.
+ *
+ * Deja además un espacio al final de la página: sin él, lo último de la lista
+ * quedaba debajo del botón (p. ej. el "Eliminar" de la última oferta) y no se
+ * podía tocar.
  */
 export function Fab({ onClick, icono, label = 'Crear', className }) {
   return (
+    <>
+    <div aria-hidden="true" className="lg:hidden h-20" />
     <button
       type="button"
       onClick={onClick}
@@ -25,5 +34,6 @@ export function Fab({ onClick, icono, label = 'Crear', className }) {
     >
       {icono ?? <Plus className="w-6 h-6" strokeWidth={2.5} />}
     </button>
+    </>
   )
 }
