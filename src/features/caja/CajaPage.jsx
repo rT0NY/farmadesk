@@ -16,55 +16,8 @@ import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, e
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
+import { abrirImpresion } from '@/lib/impresionTicket'
 import { Skeleton } from '@/components/ui/Skeleton'
-
-// ─── Impresión: Electron IPC o web fallback ──────────────────────────────────
-async function abrirImpresion(html) {
-  if (window.electronAPI) {
-    try {
-      const impresoras = await window.electronAPI.obtenerImpresoras()
-      if (!impresoras || impresoras.length === 0) {
-        toast.error('Sin impresora', {
-          description: 'No hay impresoras instaladas. Instala el driver de tu impresora de tickets e intenta de nuevo.',
-          duration: 8000,
-        })
-        return false
-      }
-      const { success, errorType } = await window.electronAPI.imprimirTicket(html)
-      if (!success && errorType !== 'cancelled') {
-        toast.error('Error al imprimir', {
-          description: `No se pudo enviar a la impresora (${errorType ?? 'desconocido'}).`,
-          duration: 6000,
-        })
-      }
-      return success
-    } catch (e) {
-      toast.error('Error al imprimir', { description: e?.message ?? 'Error inesperado', duration: 6000 })
-      return false
-    }
-  }
-  try {
-    const win = window.open('', '_blank', 'width=320,height=600')
-    if (!win || win.closed) {
-      toast.error('Impresión bloqueada', {
-        description: 'El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e intenta de nuevo.',
-        duration: 8000,
-      })
-      return false
-    }
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => { win.print(); win.close() }, 500)
-    return true
-  } catch {
-    toast.error('Error al imprimir', {
-      description: 'No se pudo conectar con la impresora. Verifica que esté encendida y con papel.',
-      duration: 8000,
-    })
-    return false
-  }
-}
 
 // ─── Modal entrada / salida manual ──────────────────────────────────────────
 function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
@@ -210,7 +163,7 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
     const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
     const aperturaDt = turno?.fecha_apertura ? new Date(turno.fecha_apertura) : new Date()
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      @page{size:80mm auto;margin:0}
+      @page{margin:0}
       *{margin:0;padding:0;box-sizing:border-box}
       html,body{height:auto}
       /* Impresoras térmicas: solo negro. Un gris sale en puntitos y en letra
