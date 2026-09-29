@@ -223,6 +223,12 @@ function esc(s) {
 }
 
 // ─── Helper: construir HTML del ticket ───────────────────────────────────────
+// Las impresoras de tickets son térmicas: imprimen negro o nada. Un texto gris
+// el driver lo simula con puntitos separados, y en letra chica sale borrado o
+// sin letras (la dirección, la fecha y "Recibido" salían casi en blanco, y
+// "VENDA 5 CM" salía "VENA ' CM"). Por eso todo va en negro puro, con Arial —el
+// trazo de Courier New es de un punto y se rompe— y la jerarquía se marca con
+// tamaño y negritas, no con color.
 function buildTicketHtml({ folio, items, total, montoRecibido, cambio, sucursalNombre, sucursal, empresaNombre, fecha }) {
   const suc    = sucursal || {}
   const partes = [suc.calle, suc.colonia, suc.ciudad, suc.estado].filter(Boolean)
@@ -238,7 +244,7 @@ function buildTicketHtml({ folio, items, total, montoRecibido, cambio, sucursalN
   const pagoHtml = montoRecibido > 0
     ? `<div class="fila"><span>Recibido</span><span>$${Number(montoRecibido).toFixed(2)}</span></div><div class="fila cambio"><span>Cambio</span><span>$${Number(cambio).toFixed(2)}</span></div>`
     : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{height:auto}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}h2{text-align:center;font-size:14px;margin-bottom:2px}.sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}.dir{text-align:center;font-size:9px;color:#777;margin-bottom:2px}.fecha{text-align:center;font-size:10px;color:#555;margin-bottom:4px}.folio{text-align:center;font-size:12px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:10px;padding:2px 0;border-bottom:1px solid #000}td{padding:2px 0;font-size:10px}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:#333}.cambio{font-weight:bold;color:#000}.footer{text-align:center;font-size:10px;color:#555;margin-top:10px}</style></head><body><h2>${esc(empresaNombre) || 'FARMACIA'}</h2><div class="sub">${esc(sucursalNombre)}</div>${dir ? `<div class="dir">${esc(dir)}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${esc(folio)}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{height:auto}body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;width:80mm;padding:8px}h2{text-align:center;font-size:15px;margin-bottom:2px}.sub{text-align:center;font-size:12px;margin-bottom:2px}.dir{text-align:center;font-size:11px;margin-bottom:2px}.fecha{text-align:center;font-size:11px;margin-bottom:4px}.folio{text-align:center;font-size:13px;font-weight:bold;letter-spacing:2px;margin-bottom:4px}hr{border:none;border-top:1px dashed #000;margin:6px 0}table{width:100%;border-collapse:collapse}th{font-size:11px;padding:2px 0;border-bottom:1px solid #000}td{padding:3px 0;font-size:12px;vertical-align:top}.total{display:flex;justify-content:space-between;font-weight:bold;font-size:15px;margin-top:6px}.fila{display:flex;justify-content:space-between;font-size:12px;margin-top:3px}.cambio{font-weight:bold}.footer{text-align:center;font-size:11px;margin-top:10px}</style></head><body><h2>${esc(empresaNombre) || 'FARMACIA'}</h2><div class="sub">${esc(sucursalNombre)}</div>${dir ? `<div class="dir">${esc(dir)}</div>` : ''}<div class="fecha">${fStr} &nbsp; ${hStr}</div><div class="folio">${esc(folio)}</div><hr><table><thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><hr><div class="total"><span>TOTAL</span><span>$${Number(total).toFixed(2)}</span></div>${pagoHtml}<div class="footer">Gracias por su compra</div></body></html>`
 }
 
 // ─── Modal: cerrar turno ────────────────────────────────────
@@ -1513,19 +1519,21 @@ export default function VentasPage() {
          about:blank— igual que ya lo hacia el ticket de venta. */
       @page{size:80mm auto;margin:0}
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:'Courier New',monospace;font-size:11px;width:80mm;padding:8px}
-      h2{text-align:center;font-size:13px;margin-bottom:2px}
-      .sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}
-      .fecha{text-align:center;font-size:10px;color:#555;margin-bottom:6px}
+      /* Todo en negro: ver la nota de buildTicketHtml. Salidas y faltantes ya
+         llevan su signo y su etiqueta; en vez de rojo van en negritas. */
+      body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;width:80mm;padding:8px}
+      h2{text-align:center;font-size:15px;margin-bottom:2px}
+      .sub{text-align:center;font-size:11px;margin-bottom:2px}
+      .fecha{text-align:center;font-size:11px;margin-bottom:6px}
       hr{border:none;border-top:1px dashed #000;margin:5px 0}
       table{width:100%;border-collapse:collapse}
-      th{font-size:10px;padding:2px 0;border-bottom:1px solid #000;text-align:left}
-      td{padding:2px 0;font-size:10px}
-      .r{text-align:right}.mono{font-family:'Courier New',monospace}
-      .fila{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+      th{font-size:11px;padding:2px 0;border-bottom:1px solid #000;text-align:left}
+      td{padding:2px 0;font-size:11px}
+      .r{text-align:right}.mono{font-variant-numeric:tabular-nums}
+      .fila{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}
       .bold{font-weight:bold}.total-box{margin-top:6px;padding:5px;border:1px solid #000;display:flex;justify-content:space-between}
-      .sec{font-size:10px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
-      .neg{color:#cc0000}
+      .sec{font-size:11px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
+      .neg{font-weight:bold}
     </style></head><body>
       <h2>${esc(empresa?.nombre) || 'FARMACIA'}</h2>
       <div class="sub">${esc(sucursalActual?.nombre)}</div>
@@ -1541,7 +1549,7 @@ export default function VentasPage() {
       <div class="total-box bold"><span>Efectivo esperado</span><span>${fm(esperado)}</span></div>
       <hr>
       <p class="sec">Ventas del turno (${ventasTurno.length})</p>
-      ${ventasTurno.length === 0 ? '<p style="font-size:10px;color:#888">Sin ventas</p>' : `
+      ${ventasTurno.length === 0 ? '<p style="font-size:11px">Sin ventas</p>' : `
       <table><thead><tr><th>Folio</th><th>Hora</th><th>Método</th><th class="r">Total</th></tr></thead>
       <tbody>${vtHtml}</tbody></table>`}
       ${entradas.length > 0 ? `<hr><p class="sec">Entradas manuales</p>
@@ -1550,7 +1558,7 @@ export default function VentasPage() {
       ${salidas.length > 0 ? `<hr><p class="sec">Salidas manuales</p>
       <table><thead><tr><th>Concepto</th><th class="r">Monto</th></tr></thead>
       <tbody>${salHtml}</tbody></table>` : ''}
-      <hr><div style="text-align:center;font-size:10px;color:#555;margin-top:6px">Firma cajero: _________________</div>
+      <hr><div style="text-align:center;font-size:11px;margin-top:6px">Firma cajero: _________________</div>
     </body></html>`
     abrirImpresion(html)
   }

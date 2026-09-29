@@ -213,15 +213,18 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
       @page{size:80mm auto;margin:0}
       *{margin:0;padding:0;box-sizing:border-box}
       html,body{height:auto}
-      body{font-family:'Courier New',monospace;font-size:11px;width:80mm;padding:8px}
-      h2{text-align:center;font-size:13px;margin-bottom:2px}
-      .sub{text-align:center;font-size:10px;color:#555;margin-bottom:2px}
-      .fecha{text-align:center;font-size:10px;color:#555;margin-bottom:6px}
+      /* Impresoras térmicas: solo negro. Un gris sale en puntitos y en letra
+         chica se borra; la letra monoespaciada delgada se rompe. Salidas
+         y faltantes ya llevan signo y etiqueta: van en negritas, no en rojo. */
+      body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;width:80mm;padding:8px}
+      h2{text-align:center;font-size:15px;margin-bottom:2px}
+      .sub{text-align:center;font-size:11px;margin-bottom:2px}
+      .fecha{text-align:center;font-size:11px;margin-bottom:6px}
       hr{border:none;border-top:1px dashed #000;margin:5px 0}
-      .fila{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+      .fila{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}
       .bold{font-weight:bold}.total-box{margin-top:6px;padding:5px;border:1px solid #000;display:flex;justify-content:space-between}
-      .sec{font-size:10px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
-      .neg{color:#cc0000}
+      .sec{font-size:11px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
+      .neg{font-weight:bold}
     </style></head><body>
       <h2>${escapeHtml(empresa?.nombre || 'FARMACIA')}</h2>
       <div class="sub">${escapeHtml(sucursalNombre || '')}</div>
@@ -241,7 +244,7 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
         <span>${Number(resultado.diferencia) > 0 ? '+' : ''}${fm(resultado.diferencia)}</span>
       </div>
       ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${escapeHtml(resultado.nota)}</div>` : ''}
-      <hr><div style="text-align:center;font-size:10px;color:#555;margin-top:6px">Firma: _________________</div>
+      <hr><div style="text-align:center;font-size:11px;margin-top:6px">Firma: _________________</div>
     </body></html>`
     abrirImpresion(html)
   }
