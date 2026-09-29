@@ -1,33 +1,18 @@
 import { toast } from 'sonner'
 
-// Ancho del rollo de las impresoras de tickets
-const ANCHO_MM = 80
-
-/**
- * Le da al ticket una página del tamaño exacto: 80 mm de ancho por el alto real
- * del contenido.
- *
- * Antes cada plantilla decía `@page{size:80mm auto}`, que no es CSS válido:
- * Chrome descartaba la regla entera y armaba el ticket en una hoja carta
- * (215.9 × 279.4 mm), y quedaba en manos del driver cómo acomodar esa hoja en
- * el rollo, con el blanco que eso dejara. La app de escritorio ya medía el alto
- * (electron/main.cjs); esto hace lo mismo en la web.
- */
-function ajustarPagina(doc) {
-  const px = Math.ceil(doc.documentElement.scrollHeight)
-  const mm = Math.ceil((px * 25.4) / 96) + 2   // 96 px = 25.4 mm en CSS, + 2 mm de respiro
-  const estilo = doc.createElement('style')
-  estilo.textContent = `@page{size:${ANCHO_MM}mm ${mm}mm;margin:0}`
-  doc.head.appendChild(estilo)
-}
-
 /**
  * Imprime un ticket de 80 mm. Es la ÚNICA puerta para imprimir tickets
  * (venta, reimpresión y cortes de caja): había dos copias de esta función, una
  * en Ventas y otra en Caja, y un arreglo en una no llegaba a la otra.
  *
- * La plantilla debe traer `@page{margin:0}` y nada de `size`: el tamaño lo pone
- * esta función con el alto medido.
+ * La plantilla lleva `@page{margin:0}` y NINGÚN `size`. Probado en la farmacia
+ * (2026-09-28): cuando la página trae su propio tamaño, Chrome deja de respetar
+ * los márgenes en 0 al mandarla a la térmica, la encoge para "ajustarla" al
+ * papel del driver y le agrega su encabezado y pie (fecha, "about:blank",
+ * "1/1"). En PDF se veía perfecto; en la impresora, no. Sin `size`, Chrome usa
+ * el papel que tenga seleccionado la impresora y el contenido sale a tamaño
+ * real. El largo del ticket depende entonces del papel configurado en el
+ * driver: debe ser el de rollo, no carta ni 80×297.
  */
 export async function abrirImpresion(html) {
   // ── Electron: IPC con diálogo nativo de Windows (mide el alto en main.cjs) ──
@@ -68,13 +53,7 @@ export async function abrirImpresion(html) {
     win.document.write(html)
     win.document.close()
     win.focus()
-    setTimeout(() => {
-      // Si medir fallara, se imprime igual: mejor un ticket con blanco de más
-      // que ningún ticket.
-      try { ajustarPagina(win.document) } catch { /* sin ajuste */ }
-      win.print()
-      win.close()
-    }, 500)
+    setTimeout(() => { win.print(); win.close() }, 500)
     return true
   } catch {
     toast.error('Error al imprimir', {
