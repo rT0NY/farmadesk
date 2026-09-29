@@ -5,18 +5,19 @@ import {
   Wallet, Plus, X, Clock, DollarSign, Store,
   LogOut, RefreshCw, AlertTriangle, ArrowDownLeft,
   ArrowUpRight, TrendingUp, TrendingDown, Minus, Check,
-  User, ChevronDown, CreditCard, Banknote, Printer,
+  User, ChevronDown, CreditCard, Banknote, Printer, FileText,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp, useUsuariosEnLinea } from '@/context/AppCtx'
-import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml, inicioDiaUtc } from '@/lib/formatos'
+import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml, inicioDiaUtc, generarFolio } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
 import { abrirImpresion } from '@/lib/impresionTicket'
+import { Modal, ModalHeader, ModalFooter } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Modal entrada / salida manual ──────────────────────────────────────────
@@ -147,22 +148,65 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
 }
 
 // ─── Modal cerrar turno ──────────────────────────────────────────────────────
-function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito }) {
-  const { empresa } = useApp()
-  const [montoContado, setMontoContado] = useState('')
-  const [nota,         setNota]         = useState('')
-  const [cargando,     setCargando]     = useState(false)
-  const [resultado,    setResultado]    = useState(null)
+// ─── Corte de caja: cálculo e impresión compartidos ─────────────────────────
+// Mismas reglas que cerrar_turno_caja en la base: el efectivo esperado es el
+// fondo + ventas en efectivo (sin canceladas ni ventas a crédito) + entradas
+// − salidas. Tarjeta y crédito son solo informativos: no entran al cajón.
+// Lo usan los turnos abiertos (resumen en vivo) y los cerrados ("Ver corte").
+async function cargarResumenTurno(turno) {
+  const [{ data: ventas, error: errV }, { data: movs, error: errM }] = await Promise.all([
+    supabase.from('ventas')
+      .select('id, total, metodo_pago, creado_en')
+      .eq('turno_id', turno.id)
+      .neq('estado', 'cancelada')
+      .order('creado_en', { ascending: true }),
+    supabase.from('movimientos_caja')
+      .select('tipo, descripcion, monto, creado_en')
+      .eq('turno_id', turno.id)
+      .order('creado_en', { ascending: false }),
+  ])
 
-  const efectivoEsperado = resumen?.esperado ?? 0
+  // Las ventas a crédito no dejaron dinero en el cajón: si se cuentan como
+  // efectivo, el corte exige un monto que nunca entró y el cajero cuadra
+  // con faltante. El cobro se registra aparte, cuando el cliente paga.
+  const idsVenta = (ventas || []).map(v => v.id)
+  const { data: creditos, error: errC } = idsVenta.length
+    ? await supabase.from('cuentas_pendientes').select('venta_id').in('venta_id', idsVenta)
+    : { data: [], error: null }
+  const idsCredito = new Set((creditos || []).map(c => c.venta_id))
 
-  function imprimirCorte() {
-    if (!resultado) return
-    const fm = n => '$' + Number(n || 0).toFixed(2)
-    const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
-    const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
-    const aperturaDt = turno?.fecha_apertura ? new Date(turno.fecha_apertura) : new Date()
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  const ventasCredito = (ventas || [])
+    .filter(v => idsCredito.has(v.id))
+    .reduce((s, v) => s + Number(v.total || 0), 0)
+  const ventasEfectivo = (ventas || [])
+    .filter(v => (!v.metodo_pago || v.metodo_pago === 'efectivo') && !idsCredito.has(v.id))
+    .reduce((s, v) => s + Number(v.total || 0), 0)
+  const ventasTarjeta = (ventas || [])
+    .filter(v => v.metodo_pago === 'tarjeta')
+    .reduce((s, v) => s + Number(v.total || 0), 0)
+  const entradas = (movs || [])
+    .filter(m => m.tipo === 'entrada')
+    .reduce((s, m) => s + Number(m.monto || 0), 0)
+  const salidas = (movs || [])
+    .filter(m => m.tipo === 'salida')
+    .reduce((s, m) => s + Number(m.monto || 0), 0)
+  const esperado = Number(turno.monto_apertura || 0) + ventasEfectivo + entradas - salidas
+  return {
+    ventasEfectivo, ventasTarjeta, ventasCredito, entradas, salidas, esperado,
+    movimientos: movs || [],
+    ventas: (ventas || []).map(v => ({ ...v, credito: idsCredito.has(v.id) })),
+    error: errV || errM || errC || null,
+  }
+}
+
+// Ticket del corte. Sirve al cerrar el turno y para reimprimirlo después.
+function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fechaCorte, resultado, otrasFormas = [] }) {
+  const fm = n => '$' + Number(n || 0).toFixed(2)
+  const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
+  const aperturaDt = fechaApertura ? new Date(fechaApertura) : new Date()
+  const corteDt = fechaCorte ? new Date(fechaCorte) : new Date()
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       @page{margin:0}
       *{margin:0;padding:0;box-sizing:border-box}
       html,body{height:auto}
@@ -179,10 +223,10 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
       .sec{font-size:11px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
       .neg{font-weight:bold}
     </style></head><body>
-      <h2>${escapeHtml(empresa?.nombre || 'FARMACIA')}</h2>
+      <h2>${escapeHtml(empresaNombre || 'FARMACIA')}</h2>
       <div class="sub">${escapeHtml(sucursalNombre || '')}</div>
-      <div class="fecha">Apertura: ${fd(aperturaDt)} ${fh(aperturaDt)}<br>Corte: ${fd(new Date())} ${fh(new Date())}</div>
-      ${turno?.perfiles?.nombre ? `<div class="sub">Operador: ${escapeHtml(turno.perfiles.nombre)}</div>` : ''}
+      <div class="fecha">Apertura: ${fd(aperturaDt)} ${fh(aperturaDt)}<br>Corte: ${fd(corteDt)} ${fh(corteDt)}</div>
+      ${operador ? `<div class="sub">Operador: ${escapeHtml(operador)}</div>` : ''}
       <hr>
       <p class="sec">Resumen de caja</p>
       <div class="fila"><span>Fondo inicial</span><span>${fm(resultado.apertura)}</span></div>
@@ -196,10 +240,31 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
         <span>${Number(resultado.diferencia) === 0 ? 'Cuadre perfecto' : Number(resultado.diferencia) > 0 ? 'Sobrante' : 'Faltante'}</span>
         <span>${Number(resultado.diferencia) > 0 ? '+' : ''}${fm(resultado.diferencia)}</span>
       </div>
+      ${otrasFormas.length ? `<hr><p class="sec">Otras formas de pago</p>${otrasFormas.map(f => `<div class="fila"><span>${escapeHtml(f.etiqueta)} (${f.n})</span><span>${fm(f.total)}</span></div>`).join('')}<div class="sub">No entran al cajón</div>` : ''}
       ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${escapeHtml(resultado.nota)}</div>` : ''}
       <hr><div style="text-align:center;font-size:11px;margin-top:6px">Firma: _________________</div>
     </body></html>`
-    abrirImpresion(html)
+}
+
+function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito }) {
+  const { empresa } = useApp()
+  const [montoContado, setMontoContado] = useState('')
+  const [nota,         setNota]         = useState('')
+  const [cargando,     setCargando]     = useState(false)
+  const [resultado,    setResultado]    = useState(null)
+
+  const efectivoEsperado = resumen?.esperado ?? 0
+
+  function imprimirCorte() {
+    if (!resultado) return
+    abrirImpresion(htmlCorte({
+      empresaNombre:  empresa?.nombre,
+      sucursalNombre,
+      operador:       turno?.perfiles?.nombre,
+      fechaApertura:  turno?.fecha_apertura,
+      fechaCorte:     new Date(),
+      resultado,
+    }))
   }
 
   async function cerrar() {
@@ -822,6 +887,297 @@ function TarjetaSucursal({ sucursal, turno, esMiTurno, estaEnLinea = false, pued
 }
 
 // ─── Sección de sucursal (agrupación para vista admin) ───────────────────────
+// ─── Turno cerrado: tarjeta con su corte desplegable ────────────────────────
+// Renglón del resumen del corte
+function FilaCorte({ label, valor, signo = '', clase = 'text-slate-700', fuerte = false }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className={cn('text-sm', fuerte ? 'font-semibold text-slate-900' : 'text-slate-600')}>{label}</span>
+      <span className={cn('text-sm tabular-nums', fuerte ? 'font-bold' : 'font-semibold', clase)}>{signo}{formatoMoneda(valor)}</span>
+    </div>
+  )
+}
+
+function TarjetaTurnoCerrado({ t }) {
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-slate-400" />
+          <span className="text-sm font-semibold text-slate-900">{t.perfiles?.nombre || '—'}</span>
+          <span className="text-xs text-slate-400">·</span>
+          <span className="text-xs text-slate-500">{t.sucursales?.nombre || '—'}</span>
+        </div>
+        <span className={cn(
+          'text-xs font-bold px-2.5 py-1 rounded-full border',
+          t.diferencia === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+          t.diferencia  > 0  ? 'bg-sky-100 text-sky-800 border-sky-200' :
+                               'bg-red-100 text-red-800 border-red-200'
+        )}>
+          {t.diferencia === 0 ? '✓ Cuadre' :
+           t.diferencia  > 0  ? `+${formatoMoneda(t.diferencia)}` :
+                                formatoMoneda(t.diferencia)}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          { label: 'Apertura',  valor: formatoHora(t.fecha_apertura)  },
+          { label: 'Cierre',    valor: formatoHora(t.fecha_cierre)    },
+          { label: 'Esperado',  valor: formatoMoneda(t.monto_esperado) },
+          { label: 'Contado',   valor: formatoMoneda(t.monto_contado)  },
+        ].map(item => (
+          <div key={item.label} className="bg-slate-50 rounded-xl p-2 text-center">
+            <p className="text-[10px] text-slate-400 uppercase">{item.label}</p>
+            <p className="text-xs font-bold text-slate-700 mt-0.5">{item.valor}</p>
+          </div>
+        ))}
+      </div>
+      {/* La columna es nota_cierre: antes se leía t.nota y la nota nunca salía */}
+      {t.nota_cierre && (
+        <p className="text-xs text-slate-400 mt-2 italic">Nota: {t.nota_cierre}</p>
+      )}
+      <button
+        onClick={() => setAbierto(true)}
+        className="mt-3 w-full inline-flex items-center justify-center gap-1.5 h-10 rounded-xl text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"
+      >
+        <FileText className="w-4 h-4" />
+        Ver corte
+      </button>
+      {abierto && <ModalCorte turno={t} onClose={() => setAbierto(false)} />}
+    </div>
+  )
+}
+
+// Formas de pago en el orden en que se muestran. Las ventas a crédito se
+// guardan como efectivo: lo que las distingue es tener cuenta pendiente. Una
+// forma nueva (p. ej. transferencia) aparece sola con su nombre.
+const FORMAS_PAGO = [
+  ['efectivo', 'Efectivo'],
+  ['tarjeta', 'Tarjeta'],
+  ['transferencia', 'Transferencia'],
+  ['credito', 'A crédito'],
+]
+const ETIQUETA_FORMA = Object.fromEntries(FORMAS_PAGO)
+const formaDe = v => (v.credito ? 'credito' : v.metodo_pago || 'efectivo')
+const etiquetaForma = k => ETIQUETA_FORMA[k] ?? (k.charAt(0).toUpperCase() + k.slice(1))
+
+function formasDePago(ventas) {
+  const grupos = new Map()
+  for (const v of ventas) {
+    const k = formaDe(v)
+    const g = grupos.get(k) || { clave: k, etiqueta: etiquetaForma(k), n: 0, total: 0 }
+    g.n += 1
+    g.total += Number(v.total || 0)
+    grupos.set(k, g)
+  }
+  const orden = k => { const i = FORMAS_PAGO.findIndex(([c]) => c === k); return i < 0 ? 99 : i }
+  return [...grupos.values()].sort((a, b) => orden(a.clave) - orden(b.clave))
+}
+
+function TituloSeccion({ children }) {
+  return <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{children}</p>
+}
+
+// Corte de un turno ya cerrado. Esperado, contado y diferencia se muestran tal
+// como quedaron al cerrar (turnos_caja): eso fue lo que se entregó. El
+// desglose se vuelve a calcular con las mismas reglas del cierre; si ya no
+// suma lo mismo (p. ej. se canceló una venta después), se avisa.
+function ModalCorte({ turno, onClose }) {
+  const { empresa } = useApp()
+  const [datos, setDatos] = useState(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    cargarResumenTurno(turno)
+      .then(r => { if (vivo) { if (r.error) setError(true); else setDatos(r) } })
+      .catch(() => { if (vivo) setError(true) })
+    return () => { vivo = false }
+  }, [turno])
+
+  const sucursalNombre = turno.sucursales?.nombre || ''
+  const operador   = turno.perfiles?.nombre || '—'
+  const esperado   = Number(turno.monto_esperado || 0)
+  const contado    = Number(turno.monto_contado || 0)
+  const diferencia = Number(turno.diferencia || 0)
+
+  const formas = datos ? formasDePago(datos.ventas) : []
+  const nEfectivo = formas.find(f => f.clave === 'efectivo')?.n ?? 0
+  // Solo si hubo algo además de efectivo: si todo fue efectivo, el resumen de
+  // caja ya lo dice todo.
+  const otrasFormas = formas.filter(f => f.clave !== 'efectivo')
+  const totalVendido = formas.reduce((s, f) => s + f.total, 0)
+  const cambioDespues = datos && Math.abs(datos.esperado - esperado) > 0.009
+
+  function imprimir() {
+    if (!datos) return
+    abrirImpresion(htmlCorte({
+      empresaNombre:  empresa?.nombre,
+      sucursalNombre,
+      operador:       turno.perfiles?.nombre,
+      fechaApertura:  turno.fecha_apertura,
+      fechaCorte:     turno.fecha_cierre,
+      resultado: {
+        apertura:   turno.monto_apertura,
+        ventas:     datos.ventasEfectivo,
+        entradas:   datos.entradas,
+        salidas:    datos.salidas,
+        esperado,
+        contado,
+        diferencia,
+        nota:       turno.nota_cierre,
+      },
+      otrasFormas,
+    }))
+  }
+
+  const estado = diferencia === 0
+    ? { texto: 'Cuadre perfecto', caja: 'bg-emerald-50 border-emerald-200', color: 'text-emerald-700' }
+    : diferencia > 0
+      ? { texto: 'Sobrante', caja: 'bg-sky-50 border-sky-200', color: 'text-sky-700' }
+      : { texto: 'Faltante', caja: 'bg-red-50 border-red-200', color: 'text-red-700' }
+
+  return (
+    <Modal onClose={onClose} maxWidth="sm:max-w-lg">
+      <ModalHeader titulo="Corte de caja" subtitulo={`${operador} · ${sucursalNombre}`} onClose={onClose} />
+
+      <div className="flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6 py-5 flex flex-col gap-5">
+        {error ? (
+          <p className="text-sm text-red-600 text-center py-10">No se pudo cargar el corte. Cierra y vuelve a abrirlo para reintentar.</p>
+        ) : !datos ? (
+          <div className="flex justify-center py-16">
+            <div className="w-7 h-7 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* Horario */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-slate-50 rounded-2xl px-3 py-2.5">
+                <p className="text-[10px] text-slate-400 uppercase font-semibold">Apertura</p>
+                <p className="text-sm font-semibold text-slate-800 mt-0.5">{formatoFechaHora(turno.fecha_apertura)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-2xl px-3 py-2.5">
+                <p className="text-[10px] text-slate-400 uppercase font-semibold">Cierre</p>
+                <p className="text-sm font-semibold text-slate-800 mt-0.5">{formatoFechaHora(turno.fecha_cierre)}</p>
+              </div>
+            </div>
+
+            {/* Resultado del cierre */}
+            <div className={cn('rounded-2xl border px-4 py-3 flex items-center justify-between', estado.caja)}>
+              <span className={cn('text-sm font-bold', estado.color)}>{estado.texto}</span>
+              <span className={cn('text-xl font-bold tabular-nums', estado.color)}>
+                {diferencia > 0 ? '+' : ''}{formatoMoneda(diferencia)}
+              </span>
+            </div>
+
+            {/* Efectivo en caja */}
+            <div>
+              <TituloSeccion>Efectivo en caja</TituloSeccion>
+              <div className="flex flex-col divide-y divide-slate-100">
+                <FilaCorte label="Fondo inicial" valor={turno.monto_apertura} />
+                <FilaCorte label={`Ventas en efectivo (${nEfectivo})`} valor={datos.ventasEfectivo} signo="+" clase="text-emerald-700" />
+                {datos.entradas > 0 && <FilaCorte label="Entradas" valor={datos.entradas} signo="+" clase="text-emerald-700" />}
+                {datos.salidas > 0 && <FilaCorte label="Salidas" valor={datos.salidas} signo="-" clase="text-red-700" />}
+                <FilaCorte label="Efectivo esperado" valor={esperado} fuerte />
+                <FilaCorte label="Contado" valor={contado} fuerte clase="text-primary-700" />
+              </div>
+            </div>
+
+            {cambioDespues && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                Algo cambió después del cierre (por ejemplo, se canceló una venta): hoy el efectivo esperado daría {formatoMoneda(datos.esperado)}. Arriba se muestra lo registrado al cerrar.
+              </p>
+            )}
+
+            {/* Formas de pago: solo si hubo algo además de efectivo */}
+            {otrasFormas.length > 0 && (
+              <div>
+                <TituloSeccion>Formas de pago</TituloSeccion>
+                <div className="bg-slate-50 rounded-2xl px-4 py-1 flex flex-col divide-y divide-slate-200/70">
+                  {formas.map(f => (
+                    <div key={f.clave} className="flex items-center justify-between py-2">
+                      <span className="text-sm text-slate-700">
+                        {f.etiqueta} <span className="text-slate-400">({f.n})</span>
+                        {f.clave !== 'efectivo' && <span className="block text-[11px] text-slate-400">No entra al cajón</span>}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatoMoneda(f.total)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm font-semibold text-slate-900">Total vendido</span>
+                    <span className="text-sm font-bold text-slate-900 tabular-nums">{formatoMoneda(totalVendido)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {turno.nota_cierre && (
+              <div>
+                <TituloSeccion>Nota del cierre</TituloSeccion>
+                <p className="text-sm text-slate-600 italic">"{turno.nota_cierre}"</p>
+              </div>
+            )}
+
+            {/* Ventas del turno */}
+            <div>
+              <TituloSeccion>Ventas del turno ({datos.ventas.length})</TituloSeccion>
+              {datos.ventas.length === 0 ? (
+                <p className="text-sm text-slate-400">Sin ventas</p>
+              ) : (
+                <div className="flex flex-col divide-y divide-slate-100">
+                  {datos.ventas.map(v => (
+                    <div key={v.id} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-mono text-slate-800">{generarFolio(v.id, sucursalNombre)}</p>
+                        <p className="text-xs text-slate-400">{formatoHora(v.creado_en)} · {etiquetaForma(formaDe(v))}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900 tabular-nums flex-shrink-0">{formatoMoneda(v.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Entradas y salidas manuales */}
+            {datos.movimientos.length > 0 && (
+              <div>
+                <TituloSeccion>Entradas y salidas</TituloSeccion>
+                <div className="flex flex-col divide-y divide-slate-100">
+                  {datos.movimientos.map((m, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-800 truncate">{m.descripcion || '—'}</p>
+                        <p className="text-xs text-slate-400">{formatoHora(m.creado_en)} · {m.tipo === 'salida' ? 'Salida' : 'Entrada'}</p>
+                      </div>
+                      <span className={cn('text-sm font-semibold tabular-nums flex-shrink-0', m.tipo === 'salida' ? 'text-red-700' : 'text-emerald-700')}>
+                        {m.tipo === 'salida' ? '-' : '+'}{formatoMoneda(m.monto)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <ModalFooter>
+        <div className="flex gap-2">
+          <button
+            onClick={imprimir}
+            disabled={!datos}
+            className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            <Printer className="w-4 h-4 text-slate-500" /> Imprimir
+          </button>
+          <Button onClick={onClose} className="flex-1">Cerrar</Button>
+        </div>
+      </ModalFooter>
+    </Modal>
+  )
+}
+
 function SeccionSucursal({ sucursal, conteoTurnos, children }) {
   return (
     <div className="flex flex-col gap-2">
@@ -915,46 +1271,7 @@ export default function CajaPage() {
       // Clave: turno.id (no sucursal_id) porque puede haber varios por sucursal
       const resumenes = {}
       for (const turno of todosTurnos) {
-        const [{ data: ventas }, { data: movs }] = await Promise.all([
-          supabase.from('ventas')
-            .select('id, total, metodo_pago')
-            .eq('turno_id', turno.id)
-            .neq('estado', 'cancelada'),
-          supabase.from('movimientos_caja')
-            .select('tipo, descripcion, monto, creado_en')
-            .eq('turno_id', turno.id)
-            .order('creado_en', { ascending: false }),
-        ])
-
-        // Las ventas a crédito no dejaron dinero en el cajón: si se cuentan como
-        // efectivo, el corte exige un monto que nunca entró y el cajero cuadra
-        // con faltante. El cobro se registra aparte, cuando el cliente paga.
-        const idsVenta = (ventas || []).map(v => v.id)
-        const { data: creditos } = idsVenta.length
-          ? await supabase.from('cuentas_pendientes').select('venta_id').in('venta_id', idsVenta)
-          : { data: [] }
-        const idsCredito = new Set((creditos || []).map(c => c.venta_id))
-
-        const ventasCredito = (ventas || [])
-          .filter(v => idsCredito.has(v.id))
-          .reduce((s, v) => s + Number(v.total || 0), 0)
-        const ventasEfectivo = (ventas || [])
-          .filter(v => (!v.metodo_pago || v.metodo_pago === 'efectivo') && !idsCredito.has(v.id))
-          .reduce((s, v) => s + Number(v.total || 0), 0)
-        const ventasTarjeta = (ventas || [])
-          .filter(v => v.metodo_pago === 'tarjeta')
-          .reduce((s, v) => s + Number(v.total || 0), 0)
-        const entradas = (movs || [])
-          .filter(m => m.tipo === 'entrada')
-          .reduce((s, m) => s + Number(m.monto || 0), 0)
-        const salidas = (movs || [])
-          .filter(m => m.tipo === 'salida')
-          .reduce((s, m) => s + Number(m.monto || 0), 0)
-        const esperado = Number(turno.monto_apertura || 0) + ventasEfectivo + entradas - salidas
-        resumenes[turno.id] = {
-          ventasEfectivo, ventasTarjeta, ventasCredito, entradas, salidas, esperado,
-          movimientos: movs || [],
-        }
+        resumenes[turno.id] = await cargarResumenTurno(turno)
       }
       setResumenesPorTurno(resumenes)
 
@@ -1132,44 +1449,7 @@ export default function CajaPage() {
         <div>
           <h2 className="text-base font-bold text-slate-900 mb-3">Turnos cerrados hoy</h2>
           <div className="flex flex-col gap-3">
-            {historial.map(t => (
-              <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm font-semibold text-slate-900">{t.perfiles?.nombre || '—'}</span>
-                    <span className="text-xs text-slate-400">·</span>
-                    <span className="text-xs text-slate-500">{t.sucursales?.nombre || '—'}</span>
-                  </div>
-                  <span className={cn(
-                    'text-xs font-bold px-2.5 py-1 rounded-full border',
-                    t.diferencia === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                    t.diferencia  > 0  ? 'bg-sky-100 text-sky-800 border-sky-200' :
-                                         'bg-red-100 text-red-800 border-red-200'
-                  )}>
-                    {t.diferencia === 0 ? '✓ Cuadre' :
-                     t.diferencia  > 0  ? `+${formatoMoneda(t.diferencia)}` :
-                                          formatoMoneda(t.diferencia)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { label: 'Apertura',  valor: formatoHora(t.fecha_apertura)  },
-                    { label: 'Cierre',    valor: formatoHora(t.fecha_cierre)    },
-                    { label: 'Esperado',  valor: formatoMoneda(t.monto_esperado) },
-                    { label: 'Contado',   valor: formatoMoneda(t.monto_contado)  },
-                  ].map(item => (
-                    <div key={item.label} className="bg-slate-50 rounded-xl p-2 text-center">
-                      <p className="text-[10px] text-slate-400 uppercase">{item.label}</p>
-                      <p className="text-xs font-bold text-slate-700 mt-0.5">{item.valor}</p>
-                    </div>
-                  ))}
-                </div>
-                {t.nota && (
-                  <p className="text-xs text-slate-400 mt-2 italic">Nota: {t.nota}</p>
-                )}
-              </div>
-            ))}
+            {historial.map(t => <TarjetaTurnoCerrado key={t.id} t={t} />)}
           </div>
         </div>
       )}
