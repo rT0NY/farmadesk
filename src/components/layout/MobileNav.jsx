@@ -28,12 +28,12 @@ const MAS_SECCIONES = [
     titulo: 'Catálogo',
     items: [
       { ruta: '/productos',      nombre: 'Productos',      icono: Package,       roles: ['admin', 'encargado'] },
-      { ruta: '/inventario',     nombre: 'Inventario',     icono: Archive,       roles: ['admin', 'encargado'] },
+      { ruta: '/inventario',     nombre: 'Inventario',     icono: Archive,       roles: ['admin', 'encargado', 'cajero'] },
       { ruta: '/pedidos',        nombre: 'Pedidos',        icono: ClipboardList, roles: ['admin', 'encargado', 'cajero'] },
       { ruta: '/ofertas',        nombre: 'Ofertas',        icono: Tag,           roles: ['admin', 'encargado'] },
       { ruta: '/transferencias',       nombre: 'Transferencias',       icono: ArrowLeftRight, roles: ['admin', 'encargado'] },
       { ruta: '/historial-inventario', nombre: 'Historial inventario', icono: ListOrdered,    roles: ['admin', 'encargado'] },
-      { ruta: '/caducidades',          nombre: 'Caducidades',          icono: CalendarX,      roles: ['admin', 'encargado'] },
+      { ruta: '/caducidades',          nombre: 'Caducidades',          icono: CalendarX,      roles: ['admin', 'encargado', 'cajero'] },
     ],
   },
   {
@@ -85,7 +85,7 @@ export default function MobileNav() {
       {/* Bottom nav */}
       <nav className="fixed bottom-0 inset-x-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pointer-events-none">
         <div className="bg-white/90 backdrop-blur-2xl border border-slate-200/70 rounded-3xl shadow-xl shadow-slate-900/5 pointer-events-auto">
-          <div className={cn('grid h-16', esCajero ? 'grid-cols-4' : 'grid-cols-5')}>
+          <div className="grid h-16 grid-cols-5">
 
             {bottomItems.map(item => {
               const Icono = item.icono
@@ -132,18 +132,17 @@ export default function MobileNav() {
               <span className="text-[10px] font-medium leading-none">Alertas</span>
             </button>
 
-            {/* Botón "Más" — solo para admin/encargado */}
-            {!esCajero && (
-              <button
-                onClick={() => setAbierto(true)}
-                className="flex flex-col items-center justify-center gap-0.5 text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                <div className="flex items-center justify-center w-8 h-8 rounded-2xl">
-                  <Menu className="w-5 h-5" strokeWidth={2.2} />
-                </div>
-                <span className="text-[10px] font-medium leading-none">Más</span>
-              </button>
-            )}
+            {/* Botón "Más" — para TODOS los roles. Antes se le quitaba al cajero, y
+                con él perdía la única forma de cerrar sesión en el celular. */}
+            <button
+              onClick={() => setAbierto(true)}
+              className="flex flex-col items-center justify-center gap-0.5 text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              <div className="flex items-center justify-center w-8 h-8 rounded-2xl">
+                <Menu className="w-5 h-5" strokeWidth={2.2} />
+              </div>
+              <span className="text-[10px] font-medium leading-none">Más</span>
+            </button>
           </div>
         </div>
       </nav>

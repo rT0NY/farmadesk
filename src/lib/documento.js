@@ -45,7 +45,7 @@ export function imprimirDocumento(html) {
  *
  * Devuelve null si algo falla, para que el llamador caiga al camino de ventana.
  */
-function porMarcoOculto(html) {
+export function porMarcoOculto(html) {
   let marco
   try {
     marco = document.createElement('iframe')

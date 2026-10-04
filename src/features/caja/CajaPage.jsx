@@ -200,8 +200,12 @@ async function cargarResumenTurno(turno) {
 }
 
 // Ticket del corte. Sirve al cerrar el turno y para reimprimirlo después.
-function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fechaCorte, resultado, otrasFormas = [] }) {
-  const fm = n => '$' + Number(n || 0).toFixed(2)
+// Lleva el detalle completo —ventas del turno, entradas y salidas, otras formas
+// de pago—, igual que el corte de Ventas: antes solo traía el resumen y al
+// guardarlo o reimprimirlo no se podía revisar qué se vendió.
+function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fechaCorte, resultado, otrasFormas = [], ventas = [], movimientos = [], nEfectivo = null }) {
+  // Con separador de miles y el signo antes del peso: "-$10.00", no "$-10.00"
+  const fm = n => formatoMoneda(Number(n || 0))
   const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
   const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
   const aperturaDt = fechaApertura ? new Date(fechaApertura) : new Date()
@@ -222,6 +226,10 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       .bold{font-weight:bold}.total-box{margin-top:6px;padding:5px;border:1px solid #000;display:flex;justify-content:space-between}
       .sec{font-size:11px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
       .neg{font-weight:bold}
+      table{width:100%;border-collapse:collapse}
+      th{font-size:11px;padding:2px 0;border-bottom:1px solid #000;text-align:left}
+      td{padding:2px 0;font-size:11px;vertical-align:top}
+      .r{text-align:right}
     </style></head><body>
       <h2>${escapeHtml(empresaNombre || 'FARMACIA')}</h2>
       <div class="sub">${escapeHtml(sucursalNombre || '')}</div>
@@ -230,7 +238,7 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       <hr>
       <p class="sec">Resumen de caja</p>
       <div class="fila"><span>Fondo inicial</span><span>${fm(resultado.apertura)}</span></div>
-      <div class="fila"><span>Ventas</span><span>+${fm(resultado.ventas)}</span></div>
+      <div class="fila"><span>${nEfectivo === null ? 'Ventas' : `Ventas en efectivo (${nEfectivo})`}</span><span>+${fm(resultado.ventas)}</span></div>
       ${Number(resultado.entradas) > 0 ? `<div class="fila"><span>Entradas manuales</span><span>+${fm(resultado.entradas)}</span></div>` : ''}
       ${Number(resultado.salidas)  > 0 ? `<div class="fila neg"><span>Salidas / Gastos</span><span>-${fm(resultado.salidas)}</span></div>` : ''}
       <div class="total-box bold"><span>Efectivo esperado</span><span>${fm(resultado.esperado)}</span></div>
@@ -242,6 +250,18 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       </div>
       ${otrasFormas.length ? `<hr><p class="sec">Otras formas de pago</p>${otrasFormas.map(f => `<div class="fila"><span>${escapeHtml(f.etiqueta)} (${f.n})</span><span>${fm(f.total)}</span></div>`).join('')}<div class="sub">No entran al cajón</div>` : ''}
       ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${escapeHtml(resultado.nota)}</div>` : ''}
+      <hr>
+      <p class="sec">Ventas del turno (${ventas.length})</p>
+      ${ventas.length === 0 ? '<p style="font-size:11px">Sin ventas</p>' : `
+      <table><thead><tr><th>Folio</th><th>Hora</th><th>Pago</th><th class="r">Total</th></tr></thead>
+      <tbody>${ventas.map(v => `<tr><td>${escapeHtml(generarFolio(v.id, sucursalNombre))}</td><td>${fh(v.creado_en)}</td><td>${escapeHtml(etiquetaForma(formaDe(v)))}</td><td class="r">${fm(v.total)}</td></tr>`).join('')}</tbody></table>`}
+      ${['entrada', 'salida'].map(tipo => {
+        const filas = movimientos.filter(m => m.tipo === tipo)
+        if (!filas.length) return ''
+        return `<hr><p class="sec">${tipo === 'entrada' ? 'Entradas manuales' : 'Salidas manuales'}</p>
+      <table><thead><tr><th>Concepto</th><th>Hora</th><th class="r">Monto</th></tr></thead>
+      <tbody>${filas.map(m => `<tr><td>${escapeHtml(m.descripcion || '—')}</td><td>${fh(m.creado_en)}</td><td class="r">${tipo === 'salida' ? '-' : '+'}${fm(m.monto)}</td></tr>`).join('')}</tbody></table>`
+      }).join('')}
       <hr><div style="text-align:center;font-size:11px;margin-top:6px">Firma: _________________</div>
     </body></html>`
 }
@@ -264,6 +284,7 @@ function ModalCerrarTurno({ turno, sucursalNombre, resumen, onCerrar, onExito })
       fechaApertura:  turno?.fecha_apertura,
       fechaCorte:     new Date(),
       resultado,
+      ...detalleCorte(resumen?.ventas ?? [], resumen?.movimientos ?? []),
     }))
   }
 
@@ -975,6 +996,17 @@ function formasDePago(ventas) {
   return [...grupos.values()].sort((a, b) => orden(a.clave) - orden(b.clave))
 }
 
+// Lo que necesita htmlCorte para imprimir el detalle del turno
+function detalleCorte(ventas, movimientos) {
+  const formas = formasDePago(ventas)
+  return {
+    ventas,
+    movimientos,
+    nEfectivo:   formas.find(f => f.clave === 'efectivo')?.n ?? 0,
+    otrasFormas: formas.filter(f => f.clave !== 'efectivo'),
+  }
+}
+
 function TituloSeccion({ children }) {
   return <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{children}</p>
 }
@@ -1028,7 +1060,7 @@ function ModalCorte({ turno, onClose }) {
         diferencia,
         nota:       turno.nota_cierre,
       },
-      otrasFormas,
+      ...detalleCorte(datos.ventas, datos.movimientos),
     }))
   }
 

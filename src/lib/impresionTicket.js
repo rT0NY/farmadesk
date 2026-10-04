@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { porMarcoOculto } from '@/lib/documento'
 
 /**
  * Imprime un ticket de 80 mm. Es la ÚNICA puerta para imprimir tickets
@@ -41,15 +42,22 @@ export async function abrirImpresion(html) {
   }
 
   // ── Web: ventana aparte y diálogo de impresión del navegador ──
+  // Si el navegador bloquea la ventana (emergentes desactivadas en ese equipo o
+  // para este sitio), se imprime desde un marco oculto dentro de la misma
+  // página: no es una ventana, así que no se puede bloquear. Es el mismo
+  // recurso que ya usa documento.js. Se intenta primero la ventana porque es
+  // el camino probado en iPhone, donde imprimir un marco no es confiable.
+  const porMarco = () => {
+    if (porMarcoOculto(html)) return true
+    toast.error('Impresión bloqueada', {
+      description: 'El navegador bloqueó la impresión. Permite ventanas emergentes para este sitio e intenta de nuevo.',
+      duration: 8000,
+    })
+    return false
+  }
   try {
     const win = window.open('', '_blank', 'width=320,height=600')
-    if (!win || win.closed) {
-      toast.error('Impresión bloqueada', {
-        description: 'El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e intenta de nuevo.',
-        duration: 8000,
-      })
-      return false
-    }
+    if (!win || win.closed) return porMarco()
     win.document.write(html)
     win.document.close()
     win.focus()
