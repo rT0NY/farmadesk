@@ -20,6 +20,7 @@ import { invalidarStock } from '@/lib/cache'
 import { emitirAlerta } from '@/lib/alertas'
 import { traerTodo } from '@/lib/paginado'
 import { abrirImpresion } from '@/lib/impresionTicket'
+import { tablaProductosVendidos, ESTILOS_PRODUCTOS_VENDIDOS, nombresVenta, unidadesVenta } from '@/lib/corteCaja'
 
 // Consulta embebida reutilizable: inventario CON stock en una sucursal + su lote.
 // Solo trae lo que tiene existencias aquí (no todo el inventario histórico).
@@ -59,10 +60,18 @@ function derivarInvLotes(rows) {
   return { inv, lot: [...lotesMap.values()] }
 }
 
+// Ventas del turno abierto, cada una con sus productos. De aquí salen el
+// historial, la reimpresión, "ver ticket" y el corte. Antes los productos se
+// tomaban de las ventas de HOY: una venta de un turno que empezó ayer se
+// reimprimía sin productos, y el corte solo podía mostrar folios.
+const SELECT_VENTAS_TURNO =
+  'id, total, metodo_pago, creado_en, monto_recibido, cambio, ' +
+  'detalle_ventas(id, producto_id, cantidad, precio_unitario, productos(nombre))'
+
 // ─── Modal Ver Ticket ───────────────────────────────────────
 function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }) {
   if (!venta) return null
-  const items  = detalles.filter(d => d.venta_id === venta.id)
+  const items  = venta.detalle_ventas ?? detalles.filter(d => d.venta_id === venta.id)
   const folio  = generarFolio(venta.id, sucursalNombre)
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
@@ -82,7 +91,7 @@ function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }
               return (
                 <div key={d.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-900 truncate">{prod?.nombre || '—'}</p>
+                    <p className="text-sm font-medium text-slate-900 truncate">{d.productos?.nombre || prod?.nombre || '—'}</p>
                     <p className="text-xs text-slate-500">{d.cantidad} x {formatoMoneda(d.precio_unitario)}</p>
                   </div>
                   <p className="text-sm font-bold text-slate-900 tabular-nums">{formatoMoneda(d.cantidad * d.precio_unitario)}</p>
@@ -627,7 +636,7 @@ export default function VentasPage() {
       if (turno?.id) {
         const { data: vtsTurno } = await supabase
           .from('ventas')
-          .select('id, total, metodo_pago, creado_en, monto_recibido, cambio')
+          .select(SELECT_VENTAS_TURNO)
           .eq('turno_id', turno.id)
           .neq('estado', 'cancelada')
           .order('creado_en', { ascending: false })
@@ -668,7 +677,7 @@ export default function VentasPage() {
       if (!errTurnoQ) setTurnoActual(turno)
       if (turno?.id) {
         const { data: vtsTurno } = await supabase
-          .from('ventas').select('id, total, metodo_pago, creado_en, monto_recibido, cambio')
+          .from('ventas').select(SELECT_VENTAS_TURNO)
           .eq('turno_id', turno.id).neq('estado', 'cancelada').order('creado_en', { ascending: false })
         setVentasTurno(vtsTurno || [])
       } else {
@@ -1422,11 +1431,11 @@ export default function VentasPage() {
 
   // ── Reimprimir ticket desde historial ────────────────────────
   function imprimirTicket(venta) {
-    const items = detallesHoy.filter(d => d.venta_id === venta.id)
+    const items = venta.detalle_ventas ?? detallesHoy.filter(d => d.venta_id === venta.id)
     abrirImpresion(buildTicketHtml({
       folio:          generarFolio(venta.id, sucursalActual?.nombre),
       items:          items.map(i => ({
-        nombre:   productos.find(p => p.id === i.producto_id)?.nombre || '—',
+        nombre:   i.productos?.nombre || productos.find(p => p.id === i.producto_id)?.nombre || '—',
         cantidad: i.cantidad,
         precio:   i.precio_unitario,
       })),
@@ -1457,12 +1466,14 @@ export default function VentasPage() {
     const totalSal = salidas.reduce((s, m) => s + Number(m.monto || 0), 0)
     const apertura = Number(turnoActual?.monto_apertura || 0)
     const esperado = apertura + totalEf + totalEnt - totalSal
-    const fm = n => '$' + Number(n || 0).toFixed(2)
+    // Con separador de miles, igual que la tabla de productos
+    const fm = n => formatoMoneda(Number(n || 0))
     const fh = s => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
     const fd = s => new Date(s).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const vtHtml = ventasTurno.map(v =>
-      `<tr><td class="mono">${generarFolio(v.id, sucursalActual?.nombre)}</td><td>${fh(v.creado_en)}</td><td>${v.metodo_pago === 'tarjeta' ? 'Tarjeta' : 'Efectivo'}</td><td class="r">${fm(v.total)}</td></tr>`
-    ).join('')
+    // Qué se vendió, en orden de venta (ventasTurno viene de la más nueva a la
+    // más vieja). Antes solo salía el folio de cada venta.
+    const vtHtml = tablaProductosVendidos([...ventasTurno].reverse(), v =>
+      idsCredito.has(v.id) ? 'A crédito' : v.metodo_pago === 'tarjeta' ? 'Tarjeta' : '')
     const entHtml = entradas.map(m =>
       `<tr><td>${esc(m.descripcion) || '—'}</td><td class="r">${fm(m.monto)}</td></tr>`
     ).join('')
@@ -1490,6 +1501,7 @@ export default function VentasPage() {
       .bold{font-weight:bold}.total-box{margin-top:6px;padding:5px;border:1px solid #000;display:flex;justify-content:space-between}
       .sec{font-size:11px;font-weight:bold;text-transform:uppercase;margin:6px 0 2px}
       .neg{font-weight:bold}
+      ${ESTILOS_PRODUCTOS_VENDIDOS}
     </style></head><body>
       <h2>${esc(empresa?.nombre) || 'FARMACIA'}</h2>
       <div class="sub">${esc(sucursalActual?.nombre)}</div>
@@ -1504,10 +1516,8 @@ export default function VentasPage() {
       ${totalSal > 0 ? `<div class="fila neg"><span>Salidas manuales</span><span>-${fm(totalSal)}</span></div>` : ''}
       <div class="total-box bold"><span>Efectivo esperado</span><span>${fm(esperado)}</span></div>
       <hr>
-      <p class="sec">Ventas del turno (${ventasTurno.length})</p>
-      ${ventasTurno.length === 0 ? '<p style="font-size:11px">Sin ventas</p>' : `
-      <table><thead><tr><th>Folio</th><th>Hora</th><th>Método</th><th class="r">Total</th></tr></thead>
-      <tbody>${vtHtml}</tbody></table>`}
+      <p class="sec">Productos vendidos (${ventasTurno.length} ${ventasTurno.length === 1 ? 'venta' : 'ventas'})</p>
+      ${vtHtml}
       ${entradas.length > 0 ? `<hr><p class="sec">Entradas manuales</p>
       <table><thead><tr><th>Concepto</th><th class="r">Monto</th></tr></thead>
       <tbody>${entHtml}</tbody></table>` : ''}
@@ -1593,7 +1603,7 @@ export default function VentasPage() {
                 iconoIzq={<DollarSign className="w-5 h-5" />}
                 value={montoApertura}
                 onChange={e => setMontoApertura(e.target.value)}
-                placeholder="300.00"
+                placeholder="0.00"
                 onKeyDown={e => e.key === 'Enter' && abrirTurno()}
               />
             </div>
@@ -2064,16 +2074,21 @@ export default function VentasPage() {
           ) : (
             <div className="divide-y divide-slate-100">
               {ventasTurno.map(v => {
-                const items = detallesHoy.filter(d => d.venta_id === v.id)
-                const numProds = items.reduce((a, i) => a + i.cantidad, 0)
+                const items = v.detalle_ventas ?? []
+                const numProds = unidadesVenta(items)
                 const cuentaPendiente = cuentasHoy.find(c => c.venta_id === v.id)
                 return (
                   <div key={v.id} className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="text-xs text-slate-400 w-12 flex-shrink-0 tabular-nums">{formatoHora(v.creado_en)}</div>
+                      {/* En celular la hora pasa al renglón de abajo: deja más
+                          ancho para los nombres de los productos */}
+                      <div className="hidden sm:block text-xs text-slate-400 w-12 flex-shrink-0 tabular-nums">{formatoHora(v.creado_en)}</div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-bold text-slate-900 font-mono">{generarFolio(v.id, sucursalActual?.nombre)}</p>
+                        {/* Lo vendido es el renglón principal; el folio queda abajo */}
+                        <p className="text-sm font-semibold text-slate-900 line-clamp-2 break-words">{nombresVenta(items) || 'Venta'}</p>
+                        <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-0.5">
+                          <span className="text-xs text-slate-400 tabular-nums sm:hidden">{formatoHora(v.creado_en)}</span>
+                          <span className="text-xs text-slate-500 font-mono">{generarFolio(v.id, sucursalActual?.nombre)}</span>
                           {/* Una vez liquidada deja de estar pendiente: el badge
                               tiene que seguir el estado real de la cuenta */}
                           {cuentaPendiente && (

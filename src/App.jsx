@@ -17,7 +17,7 @@ import ProductosPage from '@/features/productos/ProductosPage'
 import InventarioPage from '@/features/inventario/InventarioPage'
 import HistorialInventarioPage from '@/features/inventario/HistorialInventarioPage'
 import CaducidadesPage from '@/features/caducidades/CaducidadesPage'
-import CajaPage from '@/features/caja/CajaPage'
+import CajaPage, { CortesAnterioresPage } from '@/features/caja/CajaPage'
 import VentasPage from '@/features/ventas/VentasPage'
 import OfertasPage from '@/features/ofertas/OfertasPage'
 import GastosPage from '@/features/gastos/GastosPage'
@@ -156,6 +156,7 @@ export default function App() {
       {/* Principal */}
       <Route path="/ventas" element={<RutaNormal><VentasPage /></RutaNormal>} />
       <Route path="/caja" element={<RutaNormal><CajaPage /></RutaNormal>} />
+      <Route path="/caja/cortes" element={<RutaNormal roles={['admin']}><CortesAnterioresPage /></RutaNormal>} />
 
       {/* Catálogo */}
       <Route path="/productos" element={<RutaNormal roles={['admin','encargado']}><ProductosPage /></RutaNormal>} />

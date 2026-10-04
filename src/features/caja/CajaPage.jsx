@@ -1,24 +1,27 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Wallet, Plus, X, Clock, DollarSign, Store,
   LogOut, RefreshCw, AlertTriangle, ArrowDownLeft,
   ArrowUpRight, TrendingUp, TrendingDown, Minus, Check,
   User, ChevronDown, CreditCard, Banknote, Printer, FileText,
+  ArrowLeft, CalendarDays, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { log as logBitacora } from '@/lib/bitacora'
 import { registrarAsistencia } from '@/lib/asistencia'
 import { useApp, useUsuariosEnLinea } from '@/context/AppCtx'
-import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml, inicioDiaUtc, generarFolio } from '@/lib/formatos'
+import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, escapeHtml, inicioDiaUtc, generarFolio, addDias } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
 import { abrirImpresion } from '@/lib/impresionTicket'
+import { tablaProductosVendidos, ESTILOS_PRODUCTOS_VENDIDOS, nombresVenta } from '@/lib/corteCaja'
 import { Modal, ModalHeader, ModalFooter } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { useMediaQuery, DESDE_MD } from '@/hooks/useMediaQuery'
 
 // ─── Modal entrada / salida manual ──────────────────────────────────────────
 function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
@@ -156,7 +159,8 @@ function ModalEntradaSalida({ tipo, turno, onCerrar, onExito }) {
 async function cargarResumenTurno(turno) {
   const [{ data: ventas, error: errV }, { data: movs, error: errM }] = await Promise.all([
     supabase.from('ventas')
-      .select('id, total, metodo_pago, creado_en')
+      // Con sus productos: el corte dice qué se vendió, no solo el folio
+      .select('id, total, metodo_pago, creado_en, detalle_ventas(cantidad, precio_unitario, productos(nombre))')
       .eq('turno_id', turno.id)
       .neq('estado', 'cancelada')
       .order('creado_en', { ascending: true }),
@@ -230,6 +234,7 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       th{font-size:11px;padding:2px 0;border-bottom:1px solid #000;text-align:left}
       td{padding:2px 0;font-size:11px;vertical-align:top}
       .r{text-align:right}
+      ${ESTILOS_PRODUCTOS_VENDIDOS}
     </style></head><body>
       <h2>${escapeHtml(empresaNombre || 'FARMACIA')}</h2>
       <div class="sub">${escapeHtml(sucursalNombre || '')}</div>
@@ -251,10 +256,8 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       ${otrasFormas.length ? `<hr><p class="sec">Otras formas de pago</p>${otrasFormas.map(f => `<div class="fila"><span>${escapeHtml(f.etiqueta)} (${f.n})</span><span>${fm(f.total)}</span></div>`).join('')}<div class="sub">No entran al cajón</div>` : ''}
       ${resultado.nota ? `<hr><div class="sub" style="font-style:italic">Nota: ${escapeHtml(resultado.nota)}</div>` : ''}
       <hr>
-      <p class="sec">Ventas del turno (${ventas.length})</p>
-      ${ventas.length === 0 ? '<p style="font-size:11px">Sin ventas</p>' : `
-      <table><thead><tr><th>Folio</th><th>Hora</th><th>Pago</th><th class="r">Total</th></tr></thead>
-      <tbody>${ventas.map(v => `<tr><td>${escapeHtml(generarFolio(v.id, sucursalNombre))}</td><td>${fh(v.creado_en)}</td><td>${escapeHtml(etiquetaForma(formaDe(v)))}</td><td class="r">${fm(v.total)}</td></tr>`).join('')}</tbody></table>`}
+      <p class="sec">Productos vendidos (${ventas.length} ${ventas.length === 1 ? 'venta' : 'ventas'})</p>
+      ${tablaProductosVendidos(ventas, v => formaDe(v) === 'efectivo' ? '' : etiquetaForma(formaDe(v)))}
       ${['entrada', 'salida'].map(tipo => {
         const filas = movimientos.filter(m => m.tipo === tipo)
         if (!filas.length) return ''
@@ -919,6 +922,21 @@ function FilaCorte({ label, valor, signo = '', clase = 'text-slate-700', fuerte 
   )
 }
 
+// ✓ Cuadre / +$x sobrante / -$x faltante
+function InsigniaDiferencia({ diferencia }) {
+  const d = Number(diferencia || 0)
+  return (
+    <span className={cn(
+      'text-xs font-bold px-2.5 py-1 rounded-full border whitespace-nowrap',
+      d === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+      d  > 0  ? 'bg-sky-100 text-sky-800 border-sky-200' :
+                'bg-red-100 text-red-800 border-red-200'
+    )}>
+      {d === 0 ? '✓ Cuadre' : d > 0 ? `+${formatoMoneda(d)}` : formatoMoneda(d)}
+    </span>
+  )
+}
+
 function TarjetaTurnoCerrado({ t }) {
   const [abierto, setAbierto] = useState(false)
   return (
@@ -930,16 +948,7 @@ function TarjetaTurnoCerrado({ t }) {
           <span className="text-xs text-slate-400">·</span>
           <span className="text-xs text-slate-500">{t.sucursales?.nombre || '—'}</span>
         </div>
-        <span className={cn(
-          'text-xs font-bold px-2.5 py-1 rounded-full border',
-          t.diferencia === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-          t.diferencia  > 0  ? 'bg-sky-100 text-sky-800 border-sky-200' :
-                               'bg-red-100 text-red-800 border-red-200'
-        )}>
-          {t.diferencia === 0 ? '✓ Cuadre' :
-           t.diferencia  > 0  ? `+${formatoMoneda(t.diferencia)}` :
-                                formatoMoneda(t.diferencia)}
-        </span>
+        <InsigniaDiferencia diferencia={t.diferencia} />
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
@@ -1161,8 +1170,8 @@ function ModalCorte({ turno, onClose }) {
                   {datos.ventas.map(v => (
                     <div key={v.id} className="flex items-center justify-between gap-3 py-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-mono text-slate-800">{generarFolio(v.id, sucursalNombre)}</p>
-                        <p className="text-xs text-slate-400">{formatoHora(v.creado_en)} · {etiquetaForma(formaDe(v))}</p>
+                        <p className="text-sm text-slate-800 line-clamp-2">{nombresVenta(v.detalle_ventas) || 'Venta'}</p>
+                        <p className="text-xs text-slate-400">{formatoHora(v.creado_en)} · {etiquetaForma(formaDe(v))} · <span className="font-mono">{generarFolio(v.id, sucursalNombre)}</span></p>
                       </div>
                       <span className="text-sm font-semibold text-slate-900 tabular-nums flex-shrink-0">{formatoMoneda(v.total)}</span>
                     </div>
@@ -1239,6 +1248,7 @@ export default function CajaPage() {
   const usuariosEnLinea = useUsuariosEnLinea()
   const esCajero    = perfil?.rol === 'cajero'
   const esEncargado = perfil?.rol === 'encargado'
+  const esAdmin     = perfil?.rol === 'admin'
   const sucActId    = sucursalActiva?.id ?? perfil?.sucursal_id ?? null
 
   // Memoizado para evitar que useCallback se re-ejecute en cada render
@@ -1308,13 +1318,15 @@ export default function CajaPage() {
       setResumenesPorTurno(resumenes)
 
       // ── Historial hoy (solo sucursales visibles) ──────────────────────────
+      // Por la hora de CIERRE: con la de apertura, un turno abierto ayer y
+      // cerrado hoy (pasada la medianoche) no salía en ningún lado.
       const hoy = fechaEnZona(tz)
       const sucIdsVisibles = sucursalesVisibles.map(s => s.id)
       let histQuery = supabase
         .from('turnos_caja')
         .select('*, perfiles(nombre), sucursales(nombre)')
         .eq('estado', 'cerrado')
-        .gte('fecha_apertura', inicioDiaUtc(hoy, tz))
+        .gte('fecha_cierre', inicioDiaUtc(hoy, tz))
         .order('fecha_cierre', { ascending: false })
         .limit(20)
       if (sucIdsVisibles.length > 0) {
@@ -1476,13 +1488,27 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* Historial de hoy */}
-      {historial.length > 0 && (
+      {/* Historial de hoy. El admin además consulta los de días anteriores;
+          cajero y encargado solo ven sus cortes de hoy. */}
+      {(historial.length > 0 || esAdmin) && (
         <div>
-          <h2 className="text-base font-bold text-slate-900 mb-3">Turnos cerrados hoy</h2>
-          <div className="flex flex-col gap-3">
-            {historial.map(t => <TarjetaTurnoCerrado key={t.id} t={t} />)}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-base font-bold text-slate-900">Turnos cerrados hoy</h2>
+            {esAdmin && (
+              <Link to="/caja/cortes" className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary-700 hover:text-primary-800 transition-colors">
+                Cortes anteriores <ChevronRight className="w-4 h-4" />
+              </Link>
+            )}
           </div>
+          {historial.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {historial.map(t => <TarjetaTurnoCerrado key={t.id} t={t} />)}
+            </div>
+          ) : !cargando && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 text-center text-sm text-slate-400">
+              Hoy no se ha cerrado ningún turno.
+            </div>
+          )}
         </div>
       )}
 
@@ -1502,6 +1528,353 @@ export default function CajaPage() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Cortes anteriores (solo admin) ──────────────────────────────────────────
+// Los últimos 7 días —de ayer hacia atrás; los de hoy ya están en Caja— o un
+// día elegido. Los turnos se agrupan por el día en que se CERRARON, igual que
+// "Turnos cerrados hoy": así cada corte aparece una sola vez, también el de un
+// turno que pasó la medianoche.
+//
+// La lista solo trae los datos del cierre, que son pocos; las ventas y los
+// productos de un corte se descargan al abrirlo (ModalCorte). Los 7 días llegan
+// de 20 en 20 conforme se baja. Como no incluyen hoy, no cambian mientras se
+// recorren, y pedir por posición no repite ni salta cortes.
+const CORTES_POR_TANDA = 20
+const DIAS_ANTERIORES  = 7
+const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
+
+// "Viernes 2 de octubre" (con el año si no es el actual)
+function tituloDia(iso, hoy) {
+  const texto = new Date(iso + 'T12:00:00Z').toLocaleDateString('es-MX', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+    ...(iso.slice(0, 4) !== hoy.slice(0, 4) && { year: 'numeric' }),
+  }).replace(',', '')
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+
+// "08:02 – 15:31"; si el turno empezó otro día, también ese día: "jue 1 20:00 – 01:30"
+function horarioTurno(t, tz) {
+  const ap = new Date(t.fecha_apertura)
+  const ci = new Date(t.fecha_cierre)
+  const inicio = isoEnZona(ap, tz) !== isoEnZona(ci, tz)
+    ? `${ap.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', timeZone: tz })} ${formatoHora(ap)}`
+    : formatoHora(ap)
+  return `${inicio} – ${formatoHora(ci)}`
+}
+
+// Abre el calendario del propio teléfono o computadora, el mismo de Bitácora y
+// Reportes. El campo de fecha va encima del botón, transparente: en el celular
+// el toque lo abre directo, y en computadora showPicker() lo despliega aunque
+// no se atine al iconito del campo.
+function SelectorFecha({ valor, min, max, onElegir, className, children }) {
+  return (
+    <label className={cn('relative cursor-pointer', className)}>
+      {children}
+      <input
+        type="date"
+        value={valor ?? ''}
+        min={min ?? undefined}
+        max={max}
+        onChange={e => { if (e.target.value) onElegir(e.target.value) }}
+        onClick={e => { try { e.currentTarget.showPicker?.() } catch { /* el navegador ya abre el suyo */ } }}
+        aria-label="Consultar fecha"
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+      />
+    </label>
+  )
+}
+
+// Celular: renglón compacto, todo él abre el corte
+function FilaCorteAnterior({ t, tz, onAbrir }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onAbrir(t)}
+      className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-slate-900 truncate">
+          {t.perfiles?.nombre || '—'}
+          <span className="font-normal text-slate-500"> · {t.sucursales?.nombre || '—'}</span>
+        </p>
+        {/* Horario y contado en renglones propios: juntos no caben en un
+            celular y el monto se partía a la mitad */}
+        <p className="text-xs text-slate-500 tabular-nums mt-0.5">{horarioTurno(t, tz)}</p>
+        <p className="text-xs text-slate-500 tabular-nums">Contado {formatoMoneda(t.monto_contado)}</p>
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <InsigniaDiferencia diferencia={t.diferencia} />
+        <ChevronRight className="w-4 h-4 text-slate-300" />
+      </div>
+    </button>
+  )
+}
+
+// Computadora: tabla con los mismos estilos que components/ui/Table. Anchos
+// fijos para que las columnas de todos los días queden alineadas.
+const COLUMNAS_CORTES = [
+  ['Cajero',     'left',  'w-[17%]'],
+  ['Sucursal',   'left',  'w-[19%]'],
+  ['Horario',    'left',  'w-[23%]'],
+  ['Esperado',   'right', 'w-[11%]'],
+  ['Contado',    'right', 'w-[11%]'],
+  ['Diferencia', 'right', 'w-[10%]'],
+  ['',           'right', 'w-[9%]'],
+]
+
+function TablaCortes({ cortes, tz, onAbrir }) {
+  return (
+    <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-card">
+      <table className="w-full table-fixed">
+        <thead className="bg-slate-50/70 border-b border-slate-200">
+          <tr>
+            {COLUMNAS_CORTES.map(([titulo, alinear, ancho]) => (
+              <th key={titulo || 'accion'} className={cn(
+                'px-3 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider',
+                alinear === 'right' ? 'text-right' : 'text-left', ancho,
+              )}>{titulo}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {cortes.map(t => (
+            <tr key={t.id} onClick={() => onAbrir(t)} className="hover:bg-slate-50/70 transition-colors cursor-pointer">
+              <td className="px-3 py-2.5 text-sm font-semibold text-slate-900 truncate">{t.perfiles?.nombre || '—'}</td>
+              <td className="px-3 py-2.5 text-sm text-slate-600 truncate">{t.sucursales?.nombre || '—'}</td>
+              <td className="px-3 py-2.5 text-sm text-slate-600 tabular-nums">{horarioTurno(t, tz)}</td>
+              <td className="px-3 py-2.5 text-sm text-slate-900 tabular-nums text-right">{formatoMoneda(t.monto_esperado)}</td>
+              <td className="px-3 py-2.5 text-sm text-slate-900 tabular-nums text-right">{formatoMoneda(t.monto_contado)}</td>
+              <td className="px-3 py-2.5 text-right"><InsigniaDiferencia diferencia={t.diferencia} /></td>
+              <td className="px-3 py-2.5 text-right">
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); onAbrir(t) }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700 hover:text-primary-800"
+                >
+                  <FileText className="w-3.5 h-3.5" /> Ver corte
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export function CortesAnterioresPage() {
+  const { sucursales, tz } = useApp()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [params, setParams] = useSearchParams()
+  const escritorio = useMediaQuery(DESDE_MD)
+
+  const hoy  = fechaEnZona(tz)
+  const ayer = addDias(hoy, -1)
+  // El día va en la dirección (?dia=2026-09-16): el botón "atrás" del teléfono
+  // regresa a los 7 días y al recargar se queda en el mismo día. Como se puede
+  // escribir a mano, se valida: formato correcto y anterior a hoy.
+  const pedido = params.get('dia') ?? ''
+  const dia = ES_FECHA.test(pedido) && pedido <= ayer ? pedido : null
+
+  const sucIds = useMemo(() => sucursales.map(s => s.id), [sucursales])
+  const [cortes,    setCortes]    = useState([])
+  const [cargando,  setCargando]  = useState(true)
+  const [hayMas,    setHayMas]    = useState(false)
+  const [error,     setError]     = useState(false)
+  const [primerDia, setPrimerDia] = useState(null)
+  const [abierto,   setAbierto]   = useState(null)
+  // Número de la consulta vigente: si se cambia de día mientras otra venía en
+  // camino, la que llega tarde se descarta en vez de mezclar días.
+  const pedidoRef    = useRef(0)
+  const ocupadoRef   = useRef(false)
+  const cuantosRef   = useRef(0)
+  const centinelaRef = useRef(null)
+
+  const cargar = useCallback(async (reiniciar) => {
+    if (!reiniciar && ocupadoRef.current) return
+    const n = reiniciar ? ++pedidoRef.current : pedidoRef.current
+    ocupadoRef.current = true
+    setCargando(true)
+    setError(false)
+    if (reiniciar) { cuantosRef.current = 0; setCortes([]); setHayMas(false) }
+
+    let filas = null
+    try {
+      let q = supabase
+        .from('turnos_caja')
+        .select('*, perfiles(nombre), sucursales(nombre)')
+        .eq('estado', 'cerrado')
+        .gte('fecha_cierre', inicioDiaUtc(dia ?? addDias(hoy, -DIAS_ANTERIORES), tz))
+        .lt('fecha_cierre', inicioDiaUtc(dia ? addDias(dia, 1) : hoy, tz))
+        .order('fecha_cierre', { ascending: false })
+        .order('id', { ascending: false })
+      if (sucIds.length > 0) q = q.in('sucursal_id', sucIds)
+      // Un día tiene pocos cortes: llega completo. Los 7 días, por tandas.
+      const desde = cuantosRef.current
+      q = dia ? q.limit(500) : q.range(desde, desde + CORTES_POR_TANDA - 1)
+      const { data, error: err } = await q
+      if (!err) filas = data ?? []
+    } catch { /* se avisa abajo */ }
+
+    if (n !== pedidoRef.current) return
+    ocupadoRef.current = false
+    setCargando(false)
+    if (!filas) { setError(true); return }
+    cuantosRef.current += filas.length
+    setCortes(prev => {
+      const vistos = new Set(prev.map(t => t.id))
+      return [...prev, ...filas.filter(t => !vistos.has(t.id))]
+    })
+    setHayMas(!dia && filas.length === CORTES_POR_TANDA)
+  }, [dia, hoy, tz, sucIds])
+
+  useEffect(() => { cargar(true) }, [cargar])
+
+  // El primer corte registrado: el calendario no ofrece días anteriores a él
+  useEffect(() => {
+    let vivo = true
+    let q = supabase
+      .from('turnos_caja')
+      .select('fecha_cierre')
+      .eq('estado', 'cerrado')
+      .order('fecha_cierre', { ascending: true })
+      .limit(1)
+    if (sucIds.length > 0) q = q.in('sucursal_id', sucIds)
+    q.then(({ data }) => {
+      if (vivo && data?.[0]?.fecha_cierre) setPrimerDia(isoEnZona(new Date(data[0].fecha_cierre), tz))
+    }, () => {})
+    return () => { vivo = false }
+  }, [sucIds, tz])
+
+  // Al acercarse al final de la lista se pide la siguiente tanda. Se vuelve a
+  // observar después de cada carga: si la lista todavía no llena la pantalla,
+  // sigue pidiendo sin esperar a que se deslice.
+  useEffect(() => {
+    const el = centinelaRef.current
+    if (!el || !hayMas || cargando) return
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) cargar(false) }, { rootMargin: '0px 0px 400px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hayMas, cargando, cargar])
+
+  const grupos = useMemo(() => {
+    const porDia = new Map()
+    for (const t of cortes) {
+      const d = isoEnZona(new Date(t.fecha_cierre), tz)
+      if (!porDia.has(d)) porDia.set(d, [])
+      porDia.get(d).push(t)
+    }
+    return [...porDia]
+  }, [cortes, tz])
+
+  // Entrar a un día desde la lista agrega un paso al historial ("atrás" regresa
+  // a los 7 días); moverse entre días lo reemplaza, para no tener que tocar
+  // "atrás" una vez por cada día recorrido.
+  function irADia(nuevo, desdeLista = false) {
+    let d = nuevo > ayer ? ayer : nuevo
+    if (primerDia && d < primerDia) d = primerDia
+    if (d === dia) return
+    setParams({ dia: d }, desdeLista ? { state: { desdeLista: true } } : { replace: true, state: location.state })
+  }
+  function volverALista() {
+    if (location.state?.desdeLista) navigate(-1)
+    else setParams({}, { replace: true })
+  }
+
+  const botonFlecha = 'w-11 h-11 flex-shrink-0 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:border-slate-300 transition-colors disabled:opacity-40 disabled:pointer-events-none'
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Encabezado */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate('/caja')}
+          aria-label="Volver a Caja"
+          className="w-10 h-10 flex-shrink-0 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:border-slate-300 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Cortes anteriores</h1>
+      </div>
+
+      {/* Periodo: los 7 días, o el día elegido con sus flechas */}
+      {dia ? (
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button onClick={() => irADia(addDias(dia, -1))} disabled={!!primerDia && dia <= primerDia} aria-label="Día anterior" className={botonFlecha}>
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <SelectorFecha valor={dia} min={primerDia} max={ayer} onElegir={d => irADia(d)}
+              className="flex-1 sm:flex-none sm:min-w-[300px] min-w-0 h-11 px-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-white border border-slate-200 hover:border-slate-300 text-sm font-semibold text-slate-900 transition-colors">
+              <CalendarDays className="w-4 h-4 text-primary-600 flex-shrink-0" />
+              <span className="truncate">{tituloDia(dia, hoy)}</span>
+            </SelectorFecha>
+            <button onClick={() => irADia(addDias(dia, 1))} disabled={dia >= ayer} aria-label="Día siguiente" className={botonFlecha}>
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+          <button onClick={volverALista} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+            <X className="w-3.5 h-3.5" /> Volver a últimos 7 días
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">Últimos 7 días</p>
+          <SelectorFecha valor="" min={primerDia} max={ayer} onElegir={d => irADia(d, true)}
+            className="h-10 px-3.5 inline-flex items-center gap-2 rounded-2xl bg-white border border-slate-200 hover:border-slate-300 text-sm font-semibold text-slate-700 transition-colors">
+            <CalendarDays className="w-4 h-4 text-primary-600" />
+            Consultar fecha
+          </SelectorFecha>
+        </div>
+      )}
+
+      {/* Cortes, agrupados por día */}
+      {grupos.map(([d, lista]) => (
+        <section key={d}>
+          {!dia && (
+            <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{tituloDia(d, hoy)}</h2>
+          )}
+          {escritorio ? (
+            <TablaCortes cortes={lista} tz={tz} onAbrir={setAbierto} />
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+              {lista.map(t => <FilaCorteAnterior key={t.id} t={t} tz={tz} onAbrir={setAbierto} />)}
+            </div>
+          )}
+        </section>
+      ))}
+
+      {cargando && (
+        <div className="flex flex-col gap-2"><Skeleton className="h-16" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
+      )}
+
+      {error && !cargando && (
+        <div className="text-center py-6 space-y-2">
+          <p className="text-sm text-red-600">No se pudieron cargar los cortes.</p>
+          <button onClick={() => cargar(cortes.length === 0)} className="text-sm font-semibold text-primary-700 hover:text-primary-800">
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* Marca invisible al final: al acercarse, se pide la siguiente tanda */}
+      {hayMas && <div ref={centinelaRef} className="h-1" aria-hidden="true" />}
+
+      {/* Para otra fecha está "Consultar fecha" arriba a la derecha */}
+      {!cargando && !error && !hayMas && !dia && (
+        <p className="text-sm text-slate-500 text-center py-4">
+          {cortes.length > 0 ? 'Se muestran los cortes de los últimos 7 días.' : 'No hay cortes en los últimos 7 días.'}
+        </p>
+      )}
+
+      {!cargando && !error && dia && cortes.length === 0 && (
+        <p className="text-sm text-slate-400 text-center py-10">No se cerró ningún turno el {tituloDia(dia, hoy).toLowerCase()}.</p>
+      )}
+
+      {abierto && <ModalCorte turno={abierto} onClose={() => setAbierto(null)} />}
     </div>
   )
 }
