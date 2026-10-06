@@ -2,6 +2,38 @@ import { toast } from 'sonner'
 import { porMarcoOculto } from '@/lib/documento'
 
 /**
+ * Ancho de TODOS los tickets (venta, reimpresión y cortes). Va al final del
+ * <style> de cada plantilla, para que mande sobre lo demás.
+ *
+ * El ticket se diseña para el área que la impresora SÍ imprime, no para el
+ * ancho del papel. En rollo de 80 mm casi todas las térmicas (Epson, Xprinter,
+ * Star, Bixolon) imprimen 72 mm; en rollo de 58 mm, 48 mm. Antes el ticket
+ * medía 80 mm: en la Epson de Dulce Nombre se perdían los ~6 mm de la derecha
+ * —importes, total, "Efectivo"— y en la impresora de la otra sucursal no se
+ * notaba porque esa imprime casi todo el ancho. A 72 mm sale completo en ambas.
+ *
+ * El navegador no sabe cuánto imprime cada impresora, pero sí qué papel tiene
+ * seleccionado: al imprimir, (max-width) se evalúa contra el ancho del papel.
+ * Medido en Edge/Chrome: rollo de 58 mm ≈ 219 px, de 80 mm ≈ 302 px. Con papel
+ * de 58 mm el ticket se acomoda solo a 48 mm, sin configurar nada por sucursal
+ * ni por equipo.
+ */
+export const CSS_ANCHO_TICKET =
+  'body{width:72mm;padding:8px 2mm;overflow-wrap:break-word}' +
+  // Un nombre largo sin espacios (AMOXICILINA/ACIDOCLAVULANICO…) estiraba la
+  // tabla y empujaba los importes fuera del papel, en cualquier impresora. Solo
+  // las columnas de texto se pueden partir; importes y horas, nunca.
+  'tbody td:first-child,.prod td:nth-child(2){overflow-wrap:anywhere}' +
+  '@media print and (max-width:260px){' +
+    'body{width:48mm;padding:6px 1.5mm;font-size:11px}' +
+    'h2{font-size:13px}' +
+    '.folio{font-size:12px;letter-spacing:1px}' +
+    'th{font-size:10px}td{font-size:11px}' +
+    '.fila{font-size:11px}.total{font-size:13px}' +
+    '.prod td{font-size:10px}' +
+  '}'
+
+/**
  * Imprime un ticket de 80 mm. Es la ÚNICA puerta para imprimir tickets
  * (venta, reimpresión y cortes de caja): había dos copias de esta función, una
  * en Ventas y otra en Caja, y un arreglo en una no llegaba a la otra.

@@ -17,7 +17,7 @@ import { formatoMoneda, formatoHora, formatoFechaHora, fechaEnZona, isoEnZona, e
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
-import { abrirImpresion } from '@/lib/impresionTicket'
+import { abrirImpresion, CSS_ANCHO_TICKET } from '@/lib/impresionTicket'
 import { tablaProductosVendidos, ESTILOS_PRODUCTOS_VENDIDOS, nombresVenta } from '@/lib/corteCaja'
 import { Modal, ModalHeader, ModalFooter } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -221,7 +221,7 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       /* Impresoras térmicas: solo negro. Un gris sale en puntitos y en letra
          chica se borra; la letra monoespaciada delgada se rompe. Salidas
          y faltantes ya llevan signo y etiqueta: van en negritas, no en rojo. */
-      body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;width:80mm;padding:8px}
+      body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000}
       h2{text-align:center;font-size:15px;margin-bottom:2px}
       .sub{text-align:center;font-size:11px;margin-bottom:2px}
       .fecha{text-align:center;font-size:11px;margin-bottom:6px}
@@ -235,6 +235,7 @@ function htmlCorte({ empresaNombre, sucursalNombre, operador, fechaApertura, fec
       td{padding:2px 0;font-size:11px;vertical-align:top}
       .r{text-align:right}
       ${ESTILOS_PRODUCTOS_VENDIDOS}
+      ${CSS_ANCHO_TICKET}
     </style></head><body>
       <h2>${escapeHtml(empresaNombre || 'FARMACIA')}</h2>
       <div class="sub">${escapeHtml(sucursalNombre || '')}</div>

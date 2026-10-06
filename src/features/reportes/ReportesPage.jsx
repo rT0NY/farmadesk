@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { traerTodo } from '@/lib/paginado'
 import { useApp } from '@/context/AppCtx'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
-import { formatoMoneda, isoEnZona, fechaEnZona, addDias, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
+import { formatoMoneda, isoEnZona, fechaEnZona, addDias, dowEnZona, inicioDiaUtc, finDiaUtc } from '@/lib/formatos'
 import { CATEGORIAS_GASTO } from '@/lib/constantes'
 import { cn } from '@/lib/clases'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -38,6 +38,52 @@ function monedaCorta(v) {
   if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}k`
   return `$${Math.round(v)}`
 }
+
+// ─── Costo de personal del período ────────────────────────────────────────────
+// Mismas reglas que Salarios: semanas de lunes a domingo. Si la semana ya
+// existe, mandan sus días marcados —el admin pudo corregirlos a mano— y su
+// propio salario por día. Si nadie la ha abierto todavía en Salarios, se
+// calcula como Salarios al crearla: días con turno de caja × salario diario.
+//
+// Solo cuentan los días que caen DENTRO del período. Antes se sumaba la semana
+// completa en cuanto tocaba el período —con "7 días" se podían cobrar hasta seis
+// días de sueldo de más— y las semanas que nadie había abierto en Salarios no
+// existían para el reporte: ese sueldo faltaba y la ganancia salía inflada.
+function salariosDelPeriodo({ semanas, salarios, turnos, inicio, fin, tz }) {
+  const porUsuario = {}
+  const sumar = (uid, monto) => { porUsuario[uid] = (porUsuario[uid] ?? 0) + monto }
+
+  // Días que ya cubre una semana registrada (marcados o no): un turno en un día
+  // que el admin desmarcó no debe volver a contarse.
+  const cubiertos = new Set()
+  for (const s of semanas) {
+    if (!s.semana_inicio) continue
+    for (let i = 0; i < 7; i++) cubiertos.add(`${s.usuario_id}|${addDias(s.semana_inicio, i)}`)
+    const dias   = Array.isArray(s.dias_marcados) ? s.dias_marcados : []
+    const porDia = Number(s.dias_trabajados) > 0 ? Number(s.total_calculado || 0) / Number(s.dias_trabajados) : 0
+    const dowInicio = dowEnZona(s.semana_inicio)
+    for (const d of dias) {
+      const fecha = addDias(s.semana_inicio, (Number(d) - dowInicio + 7) % 7)
+      if (fecha >= inicio && fecha <= fin) sumar(s.usuario_id, porDia)
+    }
+  }
+
+  const salarioDiario = {}
+  for (const x of salarios) salarioDiario[x.usuario_id] = Number(x.salario_diario) || 0
+  const contados = new Set()
+  for (const t of turnos) {
+    const fecha = isoEnZona(new Date(t.fecha_apertura), tz)
+    const clave = `${t.usuario_id}|${fecha}`
+    if (fecha < inicio || fecha > fin || cubiertos.has(clave) || contados.has(clave)) continue
+    contados.add(clave)
+    if (salarioDiario[t.usuario_id] > 0) sumar(t.usuario_id, salarioDiario[t.usuario_id])
+  }
+  return porUsuario
+}
+
+// Una consulta por tandas que falla no tumba el reporte completo: se avisa y
+// se sigue con lo demás, como con las consultas sencillas.
+const sinTumbar = (promesa) => promesa.then(data => ({ data, error: null }), error => ({ data: null, error }))
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
@@ -144,6 +190,8 @@ export default function ReportesPage() {
         { data: semanas,     error: e3 },
         { data: perfilesData,error: e4 },
         { data: porCobrarRows },
+        { data: salariosData, error: e5 },
+        { data: turnosData,   error: e6 },
       ] = await Promise.all([
         // Por tandas. Sin esto Supabase cortaba en 1,000 ventas sin avisar, y
         // como la consulta tampoco llevaba orden explícito, PostgREST resolvía
@@ -156,14 +204,20 @@ export default function ReportesPage() {
                 .neq('estado', 'cancelada')
                 .gte('creado_en', inicioDiaUtc(inicio, tz))
                 .lte('creado_en', finDiaUtc(fin, tz))),
-        supabase.from('gastos')
-          .select('monto, categoria, sucursal_id')
-          .eq('empresa_id', empresa.id)
-          .gte('fecha', inicio)
-          .lte('fecha', fin),
-        supabase.from('semanas_salario')
-          .select('total_calculado, semana_inicio, usuario_id')
-          .eq('empresa_id', empresa.id),
+        // Por tandas también: con "Todo" o "Este año" los gastos pasarán de mil
+        sinTumbar(traerTodo(() => supabase.from('gastos'),
+          'id, monto, categoria, sucursal_id',
+          q => q.eq('empresa_id', empresa.id)
+                .gte('fecha', inicio)
+                .lte('fecha', fin))),
+        // Solo las semanas que tocan el período. Antes se pedía la tabla
+        // entera, sin orden ni tandas: al pasar de mil semanas se iban a
+        // perder unas al azar.
+        sinTumbar(traerTodo(() => supabase.from('semanas_salario'),
+          'id, usuario_id, semana_inicio, dias_marcados, dias_trabajados, total_calculado',
+          q => q.eq('empresa_id', empresa.id)
+                .gte('semana_inicio', addDias(inicio, -6))
+                .lte('semana_inicio', fin))),
         supabase.from('perfiles')
           .select('id, nombre, sucursal_id')
           .eq('empresa_id', empresa.id),
@@ -175,22 +229,30 @@ export default function ReportesPage() {
           .eq('pagada', false)
           .gte('creado_en', inicioDiaUtc(inicio, tz))
           .lte('creado_en', finDiaUtc(fin, tz)),
+        // Para las semanas que nadie ha abierto en Salarios: salario diario y
+        // los días en que cada quien abrió turno
+        supabase.from('salarios')
+          .select('usuario_id, salario_diario')
+          .eq('empresa_id', empresa.id),
+        sinTumbar(traerTodo(() => supabase.from('turnos_caja'),
+          'id, usuario_id, fecha_apertura',
+          q => q.eq('empresa_id', empresa.id)
+                .gte('fecha_apertura', inicioDiaUtc(inicio, tz))
+                .lte('fecha_apertura', finDiaUtc(fin, tz)))),
       ])
 
       if (e2 || e4) toast.error('Error al cargar datos del reporte. Algunos números pueden estar incompletos.')
-      if (e3) toast.warning('No se pudieron cargar los salarios. Los costos de nómina no estarán incluidos.')
+      if (e3 || e5 || e6) toast.warning('No se pudieron cargar los salarios. Los costos de nómina pueden estar incompletos.')
 
       // Mapa de perfil por usuario_id
       const perfilMap = {}
       for (const p of (perfilesData ?? [])) perfilMap[p.id] = p
 
-      // Filtrar semanas que se superponen con el período
-      const semanasFiltradas = (semanas ?? []).filter(s => {
-        if (!s.semana_inicio) return false
-        const semFin = new Date(s.semana_inicio + 'T12:00:00')
-        semFin.setDate(semFin.getDate() + 6)
-        return s.semana_inicio <= fin && isoEnZona(semFin, tz) >= inicio
+      // Sueldo de cada empleado que corresponde a los días del período
+      const salarioPorUsuario = salariosDelPeriodo({
+        semanas: semanas ?? [], salarios: salariosData ?? [], turnos: turnosData ?? [], inicio, fin, tz,
       })
+      const salariosLista = Object.entries(salarioPorUsuario)
 
       // Detalles con costo.
       //
@@ -225,7 +287,7 @@ export default function ReportesPage() {
       // ── Totales globales ───────────────────────────────────────────────────
       const totalIngresos = (ventas  ?? []).reduce((a, v) => a + (v.total           ?? 0), 0)
       const totalGastos   = (gastos  ?? []).reduce((a, g) => a + (g.monto           ?? 0), 0)
-      const totalSalarios = semanasFiltradas.reduce((a, s) => a + (s.total_calculado ?? 0), 0)
+      const totalSalarios = salariosLista.reduce((a, [, monto]) => a + monto, 0)
       const totalCOGS     = detalles.reduce((a, d) =>
         a + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0), 0)
 
@@ -255,9 +317,9 @@ export default function ReportesPage() {
         if (g.sucursal_id && sucMap[g.sucursal_id]) sucMap[g.sucursal_id].gastos += g.monto ?? 0
         else gastosGenerales += g.monto ?? 0
       }
-      for (const s of semanasFiltradas) {
-        const sid = perfilMap[s.usuario_id]?.sucursal_id
-        if (sid && sucMap[sid]) sucMap[sid].salarios += s.total_calculado ?? 0
+      for (const [uid, monto] of salariosLista) {
+        const sid = perfilMap[uid]?.sucursal_id
+        if (sid && sucMap[sid]) sucMap[sid].salarios += monto
       }
       const sucursalesData = Object.values(sucMap)
         .map(s => ({
@@ -336,10 +398,8 @@ export default function ReportesPage() {
 
       // ── Salarios por empleado ──────────────────────────────────────────────
       const salEmp = {}
-      for (const s of semanasFiltradas) {
-        const uid = s.usuario_id
-        if (!salEmp[uid]) salEmp[uid] = { nombre: perfilMap[uid]?.nombre ?? '—', total: 0 }
-        salEmp[uid].total += s.total_calculado ?? 0
+      for (const [uid, monto] of salariosLista) {
+        salEmp[uid] = { nombre: perfilMap[uid]?.nombre ?? '—', total: monto }
       }
 
       // ── Top productos ──────────────────────────────────────────────────────
@@ -362,7 +422,7 @@ export default function ReportesPage() {
         const idsVts    = new Set(vtsSuc.map(v => v.id))
         const detSuc    = detalles.filter(d => idsVts.has(d.venta_id))
         const gtsSuc    = (gastos ?? []).filter(g => g.sucursal_id === suc.id)
-        const semSuc    = semanasFiltradas.filter(s => perfilMap[s.usuario_id]?.sucursal_id === suc.id)
+        const salSuc    = salariosLista.filter(([uid]) => perfilMap[uid]?.sucursal_id === suc.id)
 
         const ingSuc = {}; const cogSuc = {}
         for (const v of vtsSuc) {
@@ -394,15 +454,12 @@ export default function ReportesPage() {
         for (const g of gtsSuc) gcSuc[g.categoria] = (gcSuc[g.categoria] ?? 0) + (g.monto ?? 0)
 
         const slSuc = {}
-        for (const s of semSuc) {
-          if (!slSuc[s.usuario_id]) slSuc[s.usuario_id] = { nombre: perfilMap[s.usuario_id]?.nombre ?? '—', total: 0 }
-          slSuc[s.usuario_id].total += s.total_calculado ?? 0
-        }
+        for (const [uid, monto] of salSuc) slSuc[uid] = { nombre: perfilMap[uid]?.nombre ?? '—', total: monto }
 
         const tIng  = vtsSuc.reduce((a, v) => a + (v.total ?? 0), 0)
         const tCogs = detSuc.reduce((a, d) => a + (d.cantidad ?? 0) * Number(d.costo_unitario ?? d.productos?.precio_compra ?? 0), 0)
         const tGts  = gtsSuc.reduce((a, g) => a + (g.monto ?? 0), 0)
-        const tSal  = semSuc.reduce((a, s) => a + (s.total_calculado ?? 0), 0)
+        const tSal  = salSuc.reduce((a, [, monto]) => a + monto, 0)
         const tGan  = tIng - tCogs - tGts - tSal
 
         return {
@@ -443,7 +500,7 @@ export default function ReportesPage() {
     return () => { activo = false }
   }, [empresa?.id, periodo, fechaInicio, fechaFin, refreshKey])
 
-  const { inicio, fin } = calcRango(periodo, fechaInicio, fechaFin)
+  const { inicio, fin } = calcRango(periodo, fechaInicio, fechaFin, tz)
 
   function exportarCSV() {
     if (!datos || !inicio || !fin) return
