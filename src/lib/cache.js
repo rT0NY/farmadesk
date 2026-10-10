@@ -1,14 +1,20 @@
 import { queryClient } from '@/lib/queryClient'
 import { supabase } from '@/lib/supabase'
 
+// Memoria de la pantalla de Ventas entre visitas (ver VentasPage). No se parcha
+// renglón por renglón: solo se marca como vieja, y al volver a Ventas se pide lo
+// que haga falta.
+export const CLAVE_VENTAS_EXISTENCIAS = 'ventas_dinamico'
+export const CLAVE_VENTAS_CATALOGO    = 'ventas_catalogo'
+
 // Consultas cacheadas que muestran existencias. Se invalidan por prefijo, así que
 // no hace falta conocer el empresa_id que llevan como segundo elemento.
-const CLAVES_STOCK = [['inventario_completo'], ['productos']]
+const CLAVES_STOCK = [['inventario_completo'], ['productos'], [CLAVE_VENTAS_EXISTENCIAS]]
 
 // Catálogo del buscador de "Agregar inventario". No muestra existencias, pero
 // sí nombres, precios y códigos: sin marcarlo, un producto recién creado no
 // aparecía ahí hasta que vencían sus 10 minutos de caché.
-const CLAVES_CATALOGO = [['inv_productos'], ['inv_codigos']]
+const CLAVES_CATALOGO = [['inv_productos'], ['inv_codigos'], [CLAVE_VENTAS_CATALOGO]]
 
 /**
  * Marca como obsoleto el inventario en caché. Llamar después de CUALQUIER
@@ -159,6 +165,9 @@ function aplicarCatalogo(filas, vigentes) {
  * cuando cambió el producto en sí (nombre, precios, códigos), no solo su stock.
  */
 export async function actualizarProductos(ids, { catalogo = false } = {}) {
+  // Ventas no tiene renglones que parchar: basta con marcarla
+  queryClient.invalidateQueries({ queryKey: [CLAVE_VENTAS_EXISTENCIAS] })
+  if (catalogo) queryClient.invalidateQueries({ queryKey: [CLAVE_VENTAS_CATALOGO] })
   const unicos = [...new Set((ids || []).filter(Boolean))]
   if (!unicos.length || unicos.length > TOPE_RENGLONES) {
     invalidarStock()

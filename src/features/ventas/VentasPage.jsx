@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
-import { invalidarStock } from '@/lib/cache'
+import { invalidarStock, CLAVE_VENTAS_CATALOGO, CLAVE_VENTAS_EXISTENCIAS } from '@/lib/cache'
+import { queryClient } from '@/lib/queryClient'
 import { emitirAlerta } from '@/lib/alertas'
 import { traerTodo } from '@/lib/paginado'
 import { abrirImpresion, CSS_ANCHO_TICKET } from '@/lib/impresionTicket'
@@ -43,6 +44,56 @@ const CATALOGO_MS = 15 * 60_000
 // momento del cobro: una oferta vieja en la caja termina en un cobro rechazado.
 const OFERTAS_MS = 5 * 60_000
 
+// ─── Memoria de la pantalla entre visitas ────────────────────────────────────
+// Antes, cada vez que se volvía a Ventas desde otra pantalla se bajaba TODO de
+// cero —2,400 productos, 2,400 códigos, inventario, ventas del día— y la caja
+// se quedaba en blanco de 2 a 4 segundos. Ahora lo último que se tenía queda en
+// la memoria de la app (la misma de React Query que usan Productos e
+// Inventario), por usuario y sucursal, y al volver se muestra al instante. Por
+// detrás se pide solo lo que hace falta:
+//   - existencias, ventas, turno, cuentas y ofertas: si tienen más de 30 s, o si
+//     algo movió el stock (una venta en otra caja, un alta de inventario, una
+//     transferencia, un pedido recibido, una cancelación: todos avisan con
+//     invalidarStock / actualizarProductos);
+//   - el catálogo (productos, códigos, deshabilitados): si tiene más de 15 min o
+//     si se creó o editó un producto (invalidarCatalogo).
+// El cobro no depende de esta memoria: registrar_venta revisa existencias, lote
+// y precio mínimo en el servidor.
+const DINAMICO_MS = 30_000
+const MEMORIA_MS  = 8 * 60 * 60_000
+queryClient.setQueryDefaults([CLAVE_VENTAS_CATALOGO],    { gcTime: MEMORIA_MS })
+queryClient.setQueryDefaults([CLAVE_VENTAS_EXISTENCIAS], { gcTime: MEMORIA_MS })
+const claveCatalogo = (perfilId, sucursalId, cols) => [CLAVE_VENTAS_CATALOGO, perfilId, sucursalId, cols]
+const claveDinamico = (perfilId, sucursalId) => [CLAVE_VENTAS_EXISTENCIAS, perfilId, sucursalId]
+
+// Lo guardado para este usuario y sucursal, y qué parte hay que volver a pedir
+function leerMemoria(perfilId, sucursalId, cols) {
+  if (!perfilId || !sucursalId) return null
+  const kc = claveCatalogo(perfilId, sucursalId, cols)
+  const kd = claveDinamico(perfilId, sucursalId)
+  const cat = queryClient.getQueryData(kc)
+  const din = queryClient.getQueryData(kd)
+  if (!cat || !din) return null
+  const ahora = Date.now()
+  return {
+    cat, din,
+    recargarCatalogo: ahora - cat.cargadoEn > CATALOGO_MS || !!queryClient.getQueryState(kc)?.isInvalidated,
+    recargarDinamico: ahora - din.cargadoEn > DINAMICO_MS || !!queryClient.getQueryState(kd)?.isInvalidated,
+  }
+}
+
+// Guarda sin borrar la marca de "viejo": si lo de pantalla no se ha vuelto a
+// cargar desde que algo lo marcó (por ejemplo, una venta en otra caja), la
+// próxima visita igual tiene que pedirlo.
+function guardarMemoria(clave, datos) {
+  const estaba   = queryClient.getQueryState(clave)
+  const anterior = queryClient.getQueryData(clave)
+  queryClient.setQueryData(clave, datos)
+  if (estaba?.isInvalidated && anterior?.cargadoEn === datos.cargadoEn) {
+    queryClient.invalidateQueries({ queryKey: clave, exact: true })
+  }
+}
+
 // Normaliza el código: quita chars de control (prefijos AIM ID), espacios, y
 // convierte a mayúsculas. Va fuera del componente porque el índice del escáner
 // (un useMemo) la necesita antes de donde estaba declarada.
@@ -67,6 +118,19 @@ function derivarInvLotes(rows) {
 const SELECT_VENTAS_TURNO =
   'id, total, metodo_pago, creado_en, monto_recibido, cambio, ' +
   'detalle_ventas(id, producto_id, cantidad, precio_unitario, productos(nombre))'
+
+// Las ventas del turno. Cuando ya se sabe qué turno es (el de la pantalla), se
+// piden junto con lo demás en vez de esperar a que todo termine: un viaje menos
+// al servidor. Si resultó ser otro turno, se piden aparte, como antes.
+const pedirVentasTurno = (turnoId) => supabase
+  .from('ventas').select(SELECT_VENTAS_TURNO)
+  .eq('turno_id', turnoId).neq('estado', 'cancelada').order('creado_en', { ascending: false })
+
+async function ventasDelTurno(turno, previsto, pedidoPrevisto) {
+  if (!turno?.id) return []
+  const r = turno.id === previsto && pedidoPrevisto ? pedidoPrevisto : await pedirVentasTurno(turno.id)
+  return r?.data || []
+}
 
 // ─── Modal Ver Ticket ───────────────────────────────────────
 function ModalVerTicket({ venta, detalles, productos, sucursalNombre, onCerrar }) {
@@ -501,21 +565,27 @@ export default function VentasPage() {
   const esAdmin   = perfil?.rol === 'admin'
   const esCajero  = perfil?.rol === 'cajero'
   const colsProducto = esCajero ? COLS_PRODUCTO : COLS_PRODUCTO_COSTO
+  const perfilId = perfil?.id ?? null
 
   // Sucursal seleccionada — rotativos empiezan sin sucursal hasta que eligen en el selector
-  const [sucursalId, setSucursalId] = useState(
-    sucursalActiva?.id || (esAdmin ? sucursales[0]?.id : '') || ''
-  )
+  const sucursalInicial = sucursalActiva?.id || (esAdmin ? sucursales[0]?.id : '') || ''
+  const [sucursalId, setSucursalId] = useState(sucursalInicial)
   const sucursalActual = sucursales.find(s => s.id === sucursalId)
 
+  // Lo que quedó en memoria de la última visita (ver leerMemoria). Se lee una
+  // sola vez, al montar: así la pantalla aparece completa desde el primer
+  // cuadro, sin el círculo de carga.
+  const [memoriaInicial] = useState(() => leerMemoria(perfilId, sucursalInicial, colsProducto))
+  const memoriaInicialRef = useRef(memoriaInicial)
+
   // Datos
-  const [productos, setProductos] = useState([])
-  const [lotes, setLotes] = useState([])
-  const [inventario, setInventario] = useState([])
-  const [codigosCat, setCodigosCat] = useState([])
-  const [ventasHoy, setVentasHoy] = useState([])
-  const [detallesHoy, setDetallesHoy] = useState([])
-  const [cuentasHoy, setCuentasHoy] = useState([])
+  const [productos, setProductos] = useState(() => memoriaInicial?.cat.productos ?? [])
+  const [lotes, setLotes] = useState(() => memoriaInicial?.din.lotes ?? [])
+  const [inventario, setInventario] = useState(() => memoriaInicial?.din.inventario ?? [])
+  const [codigosCat, setCodigosCat] = useState(() => memoriaInicial?.cat.codigosCat ?? [])
+  const [ventasHoy, setVentasHoy] = useState(() => memoriaInicial?.din.ventasHoy ?? [])
+  const [detallesHoy, setDetallesHoy] = useState(() => memoriaInicial?.din.detallesHoy ?? [])
+  const [cuentasHoy, setCuentasHoy] = useState(() => memoriaInicial?.din.cuentasHoy ?? [])
   // Una venta a crédito NO mete dinero al cajón: el cliente paga después. Si se
   // cuenta como efectivo, el corte pide dinero que nunca entró y el cajero
   // aparece con faltante. El cobro se registra el día que realmente ocurre.
@@ -534,15 +604,15 @@ export default function VentasPage() {
     (v) => (!v.metodo_pago || v.metodo_pago === 'efectivo') && !idsCredito.has(v.id),
     [idsCredito]
   )
-  const [turnoActual, setTurnoActual] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [turnoActual, setTurnoActual] = useState(() => memoriaInicial?.din.turnoActual ?? null)
+  const [loading, setLoading] = useState(() => !memoriaInicial)
 
   // Carrito
   const [carrito, setCarrito] = useState([])
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState([])
   const [resultadosOtras, setResultadosOtras] = useState([])
-  const [deshabilitados, setDeshabilitados] = useState(new Set())
+  const [deshabilitados, setDeshabilitados] = useState(() => new Set(memoriaInicial?.cat.deshabilitados ?? []))
   const [precios, setPrecios] = useState({})
   const [modosMayoreo, setModosMayoreo] = useState({})
   const [cantidadesInput, setCantidadesInput] = useState({}) // string temporal mientras el user escribe
@@ -550,8 +620,17 @@ export default function VentasPage() {
   const [procesando, setProcesando] = useState(false)
   const procesandoRef  = useRef(false)
   const refreshingRef  = useRef(false)   // guard para refreshDynamic
-  const ultimoCatalogoRef = useRef(0)    // última carga del catálogo (ver refrescarEnFoco)
-  const [ofertasVigentes, setOfertasVigentes] = useState([])
+  const ultimoCatalogoRef = useRef(memoriaInicial?.cat.cargadoEn ?? 0)   // última carga del catálogo (ver refrescarEnFoco)
+  const ultimoDinamicoRef = useRef(memoriaInicial?.din.cargadoEn ?? 0)   // última carga de existencias, ventas y turno
+  const datosDeRef        = useRef(memoriaInicial ? sucursalInicial : null) // sucursal de los datos en pantalla
+  const sucursalRef       = useRef(sucursalInicial)
+  const pedidoRef         = useRef(0)       // carga completa vigente: las que lleguen tarde se descartan
+  const cargandoTodoRef   = useRef(false)
+  const turnoIdRef        = useRef(memoriaInicial?.din.turnoActual?.id
+    ?? (turnoActivo?.sucursal_id === sucursalInicial ? turnoActivo.id : null))
+  const reintentoCatalogoRef = useRef(0)    // última recarga por un código desconocido
+  const codigoPendienteRef   = useRef(null) // código escaneado que se busca tras esa recarga
+  const [ofertasVigentes, setOfertasVigentes] = useState(() => memoriaInicial?.din.ofertasVigentes ?? [])
 
   // Cobro
   const [montoRecibido, setMontoRecibido] = useState('')
@@ -581,17 +660,27 @@ export default function VentasPage() {
   const [resumenTurno,   setResumenTurno]   = useState(null)
   const [cargandoResumen,setCargandoResumen]= useState(false)
   // Todas las ventas del turno activo (puede abarcar varios días)
-  const [ventasTurno,       setVentasTurno]       = useState([])
+  const [ventasTurno,       setVentasTurno]       = useState(() => memoriaInicial?.din.ventasTurno ?? [])
   const [movimientosTurno,  setMovimientosTurno]  = useState([])
 
   // ── Cargar datos ──────────────────────────────────────────
-  const perfilId = perfil?.id ?? null
-  const fetchData = useCallback(async () => {
+  useEffect(() => { sucursalRef.current = sucursalId }, [sucursalId])
+  useEffect(() => { turnoIdRef.current = turnoActual?.id ?? null }, [turnoActual?.id])
+
+  // Carga completa: catálogo y todo lo que cambia. Con `silencioso` va por
+  // detrás, sin tapar la pantalla con el círculo de carga.
+  const fetchData = useCallback(async ({ silencioso = false } = {}) => {
     if (!sucursalId) { setLoading(false); return }
-    setLoading(true)
+    // Una recarga por detrás no se encima con otra que ya va en camino
+    if (silencioso && cargandoTodoRef.current) return
+    const n = ++pedidoRef.current
+    cargandoTodoRef.current = true
+    if (!silencioso) setLoading(true)
+    const sId = sucursalId
+    const previsto = turnoIdRef.current
     try {
       const hoy = fechaEnZona(tz)
-      const [prod, invRows, cod, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, prodSuc] = await Promise.all([
+      const [prod, invRows, cod, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: ofVig }, { data: cuentas }, prodSuc, vtsPrevistas] = await Promise.all([
         // Catálogo por tandas. Los códigos de barras iban en 966 de un tope de
         // 1,000: al cruzarlo, la pistola dejaría de encontrar productos en caja
         // sin dar un solo error. El orden alfabético se aplica más abajo, en
@@ -599,15 +688,15 @@ export default function VentasPage() {
         traerTodo(() => supabase.from('productos'), colsProducto,
           q => q.eq('activo', true)),
         traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
-          q => q.eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true)),
+          q => q.eq('sucursal_id', sId).gt('cantidad', 0).eq('lotes.activo', true)),
         traerTodo(() => supabase.from('codigos_barras'),
           'id, producto_id, codigo, unidades_por_empaque'),
-        supabase.from('ventas').select('*, perfiles!ventas_usuario_id_fkey(nombre), detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
+        supabase.from('ventas').select('*, perfiles!ventas_usuario_id_fkey(nombre), detalle_ventas(*)').eq('sucursal_id', sId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
         perfilId
-          ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
+          ? supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         supabase.rpc('ofertas_vigentes'),
-        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sId).gte('creado_en', inicioDiaUtc(hoy, tz)),
         // La política ps_select deja leer esta tabla a cualquier empleado de la
         // empresa, cajeros incluidos. Antes se les pasaba un conjunto vacío, y
         // con eso la validación de "producto no disponible" nunca se disparaba:
@@ -615,9 +704,15 @@ export default function VentasPage() {
         // Filtrada por sucursal, así que producto_id no se repite y sirve de
         // llave para avanzar.
         traerTodo(() => supabase.from('productos_sucursales'), 'producto_id',
-          q => q.eq('sucursal_id', sucursalId).eq('habilitado', false),
+          q => q.eq('sucursal_id', sId).eq('habilitado', false),
           'producto_id'),
+        previsto ? pedirVentasTurno(previsto) : null,
       ])
+      const vtsTurno = await ventasDelTurno(turno, previsto, vtsPrevistas)
+      // Mientras viajaba se cambió de sucursal, o la reemplazó una carga más
+      // nueva: estos datos ya no son los de la pantalla.
+      if (n !== pedidoRef.current || sucursalRef.current !== sId) return
+      datosDeRef.current = sId
       const disabledSet = new Set((prodSuc || []).map(ps => ps.producto_id))
       setDeshabilitados(disabledSet)
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
@@ -632,20 +727,16 @@ export default function VentasPage() {
       // es null (cierre de sesión en curso), preservar el turno ya cargado.
       if (!errTurnoQ && perfilId) setTurnoActual(turno)
       setOfertasVigentes(ofVig || [])
-
-      if (turno?.id) {
-        const { data: vtsTurno } = await supabase
-          .from('ventas')
-          .select(SELECT_VENTAS_TURNO)
-          .eq('turno_id', turno.id)
-          .neq('estado', 'cancelada')
-          .order('creado_en', { ascending: false })
-        setVentasTurno(vtsTurno || [])
-      } else {
-        setVentasTurno([])
-      }
+      setVentasTurno(vtsTurno)
+      ultimoCatalogoRef.current = Date.now()
+      ultimoDinamicoRef.current = Date.now()
     } catch (err) { console.error(err) }
-    finally { setLoading(false); ultimoCatalogoRef.current = Date.now() }
+    finally {
+      if (n === pedidoRef.current) {
+        cargandoTodoRef.current = false
+        if (!silencioso) setLoading(false)
+      }
+    }
   }, [sucursalId, tz, perfilId, colsProducto])
 
   // Recarga ligera post-venta: solo datos que cambian con cada operación.
@@ -654,18 +745,24 @@ export default function VentasPage() {
     if (!sucursalId || !perfilId) return
     if (refreshingRef.current) return
     refreshingRef.current = true
+    const sId = sucursalId
+    const previsto = turnoIdRef.current
     try {
       const hoy = fechaEnZona(tz)
-      const [invRows, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }, { data: ofVig, error: errOf }] = await Promise.all([
+      const [invRows, { data: ventasConDet }, { data: turno, error: errTurnoQ }, { data: cuentas }, { data: ofVig, error: errOf }, vtsPrevistas] = await Promise.all([
         traerTodo(() => supabase.from('inventario'), SELECT_INV_LOTES,
-          q => q.eq('sucursal_id', sucursalId).gt('cantidad', 0).eq('lotes.activo', true)),
-        supabase.from('ventas').select('*, perfiles!ventas_usuario_id_fkey(nombre), detalle_ventas(*)').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
-        supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sucursalId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
-        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sucursalId).gte('creado_en', inicioDiaUtc(hoy, tz)),
+          q => q.eq('sucursal_id', sId).gt('cantidad', 0).eq('lotes.activo', true)),
+        supabase.from('ventas').select('*, perfiles!ventas_usuario_id_fkey(nombre), detalle_ventas(*)').eq('sucursal_id', sId).gte('creado_en', inicioDiaUtc(hoy, tz)).order('creado_en', { ascending: false }),
+        supabase.from('turnos_caja').select('*, perfiles(nombre)').eq('sucursal_id', sId).eq('usuario_id', perfilId).eq('estado', 'abierto').maybeSingle(),
+        supabase.from('cuentas_pendientes').select('venta_id, nombre_cliente, total, abonado, pagada').eq('sucursal_id', sId).gte('creado_en', inicioDiaUtc(hoy, tz)),
         // Las ofertas también: antes solo se pedían al entrar, y una caja abierta
         // toda la tarde seguía aplicando las de la mañana.
         supabase.rpc('ofertas_vigentes'),
+        previsto ? pedirVentasTurno(previsto) : null,
       ])
+      const vtsTurno = await ventasDelTurno(turno, previsto, vtsPrevistas)
+      // Se cambió de sucursal mientras viajaba: no son los datos de la pantalla
+      if (sucursalRef.current !== sId) return
       const vts = (ventasConDet ?? []).map(({ detalle_ventas: _dv, ...v }) => v)
       const det = (ventasConDet ?? []).flatMap(v => v.detalle_ventas ?? [])
       const { inv, lot } = derivarInvLotes(invRows)
@@ -675,19 +772,60 @@ export default function VentasPage() {
       setCuentasHoy(cuentas || [])
       if (!errOf) setOfertasVigentes(ofVig || [])
       if (!errTurnoQ) setTurnoActual(turno)
-      if (turno?.id) {
-        const { data: vtsTurno } = await supabase
-          .from('ventas').select(SELECT_VENTAS_TURNO)
-          .eq('turno_id', turno.id).neq('estado', 'cancelada').order('creado_en', { ascending: false })
-        setVentasTurno(vtsTurno || [])
-      } else {
-        setVentasTurno([])
-      }
+      setVentasTurno(vtsTurno)
+      ultimoDinamicoRef.current = Date.now()
     } catch (err) { console.error(err) }
     finally { refreshingRef.current = false }
   }, [sucursalId, tz, perfilId])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  // Pone en pantalla lo guardado de una sucursal
+  const aplicarMemoria = useCallback((m, sId) => {
+    datosDeRef.current = sId
+    setProductos(m.cat.productos); setCodigosCat(m.cat.codigosCat)
+    setDeshabilitados(new Set(m.cat.deshabilitados))
+    setLotes(m.din.lotes); setInventario(m.din.inventario)
+    setVentasHoy(m.din.ventasHoy); setDetallesHoy(m.din.detallesHoy); setCuentasHoy(m.din.cuentasHoy)
+    setTurnoActual(m.din.turnoActual); setOfertasVigentes(m.din.ofertasVigentes); setVentasTurno(m.din.ventasTurno)
+    ultimoCatalogoRef.current = m.cat.cargadoEn
+    ultimoDinamicoRef.current = m.din.cargadoEn
+    setLoading(false)
+  }, [])
+
+  // Al entrar y al cambiar de sucursal: lo guardado se muestra de inmediato y
+  // por detrás se pide solo lo que hace falta. Sin nada guardado, la carga
+  // completa de siempre.
+  const cargarSucursal = useCallback(() => {
+    if (!sucursalId) { setLoading(false); return }
+    let m = null
+    if (memoriaInicialRef.current && datosDeRef.current === sucursalId) {
+      m = memoriaInicialRef.current   // ya está en pantalla desde el primer cuadro
+    } else {
+      m = leerMemoria(perfilId, sucursalId, colsProducto)
+      if (m) aplicarMemoria(m, sucursalId)
+    }
+    memoriaInicialRef.current = null
+    if (!m) fetchData()
+    else if (m.recargarCatalogo) fetchData({ silencioso: true })
+    else if (m.recargarDinamico) refreshDynamic()
+  }, [sucursalId, perfilId, colsProducto, fetchData, refreshDynamic, aplicarMemoria])
+
+  useEffect(() => { cargarSucursal() }, [cargarSucursal])
+
+  // Guardar en memoria lo que está en pantalla, para la próxima visita
+  useEffect(() => {
+    const sId = datosDeRef.current
+    if (loading || !perfilId || !sId) return
+    guardarMemoria(claveCatalogo(perfilId, sId, colsProducto),
+      { productos, codigosCat, deshabilitados: [...deshabilitados], cargadoEn: ultimoCatalogoRef.current })
+  }, [loading, perfilId, colsProducto, productos, codigosCat, deshabilitados])
+  useEffect(() => {
+    const sId = datosDeRef.current
+    if (loading || !perfilId || !sId) return
+    guardarMemoria(claveDinamico(perfilId, sId), {
+      lotes, inventario, ventasHoy, detallesHoy, cuentasHoy, turnoActual, ofertasVigentes, ventasTurno,
+      cargadoEn: ultimoDinamicoRef.current,
+    })
+  }, [loading, perfilId, lotes, inventario, ventasHoy, detallesHoy, cuentasHoy, turnoActual, ofertasVigentes, ventasTurno])
 
   const recargarOfertas = useCallback(async () => {
     const { data, error } = await supabase.rpc('ofertas_vigentes')
@@ -720,7 +858,7 @@ export default function VentasPage() {
   const refrescarEnFoco = useCallback(() => {
     const catalogoViejo = Date.now() - ultimoCatalogoRef.current > CATALOGO_MS
     // Sin perfilId, refreshDynamic se sale sin hacer nada: ahí sí va la completa.
-    if (catalogoViejo || !perfilId) fetchData()
+    if (catalogoViejo || !perfilId) fetchData({ silencioso: true })
     else refreshDynamic()
   }, [perfilId, fetchData, refreshDynamic])
 
@@ -1125,8 +1263,27 @@ export default function VentasPage() {
       const prod = p && !deshabilitados.has(p.id) ? p : null
       if (prod) { agregarAlCarrito(prod, bc.unidades_por_empaque || 1); setBarcodeInput(''); return }
     }
+    // Código que no está en el catálogo en memoria: puede ser un producto dado
+    // de alta en otra computadora después de la última carga. Se recarga el
+    // catálogo por detrás (como mucho una vez por minuto) y, si aparece, se
+    // agrega solo.
+    if (!bc && Date.now() - reintentoCatalogoRef.current > 60_000) {
+      reintentoCatalogoRef.current = Date.now()
+      codigoPendienteRef.current = val
+      fetchData({ silencioso: true })
+    }
     setBusqueda(val); buscarProducto(val); setBarcodeInput('')
   }
+
+  // Tras esa recarga: si el código ya existe, se agrega al carrito
+  useEffect(() => {
+    const val = codigoPendienteRef.current
+    if (!val) return
+    codigoPendienteRef.current = null
+    const bc = codigoPorNormalizado.get(val)
+    const p = bc && productoPorId.get(bc.producto_id)
+    if (p && !deshabilitados.has(p.id)) agregarAlCarrito(p, bc.unidades_por_empaque || 1)
+  }, [codigoPorNormalizado]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Enter o Tab inmediato (escáneres configurados con cualquier sufijo)
   function handleBarcode(e) {
