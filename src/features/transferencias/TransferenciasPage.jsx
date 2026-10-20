@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftRight, Plus, X, Search, ArrowRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { traerTodo, traerTodoPorParLlave } from '@/lib/paginado'
+import { useCatalogoProductos, useCatalogoCodigos, useInventarioCompleto, normalizarCodigo } from '@/lib/catalogo'
+import { useMediaQuery, DESDE_SM } from '@/hooks/useMediaQuery'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { Fab } from '@/components/ui/Fab'
@@ -13,7 +15,7 @@ import { invalidarStock } from '@/lib/cache'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const SOLO_FECHA = /^d{4}-d{2}-d{2}$/
+const SOLO_FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 // Una fecha sin hora la interpreta el navegador como medianoche UTC, que en
 // México cae el día anterior: ya entrada la tarde el lote aparecía con un día
@@ -62,6 +64,9 @@ function SucursalBadge({ nombre, idx = 0 }) {
 // recorta a 8 y 12 por lo mismo.
 const TOPE_LISTA = 50
 
+// Separa nombre y códigos en el texto de búsqueda de cada producto
+const SEP = '\u0001'
+
 const PASOS = [
   { num: 1, label: 'Producto' },
   { num: 2, label: 'Lote'     },
@@ -71,12 +76,6 @@ const PASOS = [
 
 function ModalTransferencia({ sucursales, onClose, onGuardado }) {
   const { empresa, perfil } = useApp()
-
-  // Datos
-  const [productos,  setProductos]  = useState([])
-  const [lotes,      setLotes]      = useState([])
-  const [inventario, setInventario] = useState([])
-  const [cargando,   setCargando]   = useState(true)
 
   // Selección
   const [paso,       setPaso]       = useState(1)
@@ -91,130 +90,135 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
   const [guardando,  setGuardando]  = useState(false)
   const guardandoRef = useRef(false)
 
-  // Map: producto_id → Set de sucursal_ids donde está DESHABILITADO
-  const [deshabMap, setDeshabMap] = useState({})
+  // ─── Datos ─────────────────────────────────────────────────────────────────
+  // Antes, al abrir, se bajaban los 2,400 productos, TODOS los lotes y TODO el
+  // inventario de la empresa, cada uno en tandas seguidas: unas diez peticiones
+  // y segundos de espera, en cada apertura. Ahora:
+  //   - catálogo y códigos: los mismos que usa Agregar inventario, ya en memoria
+  //     (src/lib/catalogo.js);
+  //   - existencia de cada producto: la misma consulta de Inventario, una sola
+  //     petición;
+  //   - lotes: solo los del producto elegido, cuando se elige.
+  const { data: productos = [], isLoading: cargando } = useCatalogoProductos(empresa?.id)
+  const { data: codigosCat = [] } = useCatalogoCodigos(empresa?.id)
+  const { data: existencias } = useInventarioCompleto(empresa?.id)
 
-  useEffect(() => {
-    const cargar = async () => {
-      // Todas por tandas: productos va en 961 y disponibilidad en 1,926, o sea
-      // que esta última ya llegaba cortada. Lotes e inventario todavía son
-      // pocos, pero crecen con cada recepción y el corte no avisa.
-      const [prods, lots, inv, ps] = await Promise.all([
-        traerTodo(() => supabase.from('productos'),
-          'id, nombre, categoria', q => q.eq('activo', true)),
-        traerTodo(() => supabase.from('lotes'),
-          'id, producto_id, codigo_lote, fecha_caducidad', q => q.eq('activo', true)),
-        traerTodo(() => supabase.from('inventario'),
-          'id, lote_id, sucursal_id, cantidad', q => q.gt('cantidad', 0)),
-        traerTodoPorParLlave(() => supabase.from('productos_sucursales'),
-          'producto_id, sucursal_id', q => q.eq('habilitado', false),
-          'producto_id', 'sucursal_id'),
+  // Lotes del producto elegido —con lo que hay de cada uno en cada sucursal— y
+  // las sucursales donde está deshabilitado. Dos consultas chicas, al elegirlo.
+  // Siempre frescas (staleTime 0): es lo que se va a mover.
+  const { data: detalle, isLoading: cargandoLotes } = useQuery({
+    queryKey: ['transferencia_lotes', productoId],
+    queryFn: async () => {
+      const [{ data: lots, error: e1 }, { data: ps, error: e2 }] = await Promise.all([
+        supabase.from('lotes')
+          .select('id, codigo_lote, fecha_caducidad, inventario(sucursal_id, cantidad)')
+          .eq('producto_id', productoId)
+          .eq('activo', true),
+        supabase.from('productos_sucursales')
+          .select('sucursal_id')
+          .eq('producto_id', productoId)
+          .eq('habilitado', false),
       ])
-      // Construir mapa de deshabilitados
-      const map = {}
-      ;(ps || []).forEach(r => {
-        if (!map[r.producto_id]) map[r.producto_id] = new Set()
-        map[r.producto_id].add(r.sucursal_id)
-      })
-      setDeshabMap(map)
-      // El orden alfabético se aplica aquí y no en la consulta: por allá se
-      // pagina por id, que es lo único único y estable. Ordenar por nombre
-      // dentro de la consulta haría que dos productos homónimos pudieran
-      // cambiar de tanda a media descarga.
-      setProductos((prods ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre)))
-      setLotes(lots ?? [])
-      setInventario(inv ?? [])
-    }
-    cargar()
-      .catch(e => console.error('Error cargando transferencias:', e))
-      .finally(() => setCargando(false))
-  }, [])
+      if (e1) throw e1
+      if (e2) throw e2
+      return { lotes: lots ?? [], deshabilitadas: (ps ?? []).map(r => r.sucursal_id) }
+    },
+    enabled: !!productoId,
+    staleTime: 0,
+  })
 
   // ─── Índices ───────────────────────────────────────────────────────────────
-  // El stock de cada producto se calculaba recorriendo los lotes y el inventario
-  // COMPLETOS dentro de un bucle por producto: productos × inventario × lotes.
-  // Con 2,300 productos son ~17 mil millones de pasos —medidos en 21 segundos—
-  // y como nada estaba memorizado se repetían enteros en cada render, o sea en
-  // cada tecla del buscador. Eso era el congelamiento.
-  //
-  // Un Map es una tabla hash: buscar en él cuesta lo mismo con diez elementos
-  // que con un millón. Estos cuatro se arman de una sola pasada lineal cuando
-  // llegan los datos, y a partir de ahí cada consulta es un acceso directo.
-  // Mismo resultado, 1.2 ms en vez de 21,000.
-
-  const lotesPorProducto = useMemo(() => {
-    const m = new Map()
-    for (const l of lotes) {
-      const arr = m.get(l.producto_id)
-      if (arr) arr.push(l)
-      else m.set(l.producto_id, [l])
+  // Se arman una vez cuando llega el catálogo; después cada búsqueda es un
+  // acceso directo (como en Agregar inventario).
+  const { productoPorCodigo, textoBusqueda, codigoDe } = useMemo(() => {
+    const texto = new Map()
+    for (const p of productos) texto.set(p.id, (p.nombre || '').toLowerCase())
+    const porCodigo = new Map()
+    const primero = new Map()
+    for (const bc of codigosCat) {
+      const t = texto.get(bc.producto_id)
+      if (t !== undefined) texto.set(bc.producto_id, t + SEP + (bc.codigo || '').toLowerCase())
+      const k = normalizarCodigo(bc.codigo)
+      if (k && !porCodigo.has(k)) porCodigo.set(k, bc.producto_id)
+      if (!primero.has(bc.producto_id)) primero.set(bc.producto_id, bc.codigo)
     }
-    return m
-  }, [lotes])
-
-  const stockPorLote = useMemo(() => {
-    const m = new Map()
-    for (const i of inventario) m.set(i.lote_id, (m.get(i.lote_id) ?? 0) + i.cantidad)
-    return m
-  }, [inventario])
-
-  // Clave compuesta lote|sucursal: es el número que se muestra en el paso 3.
-  // Se conserva la PRIMERA coincidencia y no la última porque eso es lo que
-  // hacía el .find() anterior. inventario no declara (lote_id, sucursal_id)
-  // como único, así que si algún día hubiera dos filas del mismo lote en la
-  // misma sucursal, esto sigue mostrando lo mismo que hoy en vez de cambiar
-  // el número por debajo. Quien valida de verdad es la RPC al transferir.
-  const stockPorLoteSucursal = useMemo(() => {
-    const m = new Map()
-    for (const i of inventario) {
-      const k = `${i.lote_id}|${i.sucursal_id}`
-      if (!m.has(k)) m.set(k, i.cantidad)
-    }
-    return m
-  }, [inventario])
+    return { productoPorCodigo: porCodigo, textoBusqueda: texto, codigoDe: primero }
+  }, [productos, codigosCat])
 
   const stockPorProducto = useMemo(() => {
     const m = new Map()
-    for (const l of lotes) {
-      const s = stockPorLote.get(l.id)
-      if (s) m.set(l.producto_id, (m.get(l.producto_id) ?? 0) + s)
-    }
+    for (const r of existencias ?? []) m.set(r.producto_id, Number(r.stock_total) || 0)
     return m
-  }, [lotes, stockPorLote])
+  }, [existencias])
 
   // ─── Derivados ─────────────────────────────────────────────────────────────
 
   const producto = useMemo(() => productos.find((p) => p.id === productoId), [productos, productoId])
-  const loteObj  = useMemo(() => lotes.find((l) => l.id === loteId), [lotes, loteId])
 
   // El orden se compara como texto y no con new Date(): un lote sin fecha daba
   // new Date(null), que es 1970, y se colaba hasta arriba como si fuera el más
-  // próximo a vencer. Los sin fecha ahora caen al final, que es donde estorban
-  // menos al elegir por caducidad.
+  // próximo a vencer. Los sin fecha caen al final, donde estorban menos.
   const lotesDeProducto = useMemo(() => (
-    (lotesPorProducto.get(productoId) ?? [])
-      .map((l) => ({ ...l, stockTotal: stockPorLote.get(l.id) ?? 0 }))
+    (detalle?.lotes ?? [])
+      .map((l) => ({ ...l, stockTotal: (l.inventario ?? []).reduce((s, i) => s + (Number(i.cantidad) || 0), 0) }))
       .sort((a, b) => (a.fecha_caducidad ?? '9999-12-31').localeCompare(b.fecha_caducidad ?? '9999-12-31'))
-  ), [lotesPorProducto, stockPorLote, productoId])
+  ), [detalle])
 
-  const stockEnSucursal = useCallback(
-    (sId) => stockPorLoteSucursal.get(`${loteId}|${sId}`) ?? 0,
-    [stockPorLoteSucursal, loteId]
-  )
+  const loteObj = useMemo(() => lotesDeProducto.find((l) => l.id === loteId), [lotesDeProducto, loteId])
+  const deshabilitadas = useMemo(() => new Set(detalle?.deshabilitadas ?? []), [detalle])
+
+  // Lo que hay del lote elegido en una sucursal. Se toma la PRIMERA fila: si
+  // algún día hubiera dos del mismo lote en la misma sucursal, se sigue
+  // mostrando lo mismo que antes. Quien valida de verdad es la RPC al transferir.
+  const stockEnSucursal = useCallback((sId) => {
+    const f = (loteObj?.inventario ?? []).find((i) => i.sucursal_id === sId)
+    return f ? Number(f.cantidad) || 0 : 0
+  }, [loteObj])
 
   const stockOrigen = stockEnSucursal(origenId)
 
+  // Por nombre o por código de barras. Un código exacto (el escáner) va primero.
   const prodsFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
-    return q ? productos.filter((p) => p.nombre.toLowerCase().includes(q)) : productos
-  }, [productos, busqueda])
+    if (!q) return productos
+    const lista = productos.filter((p) => (textoBusqueda.get(p.id) ?? '').includes(q))
+    const exacto = productoPorCodigo.get(normalizarCodigo(busqueda))
+    if (exacto) {
+      const i = lista.findIndex((p) => p.id === exacto)
+      if (i > 0) lista.unshift(lista.splice(i, 1)[0])
+    }
+    return lista
+  }, [productos, textoBusqueda, productoPorCodigo, busqueda])
 
-  // El stock solo se resuelve para los que de verdad se van a pintar.
+  // El stock solo se resuelve para los que de verdad se van a pintar. Mientras
+  // llegan las existencias queda sin número (undefined) en vez de un 0 falso.
   const prodsVisibles = useMemo(
     () => prodsFiltrados.slice(0, TOPE_LISTA)
-      .map((p) => ({ ...p, stockTotal: stockPorProducto.get(p.id) ?? 0 })),
-    [prodsFiltrados, stockPorProducto]
+      .map((p) => ({ ...p, stockTotal: stockPorProducto.get(p.id), codigo: codigoDe.get(p.id) })),
+    [prodsFiltrados, stockPorProducto, codigoDe]
   )
+
+  // Cambiar de producto deja sin efecto lote y ruta: eran de otro producto
+  const elegirProducto = (id) => {
+    setProductoId(id); setLoteId(''); setOrigenId(''); setDestinoId(''); setErrores({})
+  }
+
+  const alEscribir = (valor) => {
+    setBusqueda(valor)
+    // El escáner escribe el código completo: si coincide, se elige solo
+    const id = productoPorCodigo.get(normalizarCodigo(valor))
+    if (id && id !== productoId) elegirProducto(id)
+  }
+
+  // Enter (el escáner lo manda al final): con un código exacto o un solo
+  // resultado, se elige y se pasa al lote.
+  const alEnter = () => {
+    const id = productoPorCodigo.get(normalizarCodigo(busqueda))
+      ?? (prodsFiltrados.length === 1 ? prodsFiltrados[0].id : null)
+    if (!id) return
+    if (id !== productoId) elegirProducto(id)
+    setPaso(2)
+  }
 
   // Validación por paso
   const validar = (p) => {
@@ -344,8 +348,9 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
-                      type="text" value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-                      placeholder="Buscar producto..." autoFocus
+                      type="text" value={busqueda} onChange={(e) => alEscribir(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); alEnter() } }}
+                      placeholder="Buscar por nombre o código de barras..." autoFocus
                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 placeholder:text-slate-400"
                     />
                   </div>
@@ -356,23 +361,28 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
                     {prodsVisibles.map((p) => {
                       const sel = productoId === p.id
                       return (
-                        <button key={p.id} onClick={() => { setProductoId(p.id); setLoteId(''); setErrores({}) }}
+                        <button key={p.id} onClick={() => elegirProducto(p.id)}
                           className={cn(
-                            'flex items-center justify-between px-4 py-3 rounded-2xl border transition-all text-left',
+                            'flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border transition-all text-left',
                             sel ? 'bg-primary-50 border-primary-400' : 'bg-white border-slate-200 hover:border-slate-300'
                           )}
                         >
-                          <div>
+                          <div className="min-w-0">
                             <p className={cn('text-sm font-semibold', sel ? 'text-primary-900' : 'text-slate-900')}>{p.nombre}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{p.categoria ?? 'Sin categoría'}</p>
+                            <p className="text-xs text-slate-400 mt-0.5 truncate">
+                              {p.codigo ? <span className="font-mono">{p.codigo}</span> : 'Sin código'}
+                              {' · '}{p.categoria ?? 'Sin categoría'}
+                            </p>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-shrink-0">
                             <span className={cn('text-xs font-bold px-2.5 py-1 rounded-full border',
-                              p.stockTotal === 0
-                                ? 'bg-red-50 text-red-600 border-red-200'
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              p.stockTotal === undefined
+                                ? 'bg-slate-50 text-slate-400 border-slate-200'
+                                : p.stockTotal === 0
+                                  ? 'bg-red-50 text-red-600 border-red-200'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             )}>
-                              {p.stockTotal} uds
+                              {p.stockTotal === undefined ? '…' : `${p.stockTotal} uds`}
                             </span>
                             {sel && <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center text-white text-[10px] font-bold">✓</div>}
                           </div>
@@ -398,7 +408,11 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
                   </div>
                   <p className="text-sm text-slate-500">¿Qué lote quieres transferir?</p>
                   <div className="flex flex-col gap-2">
-                    {lotesDeProducto.length === 0 && (
+                    {cargandoLotes ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="w-6 h-6 border-[3px] border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                      </div>
+                    ) : lotesDeProducto.length === 0 && (
                       <p className="text-sm text-slate-400 text-center py-8">Este producto no tiene lotes activos</p>
                     )}
                     {lotesDeProducto.map((l) => {
@@ -438,7 +452,7 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
 
                   {/* Origen */}
                   {(() => {
-                    const sucsHabilitadas = sucursales.filter(s => !deshabMap[productoId]?.has(s.id))
+                    const sucsHabilitadas = sucursales.filter(s => !deshabilitadas.has(s.id))
                     return (
                       <div className="flex flex-col gap-2">
                         <p className="text-sm font-medium text-slate-700">Sucursal origen <span className="text-slate-400 font-normal text-xs">¿de dónde sale?</span></p>
@@ -474,7 +488,7 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
 
                   {/* Destino — solo sucursales habilitadas y que no sean el origen */}
                   {(() => {
-                    const sucsDestino = sucursales.filter(s => !deshabMap[productoId]?.has(s.id) && s.id !== origenId)
+                    const sucsDestino = sucursales.filter(s => !deshabilitadas.has(s.id) && s.id !== origenId)
                     return (
                       <div className="flex flex-col gap-2">
                         <p className="text-sm font-medium text-slate-700">Sucursal destino <span className="text-slate-400 font-normal text-xs">¿a dónde va?</span></p>
@@ -622,64 +636,102 @@ function ModalTransferencia({ sucursales, onClose, onGuardado }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-const POR_PAGINA = 50
+// Historial por tandas conforme se baja, como en Productos e Inventario. Antes
+// eran páginas de 50 con botones y, en cada una, un conteo exacto de toda la
+// tabla. Ahora cada tanda trae solo lo que se pinta, sin conteo, y avanza por
+// cursor (fecha + id del último renglón) en vez de saltar N filas: así una
+// transferencia nueva a media lectura no repite ni salta renglones, y el
+// servidor no recorre lo ya visto.
+const POR_TANDA = 40
+const SELECT_TRANSFERENCIAS =
+  'id, creado_en, cantidad, nota, origen_id, destino_id, ' +
+  'productos(nombre, categoria, codigos_barras(codigo, unidades_por_empaque)), ' +
+  'origen:sucursales!origen_id(nombre), destino:sucursales!destino_id(nombre)'
+
+// El código que se muestra: el de la pieza (1 unidad) antes que el de caja
+function codigoDe(t) {
+  const cs = t.productos?.codigos_barras ?? []
+  if (!cs.length) return null
+  const [principal] = [...cs].sort((a, b) => (a.unidades_por_empaque ?? 1) - (b.unidades_por_empaque ?? 1))
+  return { codigo: principal.codigo, mas: cs.length - 1 }
+}
+
+function CeldaCodigo({ t }) {
+  const c = codigoDe(t)
+  if (!c) return <span className="text-xs text-slate-400">Sin código</span>
+  return (
+    <span className="text-sm font-mono text-slate-600">
+      {c.codigo}
+      {c.mas > 0 && <span className="text-xs text-slate-400 font-sans"> +{c.mas}</span>}
+    </span>
+  )
+}
+
+const horaDe = (s) => new Date(s).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
 
 export default function TransferenciasPage() {
   const { empresa, esAdmin, sucursales, sucursalActiva } = useApp()
-
-  const [transferencias, setTransferencias] = useState([])
-  const [cargando, setCargando]             = useState(true)
-  const [modalAbierto, setModalAbierto]     = useState(false)
-  const [pagina, setPagina]                 = useState(0)
-  const [totalCount, setTotalCount]         = useState(0)
-
-  // Ancla de tiempo: fija el "hasta cuándo" al abrir la primera página. Sin
-  // ella, una transferencia registrada mientras alguien navega el historial
-  // recorre todo hacia abajo y la fila del borde se repite en la página
-  // siguiente o se salta.
-  const anclaRef = useRef(null)
+  const queryClient = useQueryClient()
+  const escritorio = useMediaQuery(DESDE_SM)
+  const [modalAbierto, setModalAbierto] = useState(false)
+  const centinelaRef = useRef(null)
 
   const sucursalIdx = useCallback((id) => sucursales.findIndex((s) => s.id === id), [sucursales])
 
-  const cargar = useCallback(async (pg = 0) => {
-    if (!empresa?.id) return
-    if (pg === 0 || !anclaRef.current) anclaRef.current = new Date().toISOString()
-    setCargando(true)
-    try {
-      // Paginado de verdad. Antes se pedía el historial completo sin acotar y
-      // Supabase lo cortaba en 1,000 filas sin avisar: de la 1,001 en adelante
-      // las transferencias dejaban de existir para esta pantalla.
-      const { data, error, count } = await supabase
+  const clave = useMemo(() => ['transferencias', empresa?.id], [empresa?.id])
+  const { data, error, isLoading, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useInfiniteQuery({
+    queryKey: clave,
+    queryFn: async ({ pageParam }) => {
+      let q = supabase
         .from('transferencias')
-        .select(`
-          *,
-          productos(nombre, categoria),
-          lotes(codigo_lote, fecha_caducidad),
-          origen:sucursales!origen_id(nombre),
-          destino:sucursales!destino_id(nombre),
-          usuario:perfiles!usuario_id(nombre)
-        `, { count: 'exact' })
+        .select(SELECT_TRANSFERENCIAS)
         .eq('empresa_id', empresa.id)
-        .lte('creado_en', anclaRef.current)
-        // El id desempata las fechas idénticas: sin él, dos registros del mismo
-        // instante pueden intercambiarse entre páginas.
+        // El id desempata las fechas idénticas
         .order('creado_en', { ascending: false })
         .order('id', { ascending: false })
-        .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1)
+        .limit(POR_TANDA)
+      if (pageParam) {
+        q = q.or(`creado_en.lt."${pageParam.creado_en}",and(creado_en.eq."${pageParam.creado_en}",id.lt.${pageParam.id})`)
+      }
+      const { data: filas, error: err } = await q
+      if (err) throw err
+      return filas ?? []
+    },
+    initialPageParam: null,
+    getNextPageParam: (ultima) => {
+      if (ultima.length < POR_TANDA) return undefined
+      const u = ultima[ultima.length - 1]
+      return { creado_en: u.creado_en, id: u.id }
+    },
+    enabled: !!empresa?.id,
+  })
+  const transferencias = useMemo(() => (data?.pages ?? []).flat(), [data])
 
-      if (error) throw error
-      setTransferencias(data ?? [])
-      setTotalCount(count ?? 0)
-      setPagina(pg)
-    } catch (e) {
-      toast.error(e.message ?? 'Error al cargar transferencias')
-    } finally {
-      setCargando(false)
-    }
-  }, [empresa?.id])
+  useEffect(() => {
+    if (error) toast.error(error.message ?? 'Error al cargar transferencias')
+  }, [error])
 
-  useEffect(() => { cargar(0) }, [cargar])
-  useFocusRefresh(() => cargar(0))
+  // Al acercarse al final se pide la siguiente tanda. No mientras otra
+  // consulta de esta lista va en camino: la librería advierte que se pisarían.
+  useEffect(() => {
+    const el = centinelaRef.current
+    if (!el || !hasNextPage || isFetching) return
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) fetchNextPage() }, { rootMargin: '0px 0px 400px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasNextPage, isFetching, fetchNextPage, transferencias.length])
+
+  // Al salir se conserva solo la primera tanda (con su hora de carga). Al volver
+  // se ve al instante, y si hay que actualizarla se pide UNA tanda, no todas
+  // las que se hubieran bajado.
+  useEffect(() => () => {
+    const estado = queryClient.getQueryState(clave)
+    queryClient.setQueryData(clave,
+      (d) => (d && d.pages.length > 1 ? { pages: d.pages.slice(0, 1), pageParams: d.pageParams.slice(0, 1) } : d),
+      { updatedAt: estado?.dataUpdatedAt })
+  }, [queryClient, clave])
+
+  useFocusRefresh(() => refetch())
 
   return (
     <div className="flex flex-col gap-6">
@@ -707,7 +759,7 @@ export default function TransferenciasPage() {
 
       {/* Tabla */}
       <div className="bg-white/80 backdrop-blur-xl border border-slate-100 rounded-3xl shadow-card overflow-hidden">
-        {cargando ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
           </div>
@@ -720,85 +772,87 @@ export default function TransferenciasPage() {
           </div>
         ) : (
           <>
-            {/* Cards móvil */}
-            <div className="flex flex-col divide-y divide-slate-100 sm:hidden">
-              {transferencias.map((t) => (
-                <div key={t.id} className="px-4 py-3 flex flex-col gap-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{t.productos?.nombre ?? '—'}</p>
-                      <p className="text-xs text-slate-400">{formatoFecha(t.creado_en)} · {new Date(t.creado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</p>
-                    </div>
-                    <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-700 text-sm font-bold flex-shrink-0">
-                      {t.cantidad}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <SucursalBadge nombre={t.origen?.nombre} idx={sucursalIdx(t.origen_id)} />
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
-                    <SucursalBadge nombre={t.destino?.nombre} idx={sucursalIdx(t.destino_id)} />
-                  </div>
-                  {t.nota && <p className="text-xs text-slate-400">{t.nota}</p>}
-                </div>
-              ))}
-            </div>
-            {/* Tabla desktop */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    {['Fecha','Producto','Lote','Origen','','Destino','Cantidad','Nota'].map((h) => (
-                      <th key={h} className="px-5 py-3 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {transferencias.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        <p className="text-sm font-medium text-slate-700">{formatoFecha(t.creado_en)}</p>
-                        <p className="text-xs text-slate-400">{new Date(t.creado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="text-sm font-semibold text-slate-900">{t.productos?.nombre ?? '—'}</p>
-                        <p className="text-xs text-slate-400">{t.productos?.categoria ?? ''}</p>
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        <span className="text-sm font-mono text-slate-600">{t.lotes?.codigo_lote ?? '—'}</span>
-                      </td>
-                      <td className="px-5 py-4 whitespace-nowrap">
+            {/* Solo se construye la versión que se ve: con las dos (una oculta
+                con CSS) cada renglón existía dos veces. */}
+            {!escritorio ? (
+              <div className="flex flex-col divide-y divide-slate-100">
+                {transferencias.map((t) => {
+                  const c = codigoDe(t)
+                  return (
+                    <div key={t.id} className="px-4 py-3 flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900">{t.productos?.nombre ?? '—'}</p>
+                          <p className="text-xs text-slate-400">
+                            {c ? <span className="font-mono">{c.codigo}</span> : 'Sin código'}
+                            {' · '}{formatoFecha(t.creado_en)} · {horaDe(t.creado_en)}
+                          </p>
+                        </div>
+                        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-700 text-sm font-bold flex-shrink-0">
+                          {t.cantidad}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
                         <SucursalBadge nombre={t.origen?.nombre} idx={sucursalIdx(t.origen_id)} />
-                      </td>
-                      <td className="px-2 py-4 text-slate-300"><ArrowRight className="w-4 h-4" /></td>
-                      <td className="px-5 py-4 whitespace-nowrap">
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
                         <SucursalBadge nombre={t.destino?.nombre} idx={sucursalIdx(t.destino_id)} />
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-700 text-sm font-bold">{t.cantidad}</span>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-slate-400">{t.nota ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Paginación */}
-            {totalCount > POR_PAGINA && (
-              <div className="flex items-center justify-center gap-3 px-4 py-4 border-t border-slate-100">
-                <button disabled={pagina === 0 || cargando} onClick={() => cargar(pagina - 1)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                  Anterior
-                </button>
-                <span className="text-xs text-slate-500">
-                  Página {pagina + 1} de {Math.ceil(totalCount / POR_PAGINA)}
-                  <span className="hidden sm:inline"> · {totalCount} transferencias</span>
-                </span>
-                <button disabled={(pagina + 1) * POR_PAGINA >= totalCount || cargando} onClick={() => cargar(pagina + 1)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                  Siguiente
-                </button>
+                      </div>
+                      {t.nota && <p className="text-xs text-slate-400">{t.nota}</p>}
+                    </div>
+                  )
+                })}
               </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      {['Fecha','Producto','Código','Origen','','Destino','Cantidad','Nota'].map((h, i) => (
+                        <th key={h || i} className="px-5 py-3 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {transferencias.map((t) => (
+                      <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <p className="text-sm font-medium text-slate-700">{formatoFecha(t.creado_en)}</p>
+                          <p className="text-xs text-slate-400">{horaDe(t.creado_en)}</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-semibold text-slate-900">{t.productos?.nombre ?? '—'}</p>
+                          <p className="text-xs text-slate-400">{t.productos?.categoria ?? ''}</p>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <CeldaCodigo t={t} />
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <SucursalBadge nombre={t.origen?.nombre} idx={sucursalIdx(t.origen_id)} />
+                        </td>
+                        <td className="px-2 py-4 text-slate-300"><ArrowRight className="w-4 h-4" /></td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <SucursalBadge nombre={t.destino?.nombre} idx={sucursalIdx(t.destino_id)} />
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-700 text-sm font-bold">{t.cantidad}</span>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-400">{t.nota ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Marca invisible al final: al acercarse, se pide la siguiente tanda */}
+            {hasNextPage && <div ref={centinelaRef} className="h-1" aria-hidden="true" />}
+            {isFetchingNextPage && (
+              <div className="flex items-center justify-center py-5 border-t border-slate-100">
+                <div className="w-6 h-6 border-[3px] border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+              </div>
+            )}
+            {!hasNextPage && (data?.pages.length ?? 0) > 1 && (
+              <p className="text-xs text-slate-400 text-center py-4 border-t border-slate-100">No hay más transferencias</p>
             )}
           </>
         )}
@@ -808,7 +862,7 @@ export default function TransferenciasPage() {
         <ModalTransferencia
           sucursales={sucursales}
           onClose={() => setModalAbierto(false)}
-          onGuardado={() => { setModalAbierto(false); cargar(0) }}
+          onGuardado={() => { setModalAbierto(false); queryClient.invalidateQueries({ queryKey: ['transferencias'] }) }}
         />
       )}
 

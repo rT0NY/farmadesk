@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, useCallback, useRef, useDeferredValue } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Archive, RefreshCw, AlertTriangle,
   X, Clock, Filter, ChevronDown, Check, Package, Eye,
@@ -18,6 +17,7 @@ import { CATEGORIAS_PRODUCTO } from '@/lib/constantes'
 import { fechaEnZona, addDias } from '@/lib/formatos'
 import { invalidarStock, actualizarProductos } from '@/lib/cache'
 import { useFocusRefresh } from '@/lib/useFocusRefresh'
+import { useInventarioCompleto } from '@/lib/catalogo'
 import ModalAgregarInventario from './ModalAgregarInventario'
 import ModalLotes from './ModalLotes'
 import { useTandas } from '@/hooks/useTandas'
@@ -246,19 +246,9 @@ export default function InventarioPage() {
     return Number((p.stock_por_sucursal || {})[sucursalPropia.id] || 0)
   }, [sucursalPropia])
 
-  const { data: datos = [], isLoading: cargando, isFetching, error: errorCarga, dataUpdatedAt, refetch } = useQuery({
-    queryKey:  ['inventario_completo', empresa?.id],
-    queryFn:   async () => {
-      const { data, error } = await supabase.rpc('inventario_completo', {
-        p_solo_con_stock:  false,
-        p_solo_bajo_stock: false,
-      })
-      if (error) throw error
-      return data || []
-    },
-    staleTime: 5 * 60_000,   // inventario cambia con cada venta — 5 min es razonable
-    enabled:   !!empresa?.id,
-  })
+  // Misma consulta que usa Transferencias: vive una sola vez en memoria
+  const { data: datos = [], isLoading: cargando, isFetching, error: errorCarga, dataUpdatedAt, refetch } =
+    useInventarioCompleto(empresa?.id)
 
   // Sin argumentos: refetch() recibiría el evento del click como opciones
   const cargar = useCallback(() => { refetch() }, [refetch])

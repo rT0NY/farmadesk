@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   X, Search, Package, Store, Calendar, Hash, Plus, Check,
   ScanBarcode, AlertTriangle, ChevronLeft, ChevronRight, Minus,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { traerTodo } from '@/lib/paginado'
+import { useCatalogoProductos, useCatalogoCodigos } from '@/lib/catalogo'
 import { log as logBitacora } from '@/lib/bitacora'
 import { useApp } from '@/context/AppCtx'
 import { formatoMoneda, fechaEnZona } from '@/lib/formatos'
@@ -177,28 +177,10 @@ export default function ModalAgregarInventario({ abierto, onCerrar, onExito }) {
   // justamente los productos recién capturados.
   const catalogoActivo = abierto && !!empresa?.id
 
-  const { data: productos = [], isLoading: cargandoProductos } = useQuery({
-    queryKey: ['inv_productos', empresa?.id],
-    queryFn: async () => {
-      // precio_compra alimenta el "valor estimado" del paso 3. Va aquí y no en
-      // la ventana de Ventas a propósito: aquí solo entran admin y encargado.
-      const filas = await traerTodo(() => supabase.from('productos'),
-        'id, nombre, categoria, precio_venta, precio_compra', q => q.eq('activo', true))
-      // El orden alfabético se aplica aquí: la consulta pagina por id, que es
-      // lo único único y estable.
-      return filas.sort((a, b) => a.nombre.localeCompare(b.nombre))
-    },
-    enabled: catalogoActivo,
-    staleTime: 10 * 60_000,
-  })
-
-  const { data: codigosCat = [], isLoading: cargandoCodigos } = useQuery({
-    queryKey: ['inv_codigos', empresa?.id],
-    queryFn: () => traerTodo(() => supabase.from('codigos_barras'),
-      'id, producto_id, codigo'),
-    enabled: catalogoActivo,
-    staleTime: 10 * 60_000,
-  })
+  // Las mismas consultas que usa Transferencias (src/lib/catalogo.js): viven una
+  // sola vez en memoria. precio_compra alimenta el "valor estimado" del paso 3.
+  const { data: productos = [], isLoading: cargandoProductos } = useCatalogoProductos(empresa?.id, catalogoActivo)
+  const { data: codigosCat = [], isLoading: cargandoCodigos } = useCatalogoCodigos(empresa?.id, catalogoActivo)
 
   // Derivados
   const tieneLotes = lotesProducto.length > 0
