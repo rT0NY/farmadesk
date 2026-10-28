@@ -1,12 +1,12 @@
 {
   "name": "farmadesk",
-  "description": "Sistema de gestión para farmacias",
+  "description": "Sistema de gestiÃ³n para farmacias",
   "author": {
     "name": "Farmadesk",
     "email": "ajvryt.1514@gmail.com"
   },
   "private": true,
-  "version": "2.3.14",
+  "version": "2.3.15",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
