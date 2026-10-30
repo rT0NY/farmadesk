@@ -3,7 +3,7 @@ import {
   History, ShoppingCart, Receipt, Wallet, ArrowLeftRight,
   Package, Ban, Check, X, ClipboardList, BadgeCheck,
   LogIn, LogOut, Search, Calendar, ChevronDown, Filter,
-  Tag, CreditCard, Archive, PackageCheck, Truck, Trash2, Layers, PencilLine,
+  Tag, CreditCard, Archive, PackageCheck, Truck, Trash2, Layers, PencilLine, RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useApp } from '@/context/AppCtx'
@@ -12,6 +12,9 @@ import { useFocusRefresh } from '@/lib/useFocusRefresh'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Tipos con colores ────────────────────────────────────────────────────────
+// Incluye nombres que ya no se escriben (venta, apertura_caja, producto_reactivado,
+// sesion_inicio…) para que los registros viejos se sigan viendo con su nombre.
+// El filtro no sale de aquí: usa FILTROS_TIPO, más abajo.
 
 const TIPOS = {
   // ── Ventas ──────────────────────────────────────────────────────────────────
@@ -27,7 +30,7 @@ const TIPOS = {
   // ── Cancelaciones ───────────────────────────────────────────────────────────
   cancelacion_aprobada:     { label: 'Cancelación aprobada',   color: '#10b981', bg: '#d1fae5', borde: '#10b981', Icono: Check          },
   cancelacion_rechazada:    { label: 'Cancelación rechazada',  color: '#ef4444', bg: '#fee2e2', borde: '#ef4444', Icono: X             },
-  cancelacion_solicitada:   { label: 'Cancelación solicit.',   color: '#f59e0b', bg: '#fef3c7', borde: '#f59e0b', Icono: Ban            },
+  cancelacion_solicitada:   { label: 'Cancelación solicitada', color: '#f59e0b', bg: '#fef3c7', borde: '#f59e0b', Icono: Ban            },
   cancelacion:              { label: 'Cancelación',            color: '#ef4444', bg: '#fee2e2', borde: '#ef4444', Icono: X             },
 
   // ── Caja ────────────────────────────────────────────────────────────────────
@@ -80,8 +83,76 @@ const TIPOS = {
 
   // ── Equipo ──────────────────────────────────────────────────────────────────
   salario_pagado:           { label: 'Salario pagado',         color: '#10b981', bg: '#d1fae5', borde: '#10b981', Icono: BadgeCheck     },
+  salario_pago_revertido:   { label: 'Pago de salario revertido', color: '#64748b', bg: '#f1f5f9', borde: '#94a3b8', Icono: RotateCcw  },
   sesion_inicio:            { label: 'Inicio sesión',          color: '#6366f1', bg: '#ede9fe', borde: '#6366f1', Icono: LogIn          },
 }
+
+// ─── Filtro por tipo ──────────────────────────────────────────────────────────
+// Solo lo que la app registra hoy. Cada opción es [tipo actual, ...nombres viejos
+// del mismo evento]: al filtrar "Venta" salen también las de antes del cambio de
+// nombre. Fuera quedan los que ya nada escribe: producto archivado/reactivado (ya
+// no existe reactivar; eliminar archiva y conserva el historial), inicio de
+// sesión y ajuste de inventario (los ajustes están en Historial inventario).
+// Sus registros viejos siguen apareciendo con "Todos los tipos".
+const FILTROS_TIPO = [
+  { grupo: 'Ventas', tipos: [
+    ['venta_completada', 'venta'],
+    ['venta_cuenta_pendiente', 'cuenta_pendiente'],
+    ['cuenta_abono'],
+    ['cuenta_liquidada'],
+  ] },
+  { grupo: 'Cancelaciones', tipos: [
+    ['cancelacion_solicitada'],
+    ['cancelacion_aprobada'],
+    ['cancelacion_rechazada'],
+  ] },
+  { grupo: 'Caja', tipos: [
+    ['caja_apertura', 'apertura_caja'],
+    ['caja_cierre', 'cierre_caja'],
+    ['caja_entrada_manual'],
+    ['caja_salida_manual'],
+  ] },
+  { grupo: 'Gastos', tipos: [
+    ['gasto_registrado', 'gasto'],
+    ['gasto_editado'],
+    ['gasto_eliminado'],
+  ] },
+  { grupo: 'Inventario', tipos: [
+    ['inventario_entrada', 'entrada_inventario'],
+    ['transferencia'],
+  ] },
+  { grupo: 'Pedidos y proveedores', tipos: [
+    ['pedido_creado'],
+    ['pedido_editado'],
+    ['pedido_recibido'],
+    ['pedido_recibido_parcial'],
+    ['pedido_cancelado'],
+    ['proveedor_eliminado'],
+  ] },
+  { grupo: 'Productos', tipos: [
+    ['producto_creado'],
+    ['producto_editado'],
+    ['producto_eliminado'],
+    ['ingreso_masivo'],
+    ['edicion_masiva'],
+  ] },
+  { grupo: 'Ofertas', tipos: [
+    ['oferta_creada'],
+    ['oferta_editada'],
+    ['oferta_activada'],
+    ['oferta_desactivada'],
+    ['oferta_eliminada'],
+  ] },
+  { grupo: 'Equipo', tipos: [
+    ['salario_pagado'],
+    ['salario_pago_revertido'],
+  ] },
+]
+
+// Tipo elegido en el filtro → todos los nombres que se buscan en la base
+const TIPOS_DEL_FILTRO = Object.fromEntries(
+  FILTROS_TIPO.flatMap(g => g.tipos).map(t => [t[0], t])
+)
 
 function tipoCfg(tipo) {
   return TIPOS[tipo] ?? { label: tipo, color: '#64748b', bg: '#f1f5f9', Icono: History }
@@ -162,7 +233,7 @@ export default function BitacoraPage() {
         q = q.gte('creado_en', inicioDiaUtc(fechaFiltro, tz))
              .lte('creado_en', finDiaUtc(fechaFiltro, tz))
       }
-      if (tipoFiltro) q = q.eq('tipo', tipoFiltro)
+      if (tipoFiltro) q = q.in('tipo', TIPOS_DEL_FILTRO[tipoFiltro] ?? [tipoFiltro])
       if (sucFiltro)  q = q.eq('sucursal_id', sucFiltro)
 
       const { data, error, count } = await q
@@ -219,8 +290,10 @@ export default function BitacoraPage() {
             <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)}
               className="w-full pl-9 pr-8 py-2.5 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 bg-slate-50 text-slate-700 appearance-none">
               <option value="">Todos los tipos</option>
-              {Object.entries(TIPOS).map(([t, cfg]) => (
-                <option key={t} value={t}>{cfg.label}</option>
+              {FILTROS_TIPO.map(({ grupo, tipos }) => (
+                <optgroup key={grupo} label={grupo}>
+                  {tipos.map(([t]) => <option key={t} value={t}>{TIPOS[t].label}</option>)}
+                </optgroup>
               ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
