@@ -41,6 +41,8 @@ const TIPOS = {
   // ── Gastos ──────────────────────────────────────────────────────────────────
   gasto_registrado:         { label: 'Gasto',                  color: '#f97316', bg: '#ffedd5', borde: '#f97316', Icono: Receipt        },
   gasto:                    { label: 'Gasto',                  color: '#f97316', bg: '#ffedd5', borde: '#f97316', Icono: Receipt        },
+  gasto_editado:            { label: 'Gasto editado',          color: '#f97316', bg: '#ffedd5', borde: '#f97316', Icono: PencilLine     },
+  gasto_eliminado:          { label: 'Gasto eliminado',        color: '#ef4444', bg: '#fee2e2', borde: '#ef4444', Icono: Trash2         },
 
   // ── Inventario ──────────────────────────────────────────────────────────────
   inventario_entrada:       { label: 'Entrada inventario',     color: '#10b981', bg: '#d1fae5', borde: '#10b981', Icono: PackageCheck   },

@@ -10,6 +10,7 @@ import { formatoFecha } from '@/lib/formatos'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/clases'
+import { mensajeError } from '@/lib/errores'
 import { Skeleton } from '@/components/ui/Skeleton'
 
 const ESTADOS = {
@@ -38,7 +39,7 @@ function ModalEditarLote({ lote, onCerrar, onGuardar }) {
       // mostrador, así que aquí se traduce a lo que de verdad pasó.
       toast.error(error.code === '23505'
         ? `Ya existe otro lote con el código "${codigoLote.trim()}". Usa uno distinto.`
-        : error.message)
+        : mensajeError(error))
       guardandoRef.current = false; setGuardando(false); return
     }
     toast.success('Lote actualizado'); guardandoRef.current = false; setGuardando(false); onGuardar()
@@ -84,7 +85,7 @@ function ModalCuadrar({ lote, sucursales, onCerrar, onGuardar }) {
       const { error } = await supabase.rpc('ajustar_inventario', { p_lote_id: lote.lote_id, p_sucursal_id: sucursalId, p_nueva_cantidad: cant, p_motivo: motivo.trim() })
       if (error) throw error
       toast.success('Inventario ajustado'); onGuardar()
-    } catch (err) { toast.error(err.message || 'Error al ajustar') } finally { cuadrRefG.current = false; setGuardando(false) }
+    } catch (err) { toast.error(mensajeError(err, 'Error al ajustar')) } finally { cuadrRefG.current = false; setGuardando(false) }
   }
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -138,7 +139,7 @@ function ModalEliminarLote({ lote, productoNombre, onCerrar, onConfirmar }) {
       toast.success('Lote eliminado')
       onConfirmar()
     } catch (err) {
-      toast.error(err.message || 'Error al eliminar')
+      toast.error(mensajeError(err, 'Error al eliminar'))
     } finally {
       setEliminando(false)
     }

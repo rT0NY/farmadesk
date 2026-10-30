@@ -3,10 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Plus, Search, Package, Filter, RefreshCw,
   AlertTriangle, ChevronDown, X, Check, PackageX,
-  ShoppingBag, Wallet, Layers, PencilLine,
+  ShoppingBag, Wallet, Layers, PencilLine, Download,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { formatoMoneda } from '@/lib/formatos'
+import { traerTodo } from '@/lib/paginado'
+import { formatoMoneda, fechaEnZona } from '@/lib/formatos'
+import { descargarCSV, textoExcel, numeroExcel, paraArchivo } from '@/lib/exportar'
+import { mensajeError } from '@/lib/errores'
 import { useApp } from '@/context/AppCtx'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -72,8 +76,9 @@ function DropdownFiltro({ label, icono: Icono, activo, contador, children }) {
 }
 
 export default function ProductosPage() {
-  const { empresa, perfil } = useApp()
+  const { empresa, perfil, tz } = useApp()
   const esCajero = perfil?.rol === 'cajero'
+  const [exportando, setExportando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   // Los filtros se quedan puestos al cambiar de sección y regresar
   const [filtroEstado, setFiltroEstado] = useEstadoRecordado('productos.estado', 'todos')
@@ -192,6 +197,44 @@ export default function ProductosPage() {
 
   const hayFiltrosActivos = busqueda || categoriaSel || filtroEstado !== 'todos'
 
+  // Lista de precios de todos los productos activos, sin importar los filtros
+  // de pantalla: nombre, categoría, códigos, costo y precio. Los productos ya
+  // están en memoria; solo se piden los códigos con sus unidades por empaque
+  // (la lista de la pantalla no las trae) para marcar los de caja o paquete.
+  async function descargarPrecios() {
+    if (exportando || !productos.length) return
+    setExportando(true)
+    try {
+      const codigos = await traerTodo(() => supabase.from('codigos_barras'),
+        'id, producto_id, codigo, unidades_por_empaque')
+      const porProducto = new Map()
+      for (const c of codigos) {
+        const lista = porProducto.get(c.producto_id)
+        if (lista) lista.push(c)
+        else porProducto.set(c.producto_id, [c])
+      }
+      const filas = [...productos]
+        .sort((a, b) => a.nombre.localeCompare(b.nombre))
+        .map(p => {
+          const textoCodigos = (porProducto.get(p.id) ?? [])
+            .sort((a, b) => (a.unidades_por_empaque - b.unidades_por_empaque) || a.codigo.localeCompare(b.codigo))
+            .map(c => c.codigo + (c.unidades_por_empaque > 1 ? ` (empaque de ${c.unidades_por_empaque})` : ''))
+            .join(', ')
+          return [p.nombre, p.categoria ?? '', textoExcel(textoCodigos), numeroExcel(p.precio_compra), numeroExcel(p.precio_venta)]
+        })
+      descargarCSV(
+        `precios-${paraArchivo(empresa?.nombre)}-${fechaEnZona(tz)}.csv`,
+        ['Producto', 'Categoría', 'Códigos de barras', 'Precio compra', 'Precio venta'],
+        filas,
+      )
+      toast.success(`Lista de precios descargada · ${filas.length} productos`)
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo descargar la lista de precios'))
+    } finally {
+      setExportando(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -205,6 +248,16 @@ export default function ProductosPage() {
         <div className="flex gap-2">
           {!esCajero && (
             <>
+              <Button
+                variante="secundario"
+                onClick={descargarPrecios}
+                cargando={exportando}
+                disabled={cargando || !productos.length}
+                iconoIzq={<Download className="w-4 h-4" />}
+              >
+                <span className="hidden sm:inline">Descargar precios</span>
+                <span className="sm:hidden">Descargar</span>
+              </Button>
               <Button
                 variante="secundario"
                 onClick={() => setModalEdicion(true)}
